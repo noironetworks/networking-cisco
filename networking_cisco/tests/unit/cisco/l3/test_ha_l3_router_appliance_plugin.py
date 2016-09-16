@@ -14,6 +14,7 @@
 
 import copy
 import mock
+import unittest
 
 from oslo_config import cfg
 from oslo_log import log as logging
@@ -1384,6 +1385,10 @@ class HAL3RouterApplianceVMTestCase(
                              _sort_routes(routes1))
             self._rr_routes_update_cleanup(p2['id'], None, r['id'], rr1_id, [])
             self._routes_update_cleanup(p1['id'], None, r['id'], [])
+
+    @unittest.skip("VM HA with namespace not supported")
+    def test_add_namespace_binding(self):
+        pass
 
 
 class L3AgentHARouterApplianceTestCase(

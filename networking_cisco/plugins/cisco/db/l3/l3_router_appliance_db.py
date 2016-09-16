@@ -129,10 +129,33 @@ class L3RouterApplianceDBMixin(extraroute_db.ExtraRoute_dbonly_mixin):
                      '_extend_router_dict_scheduling_info',
                      '_extend_router_dict_ha'])
 
+    def _add_namespace_binding(self, context, router_db):
+        router_type_id = self.get_namespace_router_type_id(context)
+        auto_schedule = cfg.CONF.routing.auto_schedule
+        share_host = cfg.CONF.routing.share_hosting_device
+        with context.session.begin(subtransactions=True):
+            r_hd_b_db = l3_models.RouterHostingDeviceBinding(
+                router_id=router_db['id'],
+                role=None,
+                router_type_id=router_type_id,
+                inflated_slot_need=0,
+                auto_schedule=auto_schedule,
+                share_hosting_device=share_host,
+                hosting_device_id=None)
+            context.session.add(r_hd_b_db)
+
     def _cisco_router_model_hook(self, context, original_model, query):
-        query = query.join(l3_models.RouterHostingDeviceBinding,
-                           (original_model.id ==
-                            l3_models.RouterHostingDeviceBinding.router_id))
+        original_query = query
+        query = original_query.join(
+            l3_models.RouterHostingDeviceBinding,
+            (original_model.id ==
+                l3_models.RouterHostingDeviceBinding.router_id))
+        if original_query.first() and not query.first():
+            self._add_namespace_binding(context, original_query.first())
+            query = original_query.join(
+                l3_models.RouterHostingDeviceBinding,
+                (original_model.id ==
+                    l3_models.RouterHostingDeviceBinding.router_id))
         return query
 
     def _cisco_router_result_filter_hook(self, query, filters):
