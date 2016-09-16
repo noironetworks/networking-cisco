@@ -40,6 +40,7 @@ from neutron.tests.unit.extensions import test_l3
 from networking_cisco._i18n import _
 import networking_cisco.plugins
 from networking_cisco.plugins.cisco.common import cisco_constants as c_const
+from networking_cisco.plugins.cisco.db.l3 import l3_models
 from networking_cisco.plugins.cisco.device_manager import service_vm_lib
 from networking_cisco.plugins.cisco.extensions import ciscohostingdevicemanager
 from networking_cisco.plugins.cisco.extensions import routertype
@@ -550,6 +551,24 @@ class L3RouterApplianceNamespaceTestCase(
         self._check_driver_calls(
             'test_router_update_gateway_to_empty_with_existed_floatingip', 1,
             1)
+
+    def test_add_namespace_binding(self):
+        r = None
+        with self.router() as router:
+            r = router['router']
+        adm_context = n_context.get_admin_context()
+        query = adm_context.session.query(
+            l3_models.RouterHostingDeviceBinding)
+        hdb = query.first()
+        self.assertEqual(hdb['router_id'], r['id'])
+        with adm_context.session.begin(subtransactions=True):
+            adm_context.session.delete(hdb)
+        self.l3_plugin._add_namespace_binding(n_context.get_admin_context(), r)
+        query = adm_context.session.query(
+            l3_models.RouterHostingDeviceBinding)
+        hdb = query.first()
+        self.assertIsNotNone(hdb)
+        self.assertEqual(hdb['router_id'], r['id'])
 
 
 class L3RouterApplianceVMTestCase(L3RouterApplianceNamespaceTestCase):

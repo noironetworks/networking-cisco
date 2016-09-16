@@ -14,6 +14,7 @@
 
 import copy
 import mock
+import unittest
 
 from oslo_config import cfg
 from oslo_log import log as logging
@@ -1474,6 +1475,10 @@ class HAL3RouterApplianceVMTestCase(
             args, kwargs = chk_method.call_args
             self.assertEqual(admin_ctx, args[0])
             self.assertIn(router['router']['id'], args[1])
+
+    @unittest.skip("VM HA with namespace not supported")
+    def test_add_namespace_binding(self):
+        pass
 
 
 class L3AgentHARouterApplianceTestCase(
