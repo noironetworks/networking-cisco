@@ -108,7 +108,7 @@ class AciAsr1kRouterTypeDriverTestCase(
                 r2 = router2['router']
                 # backlog processing will trigger one routers_updated
                 # notification containing r1 and r2
-                self.plugin._process_backlogged_routers()
+                self.l3_plugin._process_backlogged_routers()
                 # should have no global router yet
                 r_ids = {r1['id'], r2['id']}
                 self._verify_updated_routers(r_ids)
@@ -133,7 +133,7 @@ class AciAsr1kRouterTypeDriverTestCase(
             with self.router(tenant_id=tenant_id, external_gateway_info=ext_gw,
                              set_context=set_context) as router1:
                 r1 = router1['router']
-                self.plugin._process_backlogged_routers()
+                self.l3_plugin._process_backlogged_routers()
                 r1_after = self._show('routers', r1['id'])['router']
                 hd_id = r1_after[HOSTING_DEVICE_ATTR]
                 # should have one global router now
@@ -177,7 +177,7 @@ class AciAsr1kRouterTypeDriverTestCase(
             with self.router(tenant_id=tenant_id, external_gateway_info=ext_gw,
                              set_context=set_context) as router1:
                 r1 = router1['router']
-                self.plugin._process_backlogged_routers()
+                self.l3_plugin._process_backlogged_routers()
                 r1_after = self._show('routers', r1['id'])['router']
                 hd_id = r1_after[HOSTING_DEVICE_ATTR]
                 # should have one global router now
@@ -231,7 +231,7 @@ class AciAsr1kRouterTypeDriverTestCase(
                 r2 = router2['router']
                 # backlog processing will trigger one routers_updated
                 # notification containing r1 and r2
-                self.plugin._process_backlogged_routers()
+                self.l3_plugin._process_backlogged_routers()
                 r1_after = self._show('routers', r1['id'])['router']
                 hd_id = r1_after[HOSTING_DEVICE_ATTR]
                 r_ids = {r1['id'], r2['id']}
@@ -278,7 +278,7 @@ class AciAsr1kHARouterTypeDriverTestCase(
                 r1 = router1['router']
                 r2 = router2['router']
                 # backlog processing to schedule the routers
-                self.plugin._process_backlogged_routers()
+                self.l3_plugin._process_backlogged_routers()
                 # should have no global router yet
                 r_ids = [r1['id'], r2['id']]
                 self._verify_ha_created_routers(r_ids, 1, has_gw=[False,
@@ -317,7 +317,7 @@ class AciAsr1kHARouterTypeDriverTestCase(
                 self._delete('hosting_devices',
                              hds['hosting_devices'][1]['id'])
                 # backlog processing to schedule the routers
-                self.plugin._process_backlogged_routers()
+                self.l3_plugin._process_backlogged_routers()
                 self._verify_ha_created_routers([r1['id'], r2['id']])
                 r_spec = {'router': {l3.EXTERNAL_GW_INFO: None}}
                 self._update('routers', r1['id'], r_spec)
