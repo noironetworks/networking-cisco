@@ -7,7 +7,6 @@ Babel>=1.3
 ncclient>=0.4.2
 lxml>=3.3.3
 UcsSdk<=0.8.2
-python_version<'3.0' # requirement from ncclient and UcsSdk
 
 oslo.config>=2.3.0  # Apache-2.0
 oslo.concurrency>=2.3.0         # Apache-2.0
