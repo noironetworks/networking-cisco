@@ -708,12 +708,12 @@ class L3RouterApplianceGbpTestCase(test_l3.L3NatTestCaseMixin,
         manager.NeutronManager.get_service_plugins = self.saved_service_plugins
 
     def test_is_gbp_workflow(self):
-        self.assertTrue(self.plugin.is_gbp_workflow)
+        self.assertTrue(self.l3_plugin.is_gbp_workflow)
 
     def test_create_floatingip_gbp(self):
         kwargs = {'arg_list': (external_net.EXTERNAL,),
                   external_net.EXTERNAL: True}
-        self.plugin._update_fip_assoc = mock.Mock()
+        self.l3_plugin._update_fip_assoc = mock.Mock()
         with self.network(**kwargs) as net:
             with self.subnet(network=net, cidr='200.0.0.0/22') as sub:
                 subnet = sub['subnet']
@@ -726,7 +726,7 @@ class L3RouterApplianceGbpTestCase(test_l3.L3NatTestCaseMixin,
 
                 mock_drvr = mock.Mock()
                 mock_drvr.create_floatingip_precommit = _stub_modify_context
-                self.plugin._get_router_type_driver = mock.Mock(
+                self.l3_plugin._get_router_type_driver = mock.Mock(
                     return_value=mock_drvr
                 )
                 network = net['network']
@@ -735,22 +735,22 @@ class L3RouterApplianceGbpTestCase(test_l3.L3NatTestCaseMixin,
                                    'tenant_id': net['network']['tenant_id']}
                 }
                 ctx = n_context.get_admin_context()
-                self.plugin.create_floatingip(ctx, floating_ip)
+                self.l3_plugin.create_floatingip(ctx, floating_ip)
                 dummy_func.assert_called_once_with(ctx)
                 mock_drvr.create_floatingip_postcommit.assert_called_once_with(
                     ctx, mock.ANY)
-                self.plugin._update_fip_assoc.assert_called_once_with(ctx,
+                self.l3_plugin._update_fip_assoc.assert_called_once_with(ctx,
                     mock.ANY, mock.ANY, mock.ANY)
 
     def test_update_floatingip_gbp(self):
-        self.plugin._do_update_floatingip = mock.Mock()
+        self.l3_plugin._do_update_floatingip = mock.Mock()
         ctx = n_context.get_admin_context()
         TEST_FIP_UUID = _uuid()
         floating_ip = {
             'floatingip': {'floating_network_id': _uuid()}
         }
-        self.plugin.update_floatingip(ctx, TEST_FIP_UUID, floating_ip)
-        self.plugin._do_update_floatingip.assert_called_once_with(ctx,
+        self.l3_plugin.update_floatingip(ctx, TEST_FIP_UUID, floating_ip)
+        self.l3_plugin._do_update_floatingip.assert_called_once_with(ctx,
             TEST_FIP_UUID, floating_ip, add_fip=True)
 
 
@@ -769,28 +769,28 @@ class L3RouterApplianceNoGbpTestCase(test_l3.L3NatTestCaseMixin,
         super(L3RouterApplianceNoGbpTestCase, self).tearDown()
 
     def test_is_not_gbp_workflow(self):
-        self.assertFalse(self.plugin.is_gbp_workflow)
+        self.assertFalse(self.l3_plugin.is_gbp_workflow)
 
     def test_create_floatingip_gbp(self):
-        self.plugin._update_fip_assoc = mock.Mock()
-        self.plugin._create_floatingip_neutron = mock.Mock()
-        self.plugin._create_floatingip_gbp = mock.Mock()
+        self.l3_plugin._update_fip_assoc = mock.Mock()
+        self.l3_plugin._create_floatingip_neutron = mock.Mock()
+        self.l3_plugin._create_floatingip_gbp = mock.Mock()
         ctx = n_context.get_admin_context()
         floating_ip = {
             'floatingip': {'floating_network_id': _uuid()}
         }
-        self.plugin.create_floatingip(ctx, floating_ip)
-        self.plugin._create_floatingip_gbp.assert_not_called()
-        self.plugin._create_floatingip_neutron.assert_called_once_with(ctx,
+        self.l3_plugin.create_floatingip(ctx, floating_ip)
+        self.l3_plugin._create_floatingip_gbp.assert_not_called()
+        self.l3_plugin._create_floatingip_neutron.assert_called_once_with(ctx,
             floating_ip, initial_status=l3_constants.FLOATINGIP_STATUS_ACTIVE)
 
     def test_update_floatingip_no_gbp(self):
-        self.plugin._do_update_floatingip = mock.Mock()
+        self.l3_plugin._do_update_floatingip = mock.Mock()
         ctx = n_context.get_admin_context()
         TEST_FIP_UUID = _uuid()
         floating_ip = {
             'floatingip': {'floating_network_id': _uuid()}
         }
-        self.plugin.update_floatingip(ctx, TEST_FIP_UUID, floating_ip)
-        self.plugin._do_update_floatingip.assert_called_once_with(ctx,
+        self.l3_plugin.update_floatingip(ctx, TEST_FIP_UUID, floating_ip)
+        self.l3_plugin._do_update_floatingip.assert_called_once_with(ctx,
             TEST_FIP_UUID, floating_ip)
