@@ -17,8 +17,6 @@ import os
 import mock
 from oslo_config import cfg
 from oslo_db import exception as db_exc
-from oslo_log import log as logging
-from oslo_utils import uuidutils
 import six
 from sqlalchemy import exc as inner_db_exc
 import unittest
@@ -53,9 +51,6 @@ from networking_cisco.tests.unit.cisco.device_manager import (
     test_db_device_manager)
 from networking_cisco.tests.unit.cisco.l3 import l3_router_test_support
 from networking_cisco.tests.unit.cisco.l3 import test_db_routertype
-
-LOG = logging.getLogger(__name__)
-_uuid = uuidutils.generate_uuid
 
 
 CORE_PLUGIN_KLASS = device_manager_test_support.CORE_PLUGIN_KLASS

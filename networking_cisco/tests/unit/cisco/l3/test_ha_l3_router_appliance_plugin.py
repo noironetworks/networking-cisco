@@ -17,7 +17,6 @@ import mock
 import unittest
 
 from oslo_config import cfg
-from oslo_log import log as logging
 from oslo_utils import uuidutils
 from sqlalchemy.orm import exc
 import unittest
@@ -48,7 +47,6 @@ from networking_cisco.tests.unit.cisco.l3 import (
     test_l3_router_appliance_plugin)
 from networking_cisco.tests.unit.cisco.l3 import test_db_routertype
 
-LOG = logging.getLogger(__name__)
 
 _uuid = uuidutils.generate_uuid
 
