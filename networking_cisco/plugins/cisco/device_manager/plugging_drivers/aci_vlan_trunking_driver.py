@@ -377,7 +377,7 @@ class AciVLANTrunkingPlugDriver(hw_vlan.HwVLANTrunkingPlugDriver):
         the GBP workflow
         """
         prefix = network_name[:re.search(UUID_REGEX, network_name).start() - 1]
-        return prefix.strip(APIC_OWNED)
+        return prefix.replace(APIC_OWNED,'')
 
     def _get_ext_net_name_neutron(self, network_name):
         """Get the external network name
