@@ -580,6 +580,7 @@ class L3RouterApplianceDBMixin(extraroute_db.ExtraRoute_dbonly_mixin):
         """
 
         result = None
+        driver = None
         fip = floatingip['floatingip']
         if not fip.get('subnet_id'):
             # NOTE: default router type must be ASR1k
