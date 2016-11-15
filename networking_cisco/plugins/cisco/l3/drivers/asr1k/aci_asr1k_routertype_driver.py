@@ -202,11 +202,11 @@ class AciASR1kL3RouterDriver(asr1k.ASR1kL3RouterDriver):
 
     def delete_floatingip_precommit(self, context, fip_context):
         self.apic_driver.delete_floatingip_precommit(
-            context, fip_context.current)
+            context, fip_context.current['id'])
 
     def delete_floatingip_postcommit(self, context, fip_context):
         self.apic_driver.delete_floatingip_postcommit(
-            context, fip_context.current)
+            context, fip_context.current['id'])
 
     def _conditionally_add_global_router(self, context, router):
         """Create global router, if needed.
