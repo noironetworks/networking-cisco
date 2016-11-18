@@ -16,8 +16,7 @@ import copy
 
 from oslo_log import log as logging
 
-from neutron.common import constants as l3_constants
-
+from networking_cisco import backwards_compatibility as bc
 from networking_cisco.plugins.cisco.cfg_agent.service_helpers import (
     routing_svc_helper as helper)
 from networking_cisco.plugins.cisco.extensions import routerrole
@@ -62,8 +61,8 @@ class RoutingServiceHelperAci(helper.RoutingServiceHelper):
     def _process_gateway_set(self, ri, ex_gw_port, list_port_ids_up):
         super(RoutingServiceHelperAci,
               self)._process_gateway_set(ri, ex_gw_port, list_port_ids_up)
-        # transiiioned -- go enable any interfaces
-        interfaces = ri.router.get(l3_constants.INTERFACE_KEY, [])
+        # transitioned -- go enable any interfaces
+        interfaces = ri.router.get(bc.constants.INTERFACE_KEY, [])
         new_ports = [p for p in interfaces
                      if (p['admin_state_up'] and
                          p not in ri.internal_ports)]

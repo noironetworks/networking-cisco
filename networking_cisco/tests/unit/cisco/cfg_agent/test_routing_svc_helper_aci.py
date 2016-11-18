@@ -17,6 +17,11 @@ import mock
 from oslo_config import cfg
 from oslo_utils import uuidutils
 
+from neutron.common import config as base_config
+from neutron.common import constants as l3_constants
+from neutron.tests import base
+
+from networking_cisco import backwards_compatibility as bc
 from networking_cisco.plugins.cisco.cfg_agent import cfg_agent
 from networking_cisco.plugins.cisco.cfg_agent.service_helpers import (
     routing_svc_helper as svc_helper)
@@ -24,9 +29,6 @@ from networking_cisco.plugins.cisco.cfg_agent.service_helpers import (
     routing_svc_helper_aci as aci_svc_helper)
 from networking_cisco.tests.unit.cisco.cfg_agent import (
     test_routing_svc_helper as helper)
-from neutron.common import config as base_config
-from neutron.common import constants as l3_constants
-from neutron.tests import base
 
 _uuid = uuidutils.generate_uuid
 
@@ -151,7 +153,7 @@ class TestNetworkRoutingOperationsAci(base.BaseTestCase):
         super(TestNetworkRoutingOperationsAci, self).setUp()
         self.agent = mock.Mock()
         self.conf = cfg.ConfigOpts()
-        self.conf.register_opts(base_config.core_opts)
+        self.conf.register_opts(bc.core_opts)
         self.conf.register_opts(cfg_agent.OPTS, "cfg_agent")
         self.l3pluginApi_cls_p = mock.patch(
             'networking_cisco.plugins.cisco.cfg_agent.service_helpers.'
@@ -225,7 +227,7 @@ class TestNetworkRoutingOperationsAci(base.BaseTestCase):
         self.assertTrue(len(v_n_r_dict[vrf]) == 1)
         self.assertTrue(len(v_n_r_dict[vrf][network_name]) == 2)
 
-        del ri1.router[l3_constants.INTERFACE_KEY]
+        del ri1.router[bc.constants.INTERFACE_KEY]
         self.routing_helper._process_router(ri1)
 
         driver.internal_network_removed.assert_called_with(
@@ -239,7 +241,7 @@ class TestNetworkRoutingOperationsAci(base.BaseTestCase):
         driver.internal_network_removed.reset_mock()
         driver.disable_internal_network_NAT.reset_mock()
 
-        del ri2.router[l3_constants.INTERFACE_KEY]
+        del ri2.router[bc.constants.INTERFACE_KEY]
         self.routing_helper._process_router(ri2)
 
         driver.internal_network_removed.assert_called_with(
@@ -301,7 +303,7 @@ class TestNetworkRoutingOperationsAci(base.BaseTestCase):
         self.assertTrue(len(v_n_r_dict[vrf1][network_name]) == 1)
         self.assertTrue(len(v_n_r_dict[vrf2][network_name]) == 1)
 
-        del ri1.router[l3_constants.INTERFACE_KEY]
+        del ri1.router[bc.constants.INTERFACE_KEY]
         driver._get_vrf_name = mock.Mock(return_value=vrf1)
         self.routing_helper._process_router(ri1)
 
@@ -317,7 +319,7 @@ class TestNetworkRoutingOperationsAci(base.BaseTestCase):
         driver.internal_network_removed.reset_mock()
         driver.disable_internal_network_NAT.reset_mock()
 
-        del ri2.router[l3_constants.INTERFACE_KEY]
+        del ri2.router[bc.constants.INTERFACE_KEY]
         driver._get_vrf_name = mock.Mock(return_value=vrf2)
         self.routing_helper._process_router(ri2)
 
@@ -378,7 +380,7 @@ class TestNetworkRoutingOperationsAci(base.BaseTestCase):
         self.assertTrue(len(v_n_r_dict[vrf][network_name1]) == 1)
         self.assertTrue(len(v_n_r_dict[vrf][network_name2]) == 1)
 
-        del ri1.router[l3_constants.INTERFACE_KEY]
+        del ri1.router[bc.constants.INTERFACE_KEY]
         self.routing_helper._process_router(ri1)
 
         driver.internal_network_removed.assert_called_with(
@@ -393,7 +395,7 @@ class TestNetworkRoutingOperationsAci(base.BaseTestCase):
         driver.internal_network_removed.reset_mock()
         driver.disable_internal_network_NAT.reset_mock()
 
-        del ri2.router[l3_constants.INTERFACE_KEY]
+        del ri2.router[bc.constants.INTERFACE_KEY]
         self.routing_helper._process_router(ri2)
 
         driver.internal_network_removed.assert_called_with(
@@ -455,7 +457,7 @@ class TestNetworkRoutingOperationsAci(base.BaseTestCase):
         self.assertTrue(len(v_n_r_dict[vrf1][network_name1]) == 1)
         self.assertTrue(len(v_n_r_dict[vrf2][network_name2]) == 1)
 
-        del ri1.router[l3_constants.INTERFACE_KEY]
+        del ri1.router[bc.constants.INTERFACE_KEY]
         driver._get_vrf_name = mock.Mock(return_value=vrf1)
         self.routing_helper._process_router(ri1)
 
@@ -471,7 +473,7 @@ class TestNetworkRoutingOperationsAci(base.BaseTestCase):
         driver.internal_network_removed.reset_mock()
         driver.disable_internal_network_NAT.reset_mock()
 
-        del ri2.router[l3_constants.INTERFACE_KEY]
+        del ri2.router[bc.constants.INTERFACE_KEY]
         driver._get_vrf_name = mock.Mock(return_value=vrf2)
         self.routing_helper._process_router(ri2)
 
