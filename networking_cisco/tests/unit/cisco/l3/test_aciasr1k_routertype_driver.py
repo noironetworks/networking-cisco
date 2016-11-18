@@ -1,4 +1,4 @@
-# Copyright 2015 Cisco Systems, Inc.  All rights reserved.
+# Copyright 2016 Cisco Systems, Inc.  All rights reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
 #    not use this file except in compliance with the License. You may obtain
@@ -13,19 +13,23 @@
 #    under the License.
 
 import mock
+import unittest
+import webob.exc
+
+from neutron.api.v2 import attributes
+from neutron.common import exceptions as n_exc
+from neutron import context
+from neutron.extensions import l3
 from oslo_utils import uuidutils
 
 from networking_cisco.plugins.cisco.common import cisco_constants
 from networking_cisco.plugins.cisco.extensions import routerhostingdevice
 from networking_cisco.plugins.cisco.extensions import routerrole
 from networking_cisco.plugins.cisco.extensions import routertypeawarescheduler
-# This is here only for pre-populating config file options for override
 from networking_cisco.tests.unit.cisco.l3 import (
-    test_asr1k_routertype_driver as asr1k)
-from neutron.api.v2 import attributes
-from neutron import context
-from neutron.extensions import l3
-import webob.exc
+    test_asr1k_routertype_driver as asr1k_test)
+from networking_cisco.tests.unit.cisco.l3 import (
+    test_l3_routertype_aware_schedulers as cisco_test_case)
 
 _uuid = uuidutils.generate_uuid
 
@@ -41,6 +45,7 @@ AUTO_SCHEDULE_ATTR = routertypeawarescheduler.AUTO_SCHEDULE_ATTR
 ASR_MODULE = ('networking_cisco.plugins.cisco.l3.drivers.asr1k.'
               'aci_asr1k_routertype_driver')
 ASR_DRIVER = ASR_MODULE + '.AciASR1kL3RouterDriver'
+ASR1K_ROUTER_TYPE = asr1k_test.Asr1kRouterTypeDriverTestCase.router_type
 TEST_NET_CFG = {'Datacenter-Out': {
                     'gateway': '1.103.2.1',
                     'host_pool_cidr': '1.103.2.0/24',
@@ -48,9 +53,9 @@ TEST_NET_CFG = {'Datacenter-Out': {
 
 
 class AciAsr1kRouterTypeDriverTestCase(
-        asr1k.Asr1kRouterTypeDriverTestCase):
+        asr1k_test.Asr1kRouterTypeDriverTestCase):
 
-    router_type = 'ASR1k_Neutron_router'
+    router_type = 'AciASR1k_Neutron_router'
     external_network = {'name': 'ext-net-1',
                         'preexisting': False,
                         'external_epg': 'default-Datacenter-Out',
@@ -83,7 +88,7 @@ class AciAsr1kRouterTypeDriverTestCase(
             # create a specific auth context for this request
             req.environ['neutron.context'] = neutron_context
         res = req.get_response(self._api_for_resource(resource))
-        self.assertEqual(res.status_int, expected_code)
+        self.assertEqual(expected_code, res.status_int)
         return self.deserialize(self.fmt, res)
 
     def _test_router_update_set_gw_adds_global_router(self, set_context=False):
@@ -247,17 +252,17 @@ class AciAsr1kRouterTypeDriverTestCase(
 
 
 class AciAsr1kHARouterTypeDriverTestCase(
-        asr1k.Asr1kHARouterTypeDriverTestCase):
+        asr1k_test.Asr1kHARouterTypeDriverTestCase):
 
     # For the HA tests we need more than one hosting device
-    router_type = 'ASR1k_Neutron_router'
+    router_type = 'AciASR1k_Neutron_router'
     _is_ha_tests = True
 
     def setUp(self):
         super(AciAsr1kHARouterTypeDriverTestCase, self).setUp()
         self.aci_driver = mock.patch(ASR_DRIVER + '.apic_driver',
                                      return_value=mock.Mock())
-        self.aci_driver.start()
+        self.drv = self.aci_driver.start()
 
     def tearDown(self):
         self.aci_driver.stop()
@@ -312,7 +317,7 @@ class AciAsr1kHARouterTypeDriverTestCase(
                 r2 = router2['router']
                 # make sure we have only two eligible hosting devices
                 # in this test
-                qp = "template_id=00000000-0000-0000-0000-000000000005"
+                qp = "template_id=00000000-0000-0000-0000-000000000008"
                 hds = self._list('hosting_devices', query_params=qp)
                 self._delete('hosting_devices',
                              hds['hosting_devices'][1]['id'])
@@ -327,9 +332,49 @@ class AciAsr1kHARouterTypeDriverTestCase(
                 # should have no global routers now, we verify using r1
                 self._verify_ha_updated_router(r2['id'], has_gw=False)
 
+    def _test_gw_router_create_adds_global_router(self, set_context=False):
+        tenant_id = _uuid()
+        with self.network(tenant_id=tenant_id,
+                          name='Datacenter-Out') as n_external:
+            res = self._create_subnet(self.fmt, n_external['network']['id'],
+                                      cidr='10.0.1.0/24', tenant_id=tenant_id)
+            s = self.deserialize(self.fmt, res)
+            self._set_net_external(s['subnet']['network_id'])
+            ext_gw = {'network_id': s['subnet']['network_id']}
+            with self.router(tenant_id=tenant_id, external_gateway_info=ext_gw,
+                             set_context=set_context) as router1:
+                r = router1['router']
+                self.l3_plugin._process_backlogged_routers()
+                # should now have one user-visible router, its single
+                # redundancy router and two global routers (one for each of
+                # the hosting devices of the aforementioned routers)
+                self._verify_ha_created_routers([r['id']])
+
+    def test_delete_floating_ip_pre_and_post(self):
+        with self.subnet() as ext_s, self.subnet(cidr='10.0.1.0/24') as s:
+            s1 = ext_s['subnet']
+            ext_net_id = s1['network_id']
+            self._set_net_external(ext_net_id)
+            with self.router(
+                    external_gateway_info={'network_id': ext_net_id}) as r,\
+                    self.port(s) as p:
+                self._router_interface_action('add', r['router']['id'], None,
+                                              p['port']['id'])
+                p1 = p['port']
+                fip = {'floatingip': {'floating_network_id': ext_net_id,
+                                      'port_id': p1['id'],
+                                      'tenant_id': s1['tenant_id']}}
+                ctx = context.get_admin_context()
+                floating_ip = self.l3_plugin.create_floatingip(ctx, fip)
+                self.l3_plugin.delete_floatingip(ctx, floating_ip['id'])
+                self.drv.delete_floatingip_precommit.assert_called_once_with(
+                    ctx, floating_ip['id'])
+                self.drv.delete_floatingip_postcommit.assert_called_once_with(
+                    ctx, floating_ip['id'])
+
 
 class L3CfgAgentAciAsr1kRouterTypeDriverTestCase(
-        asr1k.L3CfgAgentAsr1kRouterTypeDriverTestCase):
+        asr1k_test.L3CfgAgentAsr1kRouterTypeDriverTestCase):
 
     _is_ha_tests = True
 
@@ -355,19 +400,19 @@ class L3CfgAgentAciAsr1kRouterTypeDriverTestCase(
         # 1 x update of floatingip (with 3 routers included),
         # 1 x deletion of floatingip (with 3 routers included)
         notify_call_1 = notifyApi.routers_updated.mock_calls[4]
-        self.assertEqual(notify_call_1[1][2], first_operation)
+        self.assertEqual(first_operation, notify_call_1[1][2])
         r_ids = {r['id'] for r in notify_call_1[1][1]}
         for r in routers:
             self.assertIn(r['id'], r_ids)
             r_ids.remove(r['id'])
-        self.assertEqual(len(r_ids), 0)
+        self.assertEqual(0, len(r_ids))
         delete_call = notifyApi.routers_updated.mock_calls[5]
-        self.assertEqual(delete_call[1][2], 'delete_floatingip')
+        self.assertEqual('delete_floatingip', delete_call[1][2])
         r_ids = {r['id'] for r in delete_call[1][1]}
         for r in routers:
             self.assertIn(r['id'], r_ids)
             r_ids.remove(r['id'])
-        self.assertEqual(len(r_ids), 0)
+        self.assertEqual(0, len(r_ids))
         self.assertEqual(6, notifyApi.routers_updated.call_count)
 
     def _test_ha_floatingip_update_cfg_agent(self, notifyApi):
@@ -383,3 +428,36 @@ class L3CfgAgentAciAsr1kRouterTypeDriverTestCase(
 
     def test_ha_floatingip_update_cfg_agent(self):
         self._test_notify_op_agent(self._test_ha_floatingip_update_cfg_agent)
+
+
+class AciAsr1kRouterTypeDriverNeutronTestCase(
+        cisco_test_case.L3RoutertypeAwareHostingDeviceSchedulerTestCaseBase):
+
+    router_type = 'AciASR1k_Neutron_router'
+
+    def setUp(self):
+        super(AciAsr1kRouterTypeDriverNeutronTestCase, self).setUp()
+        self.dummy_gbp_l3 = mock.Mock()
+        self.l3_plugin._core_plugin.mechanism_manager = mock.MagicMock()
+
+    @unittest.skip("Duplicate from other test class")
+    def test_agent_registration_bad_timestamp(self):
+        pass
+
+    @unittest.skip("Duplicate from other test class")
+    def test_agent_registration_invalid_timestamp_allowed(self):
+        pass
+
+    def test_get_apic_driver(self):
+        tenant_id = _uuid()
+        ctx = context.Context('', '', is_admin=True)
+        with self.router(tenant_id=tenant_id) as router1:
+            self.l3_plugin._process_backlogged_routers()
+            r1 = router1['router']
+            router_type_id = self.l3_plugin.get_router_type_id(ctx,
+                r1['id'])
+            with mock.patch('oslo_utils.importutils.import_object',
+                            return_value=self.dummy_gbp_l3):
+                driver = self.l3_plugin._get_router_type_driver(context,
+                    router_type_id)
+                self.assertEqual(self.dummy_gbp_l3, driver.apic_driver)
