@@ -51,6 +51,7 @@ from networking_cisco.tests.unit.cisco.device_manager import (
 from networking_cisco.tests.unit.cisco.l3 import l3_router_test_support
 from networking_cisco.tests.unit.cisco.l3 import test_db_routertype
 
+_uuid = uuidutils.generate_uuid
 
 NEUTRON_VERSION = bc.NEUTRON_VERSION
 NEUTRON_NEWTON_VERSION = bc.NEUTRON_NEWTON_VERSION
@@ -742,15 +743,6 @@ class L3RouterApplianceGbpTestCase(test_l3.L3NatTestCaseMixin,
             core_plugin=core_plugin, l3_plugin=l3_plugin, dm_plugin=dm_plugin,
             ext_mgr=ext_mgr)
         self._created_mgmt_nw = False
-        self.saved_service_plugins = manager.NeutronManager.get_service_plugins
-        manager.NeutronManager.get_service_plugins = mock.Mock(
-            return_value={'GROUP_POLICY': object(),
-                          service_constants.L3_ROUTER_NAT: self}
-        )
-
-    def tearDown(self):
-        super(L3RouterApplianceGbpTestCase, self).tearDown()
-        manager.NeutronManager.get_service_plugins = self.saved_service_plugins
 
     @contextlib.contextmanager
     def _mock_neutron_service_plugins(self):

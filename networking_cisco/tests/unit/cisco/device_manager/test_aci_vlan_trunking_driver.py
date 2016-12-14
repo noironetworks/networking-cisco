@@ -883,7 +883,6 @@ class TestAciVLANTrunkingPlugDriverNeutron(TestAciVLANTrunkingPlugDriverGbp):
                     self.plugging_driver.extend_hosting_port_info(ctx,
                         fake_port_db_obj, hosting_device, hosting_info)
                     self.assertIsNone(hosting_info.get('snat_subnets'))
->>>>>>> 173bdea... Use exceptions and constants from neutron_lib
 
     def test_extend_hosting_port_adds_segmentation_id_external_1_vrf(self):
         self.plugging_driver.apic_driver.per_tenant_context = False

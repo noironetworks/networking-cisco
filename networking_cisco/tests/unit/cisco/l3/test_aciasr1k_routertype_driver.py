@@ -17,7 +17,6 @@ import unittest
 import webob.exc
 
 from neutron.api.v2 import attributes
-from neutron.common import exceptions as n_exc
 from neutron import context
 from neutron.extensions import l3
 from oslo_utils import uuidutils
