@@ -19,6 +19,8 @@ from oslo_log import log as logging
 from networking_cisco import backwards_compatibility as bc
 from networking_cisco.plugins.cisco.cfg_agent.service_helpers import (
     routing_svc_helper as helper)
+from networking_cisco.plugins.cisco.common import (cisco_constants as
+                                                   c_constants)
 from networking_cisco.plugins.cisco.extensions import routerrole
 
 ROUTER_ROLE_ATTR = routerrole.ROUTER_ROLE_ATTR
@@ -33,11 +35,17 @@ class RoutingServiceHelperAci(helper.RoutingServiceHelper):
         self._router_ids_by_vrf = {}
         self._router_ids_by_vrf_and_ext_net = {}
 
+    def _is_global_router(self, ri):
+        return (ri.router.get(ROUTER_ROLE_ATTR) ==
+            c_constants.ROUTER_ROLE_GLOBAL)
+
     def _process_new_ports(self, ri, new_ports, ex_gw_port, list_port_ids_up):
         # Only add internal networks if we have an
-        # eternal gateway -- otherwise we have no parameters
-        # to use to configure the interface (e.g. VRF, IP, etc.)
-        if ex_gw_port:
+        # external gateway -- otherwise we have no parameters
+        # to use to configure the interface (e.g. VRF, IP, etc.).
+        # The exception to this is if it's the global router, in
+        # which case we doni't need that information.
+        if ex_gw_port or self._is_global_router(ri):
             super(RoutingServiceHelperAci,
                   self)._process_new_ports(
                       ri, new_ports, ex_gw_port, list_port_ids_up)
@@ -51,7 +59,7 @@ class RoutingServiceHelperAci(helper.RoutingServiceHelper):
             # the relevant information (VRF and external network
             # parameters), which come from the GW port. Go ahead
             # and remove the interface from our internal state
-            if gw_port:
+            if gw_port or self._is_global_router(ri):
                 self._internal_network_removed(ri, p, gw_port)
             ri.internal_ports.remove(p)
 
@@ -129,6 +137,8 @@ class RoutingServiceHelperAci(helper.RoutingServiceHelper):
             ri, port, ex_gw_port)
         driver = self.driver_manager.get_driver(ri.id)
         vrf_name = driver._get_vrf_name(ri)
+        if not ex_gw_port and self._is_global_router(ri):
+            ex_gw_port = port
         net_name = ex_gw_port['hosting_info'].get('network_name')
         self._router_ids_by_vrf_and_ext_net.setdefault(
             vrf_name, {}).setdefault(net_name, set()).add(ri.router['id'])
@@ -147,6 +157,9 @@ class RoutingServiceHelperAci(helper.RoutingServiceHelper):
         itfc_deleted = False
         driver = self.driver_manager.get_driver(ri.id)
         vrf_name = driver._get_vrf_name(ri)
+        if not ex_gw_port and self._is_global_router(ri):
+            ex_gw_port = port
+            itfc_deleted = True
         network_name = ex_gw_port['hosting_info'].get('network_name')
         if self._router_ids_by_vrf_and_ext_net.get(
             vrf_name, {}).get(network_name) and (

@@ -19,7 +19,6 @@ import unittest
 from oslo_config import cfg
 from oslo_utils import uuidutils
 from sqlalchemy.orm import exc
-import unittest
 import webob.exc
 
 from neutron.callbacks import events

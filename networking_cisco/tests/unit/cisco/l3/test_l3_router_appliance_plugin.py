@@ -51,6 +51,7 @@ from networking_cisco.tests.unit.cisco.device_manager import (
 from networking_cisco.tests.unit.cisco.l3 import l3_router_test_support
 from networking_cisco.tests.unit.cisco.l3 import test_db_routertype
 
+_uuid = uuidutils.generate_uuid
 
 NEUTRON_VERSION = bc.NEUTRON_VERSION
 NEUTRON_NEWTON_VERSION = bc.NEUTRON_NEWTON_VERSION
@@ -742,15 +743,6 @@ class L3RouterApplianceGbpTestCase(test_l3.L3NatTestCaseMixin,
             core_plugin=core_plugin, l3_plugin=l3_plugin, dm_plugin=dm_plugin,
             ext_mgr=ext_mgr)
         self._created_mgmt_nw = False
-        self.saved_service_plugins = manager.NeutronManager.get_service_plugins
-        manager.NeutronManager.get_service_plugins = mock.Mock(
-            return_value={'GROUP_POLICY': object(),
-                          service_constants.L3_ROUTER_NAT: self}
-        )
-
-    def tearDown(self):
-        super(L3RouterApplianceGbpTestCase, self).tearDown()
-        manager.NeutronManager.get_service_plugins = self.saved_service_plugins
 
     @contextlib.contextmanager
     def _mock_neutron_service_plugins(self):
@@ -766,7 +758,8 @@ class L3RouterApplianceGbpTestCase(test_l3.L3NatTestCaseMixin,
             yield get_plugin
 
     def test_is_gbp_workflow(self):
-        self.assertTrue(self.l3_plugin.is_gbp_workflow)
+        with self._mock_neutron_service_plugins():
+            self.assertTrue(self.l3_plugin.is_gbp_workflow)
 
     def test_create_floatingip_gbp(self):
         kwargs = {'arg_list': (external_net.EXTERNAL,),
@@ -793,7 +786,8 @@ class L3RouterApplianceGbpTestCase(test_l3.L3NatTestCaseMixin,
                                    'tenant_id': net['network']['tenant_id']}
                 }
                 ctx = n_context.get_admin_context()
-                self.l3_plugin.create_floatingip(ctx, floating_ip)
+                with self._mock_neutron_service_plugins():
+                    self.l3_plugin.create_floatingip(ctx, floating_ip)
                 dummy_func.assert_called_once_with(ctx)
                 mock_drvr.create_floatingip_postcommit.assert_called_once_with(
                     ctx, mock.ANY)
@@ -807,7 +801,8 @@ class L3RouterApplianceGbpTestCase(test_l3.L3NatTestCaseMixin,
         floating_ip = {
             'floatingip': {'floating_network_id': _uuid()}
         }
-        self.l3_plugin.update_floatingip(ctx, TEST_FIP_UUID, floating_ip)
+        with self._mock_neutron_service_plugins():
+            self.l3_plugin.update_floatingip(ctx, TEST_FIP_UUID, floating_ip)
         self.l3_plugin._do_update_floatingip.assert_called_once_with(ctx,
             TEST_FIP_UUID, floating_ip, add_fip=True)
 

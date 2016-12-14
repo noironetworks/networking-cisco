@@ -17,8 +17,6 @@ import mock
 from oslo_config import cfg
 from oslo_utils import uuidutils
 
-from neutron.common import config as base_config
-from neutron.common import constants as l3_constants
 from neutron.tests import base
 
 from networking_cisco import backwards_compatibility as bc
