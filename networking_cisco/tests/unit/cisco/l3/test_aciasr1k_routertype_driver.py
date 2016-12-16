@@ -66,6 +66,17 @@ class AciAsr1kRouterTypeDriverTestCase(
                         'gateway_ip': '1.103.2.1',
                         'router_id': '1.0.0.2',
                         'vlan_range': '1080:1090'}
+    external_mgmt_network = {'name': 'ext-net-2',
+                             'preexisting': False,
+                             'external_epg': 'default-Management-Out',
+                             'host_pool_cidr': '10.1.3.1/24',
+                             'encap': 'vlan-1031',
+                             'switch': '401',
+                             'port': '1/48',
+                             'cidr_exposed': '1.103.3.254/24',
+                             'gateway_ip': '1.103.3.1',
+                             'router_id': '1.0.0.3',
+                             'vlan_range': '1180:1190'}
 
     def setUp(self):
         super(AciAsr1kRouterTypeDriverTestCase, self).setUp()
@@ -90,46 +101,60 @@ class AciAsr1kRouterTypeDriverTestCase(
         self.assertEqual(expected_code, res.status_int)
         return self.deserialize(self.fmt, res)
 
-    def _test_router_update_set_gw_adds_global_router(self, set_context=False):
-        tenant_id = _uuid()
-        with self.network(tenant_id=tenant_id,
-                          name='Datacenter-Out') as n_external:
-            res = self._create_subnet(self.fmt, n_external['network']['id'],
-                                      cidr='1.103.2.0/24', tenant_id=tenant_id)
-            s = self.deserialize(self.fmt, res)
-            self._set_net_external(s['subnet']['network_id'])
-            # add a second subnet, just to verify that when we create
-            # the global router that it picks the correct subnet
-            res = self._create_subnet(self.fmt, n_external['network']['id'],
-                                      cidr='1.103.3.0/24', tenant_id=tenant_id)
-            s2 = self.deserialize(self.fmt, res)
-            self._set_net_external(s2['subnet']['network_id'])
-            with self.router(tenant_id=tenant_id,
-                             set_context=set_context) as router1,\
-                    self.router(name='router2', tenant_id=tenant_id,
-                                set_context=set_context) as router2:
+    def _test_create_gateway_router(self, set_context=False,
+                                    same_tenant=True, same_ext_net=True):
+        tenant_id_1 = _uuid()
+        tenant_id_2 = tenant_id_1 if same_tenant is True else _uuid()
+        with self.network(tenant_id=tenant_id_1,
+                          name='Datacenter-Out') as n_external_1,\
+                self.network(tenant_id=tenant_id_2,
+                             name='Management-Out') as n_external_2:
+            ext_net_1_id = n_external_1['network']['id']
+            self._set_net_external(ext_net_1_id)
+            self._create_subnet(self.fmt, ext_net_1_id, cidr='10.0.1.0/24',
+                                tenant_id=tenant_id_1)
+            if same_ext_net is False:
+                ext_net_2_id = n_external_2['network']['id']
+                self._set_net_external(ext_net_2_id)
+                self._create_subnet(self.fmt, ext_net_2_id, cidr='10.0.2.0/24',
+                                    tenant_id=tenant_id_2)
+            else:
+                ext_net_2_id = ext_net_1_id
+            ext_gw_1 = {'network_id': ext_net_1_id}
+            ext_gw_2 = {'network_id': ext_net_2_id}
+            with self.router(
+                    tenant_id=tenant_id_1, external_gateway_info=ext_gw_1,
+                    set_context=set_context) as router1:
                 r1 = router1['router']
-                r2 = router2['router']
-                # backlog processing will trigger one routers_updated
-                # notification containing r1 and r2
                 self.plugin._process_backlogged_routers()
-                # should have no global router yet
-                r_ids = {r1['id'], r2['id']}
-                self._verify_updated_routers(r_ids)
-                ext_gw = {'network_id': s['subnet']['network_id']}
-                r_spec = {'router': {l3.EXTERNAL_GW_INFO: ext_gw}}
-                r1_after = self._update('routers', r1['id'], r_spec)['router']
+                r1_after = self._show('routers', r1['id'])['router']
                 hd_id = r1_after[HOSTING_DEVICE_ATTR]
-                # should now have one global router
-                self._verify_updated_routers(r_ids, hd_id)
-                self._update('routers', r2['id'], r_spec)
-                # should still have only one global router
-                self._verify_updated_routers(r_ids, hd_id)
+                # should have one global router now
+                self._verify_routers({r1['id']}, {ext_net_1_id}, hd_id)
+                with self.router(
+                        tenant_id=tenant_id_2, external_gateway_info=ext_gw_1,
+                        set_context=set_context) as router2:
+                    r2 = router2['router']
+                    self.plugin._process_backlogged_routers()
+                    # should still have only one global router
+                    self._verify_routers({r1['id'], r2['id']}, {ext_net_1_id},
+                                         hd_id)
+                    with self.router(name='router2', tenant_id=tenant_id_2,
+                                     external_gateway_info=ext_gw_2,
+                                     set_context=set_context) as router3:
+                        r3 = router3['router']
+                        self.plugin._process_backlogged_routers()
+                        # should still have only one global router but now with
+                        # one extra auxiliary gateway port
+                        self._verify_routers(
+                            {r1['id'], r2['id'], r3['id']},
+                            {ext_net_1_id, ext_net_2_id}, hd_id)
 
     def _test_gw_router_create_add_interface(self, set_context=False):
         tenant_id = _uuid()
         with self.network(tenant_id=tenant_id) as n_external:
-            res = self._create_subnet(self.fmt, n_external['network']['id'],
+            ext_net_id = n_external['network']['id']
+            res = self._create_subnet(self.fmt, ext_net_id,
                                       cidr='10.0.1.0/24', tenant_id=tenant_id)
             s = self.deserialize(self.fmt, res)
             self._set_net_external(s['subnet']['network_id'])
@@ -141,7 +166,7 @@ class AciAsr1kRouterTypeDriverTestCase(
                 r1_after = self._show('routers', r1['id'])['router']
                 hd_id = r1_after[HOSTING_DEVICE_ATTR]
                 # should have one global router now
-                self._verify_created_routers({r1['id']}, hd_id)
+                self._verify_routers({r1['id']}, {ext_net_id}, hd_id=hd_id)
                 with self.network(tenant_id=tenant_id) as n_internal:
                     res = self._create_subnet(self.fmt,
                                               n_internal['network']['id'],
@@ -173,7 +198,8 @@ class AciAsr1kRouterTypeDriverTestCase(
         tenant_id = _uuid()
         with self.network(tenant_id=tenant_id,
                           name='Datacenter-Out') as n_external:
-            res = self._create_subnet(self.fmt, n_external['network']['id'],
+            ext_net_id = n_external['network']['id']
+            res = self._create_subnet(self.fmt, ext_net_id,
                                       cidr='10.0.1.0/24', tenant_id=tenant_id)
             s = self.deserialize(self.fmt, res)
             self._set_net_external(s['subnet']['network_id'])
@@ -185,7 +211,7 @@ class AciAsr1kRouterTypeDriverTestCase(
                 r1_after = self._show('routers', r1['id'])['router']
                 hd_id = r1_after[HOSTING_DEVICE_ATTR]
                 # should have one global router now
-                self._verify_created_routers({r1['id']}, hd_id)
+                self._verify_routers({r1['id']}, {ext_net_id}, hd_id=hd_id)
                 with self.network(tenant_id=tenant_id) as n_internal:
                     res = self._create_subnet(self.fmt,
                                               n_internal['network']['id'],
@@ -220,7 +246,8 @@ class AciAsr1kRouterTypeDriverTestCase(
         tenant_id = _uuid()
         with self.network(tenant_id=tenant_id,
                           name='Datacenter-Out') as n_external:
-            res = self._create_subnet(self.fmt, n_external['network']['id'],
+            ext_net_id = n_external['network']['id']
+            res = self._create_subnet(self.fmt, ext_net_id,
                                       cidr='10.0.1.0/24', tenant_id=tenant_id)
             s = self.deserialize(self.fmt, res)
             self._set_net_external(s['subnet']['network_id'])
@@ -240,14 +267,41 @@ class AciAsr1kRouterTypeDriverTestCase(
                 hd_id = r1_after[HOSTING_DEVICE_ATTR]
                 r_ids = {r1['id'], r2['id']}
                 # should have one global router now
-                self._verify_updated_routers(r_ids, hd_id, 0)
+                self._verify_routers(r_ids, {ext_net_id}, hd_id, [0])
                 r_spec = {'router': {l3.EXTERNAL_GW_INFO: None}}
                 self._update('routers', r1['id'], r_spec)
                 # should still have one global router
-                self._verify_updated_routers(r_ids, hd_id, 0)
+                self._verify_routers(r_ids, {ext_net_id}, hd_id, [0])
                 self._update('routers', r2['id'], r_spec)
                 # should have no global router now
-                self._verify_updated_routers(r_ids)
+                self._verify_routers(r_ids, {ext_net_id})
+
+    def _test_create_router_adds_no_aux_gw_port_to_global_router(
+            self, set_context=False, same_tenant=True):
+        tenant_id_1 = _uuid()
+        tenant_id_2 = tenant_id_1 if same_tenant is True else _uuid()
+        with self.network(tenant_id=tenant_id_1,
+                          name='Datacenter-Out') as n_external_1:
+            ext_net_1_id = n_external_1['network']['id']
+            self._set_net_external(ext_net_1_id)
+            self._create_subnet(self.fmt, ext_net_1_id, cidr='10.0.1.0/24',
+                                tenant_id=tenant_id_1)
+            ext_gw_1 = {'network_id': ext_net_1_id}
+            with self.router(
+                    tenant_id=tenant_id_1, external_gateway_info=ext_gw_1,
+                    set_context=set_context) as router1:
+                r1 = router1['router']
+                self.plugin._process_backlogged_routers()
+                r1_after = self._show('routers', r1['id'])['router']
+                hd_id = r1_after[HOSTING_DEVICE_ATTR]
+            with self.router(tenant_id=tenant_id_2,
+                             set_context=set_context) as router2:
+                r2 = router2['router']
+                # backlog processing will trigger one routers_updated
+                # notification containing r1 and r2
+                self.plugin._process_backlogged_routers()
+                self._verify_routers({r1['id'], r2['id']}, {ext_net_1_id},
+                                     hd_id)
 
 
 class AciAsr1kHARouterTypeDriverTestCase(
@@ -266,88 +320,6 @@ class AciAsr1kHARouterTypeDriverTestCase(
     def tearDown(self):
         self.aci_driver.stop()
         super(AciAsr1kHARouterTypeDriverTestCase, self).tearDown()
-
-    def _test_router_update_set_gw_adds_global_router(self, set_context=False):
-        tenant_id = _uuid()
-        with self.network(tenant_id=tenant_id,
-                          name='Datacenter-Out') as n_external:
-            res = self._create_subnet(self.fmt, n_external['network']['id'],
-                                      cidr='1.103.2.0/24', tenant_id=tenant_id)
-            s = self.deserialize(self.fmt, res)
-            self._set_net_external(s['subnet']['network_id'])
-            with self.router(tenant_id=tenant_id,
-                             set_context=set_context) as router1,\
-                    self.router(name='router2', tenant_id=tenant_id,
-                                set_context=set_context) as router2:
-                r1 = router1['router']
-                r2 = router2['router']
-                # backlog processing to schedule the routers
-                self.plugin._process_backlogged_routers()
-                # should have no global router yet
-                r_ids = [r1['id'], r2['id']]
-                self._verify_ha_created_routers(r_ids, 1, has_gw=[False,
-                                                                  False])
-                ext_gw = {'network_id': s['subnet']['network_id']}
-                r_spec = {'router': {l3.EXTERNAL_GW_INFO: ext_gw}}
-                self._update('routers', r1['id'], r_spec)
-                # should now have two global routers, one for hosting device
-                # of user visible router r1 and one for the hosting device r1's
-                # redundancy router
-                hd_ids = self._verify_ha_updated_router(r1['id'])
-                self._update('routers', r2['id'], r_spec)
-                self._verify_ha_updated_router(r2['id'], hd_ids)
-
-    def _test_router_update_unset_gw_keeps_global_router(self,
-                                                         set_context=False):
-        tenant_id = _uuid()
-        with self.network(tenant_id=tenant_id,
-                          name='Datacenter-Out') as n_external:
-            res = self._create_subnet(self.fmt, n_external['network']['id'],
-                                      cidr='10.0.1.0/24', tenant_id=tenant_id)
-            s = self.deserialize(self.fmt, res)
-            self._set_net_external(s['subnet']['network_id'])
-            ext_gw = {'network_id': s['subnet']['network_id']}
-            with self.router(tenant_id=tenant_id, external_gateway_info=ext_gw,
-                             set_context=set_context) as router1,\
-                    self.router(name='router2', tenant_id=tenant_id,
-                                external_gateway_info=ext_gw,
-                                set_context=set_context) as router2:
-                r1 = router1['router']
-                r2 = router2['router']
-                # make sure we have only two eligible hosting devices
-                # in this test
-                qp = "template_id=00000000-0000-0000-0000-000000000008"
-                hds = self._list('hosting_devices', query_params=qp)
-                self._delete('hosting_devices',
-                             hds['hosting_devices'][1]['id'])
-                # backlog processing to schedule the routers
-                self.plugin._process_backlogged_routers()
-                self._verify_ha_created_routers([r1['id'], r2['id']])
-                r_spec = {'router': {l3.EXTERNAL_GW_INFO: None}}
-                self._update('routers', r1['id'], r_spec)
-                # should still have two global routers, we verify using r2
-                self._verify_ha_updated_router(r2['id'])
-                self._update('routers', r2['id'], r_spec)
-                # should have no global routers now, we verify using r1
-                self._verify_ha_updated_router(r2['id'], has_gw=False)
-
-    def _test_gw_router_create_adds_global_router(self, set_context=False):
-        tenant_id = _uuid()
-        with self.network(tenant_id=tenant_id,
-                          name='Datacenter-Out') as n_external:
-            res = self._create_subnet(self.fmt, n_external['network']['id'],
-                                      cidr='10.0.1.0/24', tenant_id=tenant_id)
-            s = self.deserialize(self.fmt, res)
-            self._set_net_external(s['subnet']['network_id'])
-            ext_gw = {'network_id': s['subnet']['network_id']}
-            with self.router(tenant_id=tenant_id, external_gateway_info=ext_gw,
-                             set_context=set_context) as router1:
-                r = router1['router']
-                self.plugin._process_backlogged_routers()
-                # should now have one user-visible router, its single
-                # redundancy router and two global routers (one for each of
-                # the hosting devices of the aforementioned routers)
-                self._verify_ha_created_routers([r['id']])
 
     def test_delete_floating_ip_pre_and_post(self):
         with self.subnet() as ext_s, self.subnet(cidr='10.0.1.0/24') as s:

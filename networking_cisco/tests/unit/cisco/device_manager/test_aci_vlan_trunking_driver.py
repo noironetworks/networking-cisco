@@ -24,12 +24,14 @@ from neutron.common import constants as l3_constants
 from neutron.common import test_lib
 from neutron import context
 from neutron.extensions import providernet as pr_net
-from neutron import manager
+#from neutron import manager
+from neutron.plugins.common import constants as service_constants
 from neutron.tests.unit.extensions import test_l3
 
+from networking_cisco.plugins.cisco.common import cisco_constants
+from networking_cisco.plugins.cisco.db.l3 import ha_db  # noqa
 from networking_cisco.plugins.cisco.device_manager.plugging_drivers import (
     aci_vlan_trunking_driver as aci_vlan)
-
 from networking_cisco.plugins.cisco.extensions import routerrole
 from networking_cisco.tests.unit.cisco.l3 import (
     test_l3_router_appliance_plugin)
@@ -253,6 +255,17 @@ class TestAciVLANTrunkingPlugDriverBase(
             test_config3,
             self.plugging_driver._sanity_check_config(test_config3))
 
+    def test_no_driver(self):
+        self.plugging_driver._apic_driver = None
+        self.core_plugin.mechanism_manager.mech_drivers = {}
+        # TODO(thbachman): couldn't get assertRaises to work here,
+        # so used this construct instead
+        try:
+            self.plugging_driver.apic_driver()
+            self.assertTrue(False)
+        except aci_vlan.AciDriverNoAciDriverInstalledOrConfigured:
+            self.assertTrue(True)
+
 
 class TestAciVLANTrunkingPlugDriverGbp(
     test_l3_router_appliance_plugin.L3RouterApplianceTestCaseBase,
@@ -286,11 +299,16 @@ class TestAciVLANTrunkingPlugDriverGbp(
         self.mock_gbp_plugin = mock.MagicMock()
         self.mock_gbp_plugin.policy_driver_manager.policy_drivers = {
             'apic': self.mock_gbp_driver}
-        self._l3_plugins = manager.NeutronManager.get_service_plugins()
-        self._l3_plugins['GROUP_POLICY'] = self.mock_gbp_plugin
-        self._real_get_plugins = manager.NeutronManager.get_service_plugins
-        manager.NeutronManager.get_service_plugins = mock.MagicMock(
-            return_value=self._l3_plugins)
+
+        plugins = {'CORE': self.core_plugin,
+                   'GROUP_POLICY': self.mock_gbp_plugin,
+                   service_constants.L3_ROUTER_NAT: self.plugin,
+                   cisco_constants.DEVICE_MANAGER: self.core_plugin}
+        g_p_mock = mock.MagicMock(return_value=plugins)
+        self.plugin_mock = mock.patch(
+            'neutron.manager.NeutronManager.get_service_plugins',
+            g_p_mock)
+        self.plugin_mock.start()
         plug = aci_vlan.AciVLANTrunkingPlugDriver()
         plug.apic_driver.gbp_plugin.get_l3p_id_from_router_id = mock.Mock(
             return_value='somerouterid')
@@ -305,8 +323,8 @@ class TestAciVLANTrunkingPlugDriverGbp(
             test_lib.test_config.pop('config_files', None)
         else:
             test_lib.test_config['config_files'] = self._old_config_files
+        self.plugin_mock.stop()
 
-        manager.NeutronManager.get_service_plugins = self._real_get_plugins
         super(TestAciVLANTrunkingPlugDriverGbp, self).tearDown()
 
     def _stub_vlan(self, net, vrf, vrf_tenant):
@@ -626,10 +644,10 @@ class TestAciVLANTrunkingPlugDriverGbp(
                     gw_port_db = self.core_plugin._get_ports_query(
                             u_ctx, filters={'network_id': [ext_net_id]}).one()
                     self._set_apic_driver_mocks(r1)
-                    allocations = self.plugging_driver.allocate_hosting_port(
+                    allocs = self.plugging_driver.allocate_hosting_port(
                         u_ctx, r1['id'], gw_port_db,
                         'vlan', 'non_existant_uuid')
-                    self.assertIsNone(allocations)
+                    self.assertIsNone(allocs)
 
     def test_allocate_hosting_port_info_adds_segment_id(self):
         self.plugging_driver._default_ext_dict = {
@@ -657,14 +675,15 @@ class TestAciVLANTrunkingPlugDriverGbp(
                 )
                 hosting_device = {'id': '00000000-0000-0000-0000-000000000002'}
                 tenant_id = 'tenant_uuid1'
-                dummy_rid = 'dummy_router_id'
                 ctx = context.Context('', tenant_id, is_admin=True)
                 with mock.patch.object(self.core_plugin, 'get_network') as m1:
                     m1.side_effect = _return_mocked_net
-                    allocations = self.plugging_driver.allocate_hosting_port(
-                        ctx, dummy_rid, fake_port_db_obj,
-                        'opflex', hosting_device['id'])
-                    self.assertEqual(allocations['allocated_vlan'], 3003)
+                    with self.router(tenant_id=tenant_id) as router1:
+                        r1 = router1['router']
+                        allocs = self.plugging_driver.allocate_hosting_port(
+                            ctx, r1['id'], fake_port_db_obj,
+                            'opflex', hosting_device['id'])
+                        self.assertEqual(allocs['allocated_vlan'], 3003)
 
     def test_allocate_hosting_port_info_exception(self):
         self.plugging_driver._default_ext_dict = {
@@ -691,15 +710,16 @@ class TestAciVLANTrunkingPlugDriverGbp(
                 )
                 hosting_device = {'id': '00000000-0000-0000-0000-000000000002'}
                 tenant_id = 'tenant_uuid1'
-                dummy_rid = 'dummy_router_id'
                 ctx = context.Context('', tenant_id, is_admin=True)
                 with mock.patch.object(self.core_plugin, 'get_network') as m1:
                     m1.side_effect = _return_mocked_net
-                    self.assertRaises(
-                        aci_vlan.AciDriverConfigMissingSegmentationId,
-                        self.plugging_driver.allocate_hosting_port,
-                        ctx, dummy_rid, fake_port_db_obj,
-                        'opflex', hosting_device['id'])
+                    with self.router(tenant_id=tenant_id) as router1:
+                        r1 = router1['router']
+                        self.assertRaises(
+                            aci_vlan.AciDriverConfigMissingSegmentationId,
+                            self.plugging_driver.allocate_hosting_port,
+                            ctx, r1['id'], fake_port_db_obj,
+                            'opflex', hosting_device['id'])
 
 
 class TestAciVLANTrunkingPlugDriverNeutron(TestAciVLANTrunkingPlugDriverGbp):
@@ -798,7 +818,77 @@ class TestAciVLANTrunkingPlugDriverNeutron(TestAciVLANTrunkingPlugDriverGbp):
                     self.assertEqual(hosting_info['snat_subnets'],
                                      [{'id': r1['tenant_id'],
                                        'ip': FAKE_IP,
-                                       'cidr': sn1['cidr']}])
+                                       'cidr': sn1['cidr']}],
+                                     hosting_info['snat_subnets'])
+
+    def test_extend_hosting_port_info_no_snat_subnets_1(self):
+        TEST_NET_NAME = 'Datacenter-Out'
+        FAKE_IP = '1.1.1.2'
+        FAKE_GW = '1.1.1.1'
+        self.plugging_driver.apic_driver.get_snat_ip_for_vrf = mock.Mock(
+            return_value={'external_segment_name': TEST_NET_NAME,
+                'host_snat_ip': FAKE_IP,
+                'gateway_ip': FAKE_GW,
+                'prefixlen': 24})
+        with self.network(name=self._gen_ext_net_name(
+                TEST_NET_NAME)) as network:
+            ext_net = network['network']
+            ext_net_id = ext_net['id']
+            self._set_net_external(ext_net_id)
+            with self.network() as snat_net:
+                net = snat_net['network']
+                subnet = self._create_subnet_with_name(
+                    net['id'], '10.0.0.0/24', aci_vlan.APIC_SNAT_SUBNET)
+                sn1 = subnet['subnet']
+                gw_info = {'network_id': ext_net_id}
+                with self.router(external_gateway_info=gw_info,
+                                 tenant_id=sn1['tenant_id']) as router1:
+                    r1 = router1['router']
+                    hosting_info = {}
+                    fake_port_db_obj = FakePortDb('fakeuuid', ext_net_id,
+                        l3_constants.DEVICE_OWNER_ROUTER_GW, r1['id'])
+                    fake_port_db_obj.hosting_info['segmentation_id'] = 40
+                    hosting_device = {'id':
+                                      '00000000-0000-0000-0000-000000000002'}
+                    tenant_id = 'tenant_uuid1'
+                    ctx = context.Context('', tenant_id, is_admin=True)
+                    self._set_apic_driver_mocks(r1)
+                    self.plugging_driver.extend_hosting_port_info(ctx,
+                        fake_port_db_obj, hosting_device, hosting_info)
+                    self.assertEqual([], hosting_info['snat_subnets'])
+
+    def test_extend_hosting_port_info_no_snat_subnets_2(self):
+        TEST_NET_NAME = 'Datacenter-Out'
+        FAKE_IP = '1.1.1.2'
+        FAKE_GW = '1.1.1.1'
+        self.plugging_driver.apic_driver.get_snat_ip_for_vrf = mock.Mock(
+            return_value={'external_segment_name': TEST_NET_NAME,
+                'host_snat_ip': FAKE_IP,
+                'gateway_ip': FAKE_GW,
+                'prefixlen': 24})
+        with self.network(name=self._gen_ext_net_name(
+                TEST_NET_NAME)) as ext_network:
+            ext_net = ext_network['network']
+            ext_net_id = ext_net['id']
+            self._set_net_external(ext_net_id)
+            with self.subnet(network=ext_network) as subnet1:
+                sn1 = subnet1['subnet']
+                gw_info = {'network_id': ext_net_id}
+                with self.router(external_gateway_info=gw_info,
+                                 tenant_id=sn1['tenant_id']) as router1:
+                    r1 = router1['router']
+                    hosting_info = {}
+                    fake_port_db_obj = FakePortDb('fakeuuid', ext_net_id,
+                        l3_constants.DEVICE_OWNER_ROUTER_GW, r1['id'])
+                    fake_port_db_obj.hosting_info['segmentation_id'] = 40
+                    hosting_device = {'id':
+                        '00000000-0000-0000-0000-000000000002'}
+                    tenant_id = 'tenant_uuid1'
+                    ctx = context.Context('', tenant_id, is_admin=True)
+                    self._set_apic_driver_mocks(r1)
+                    self.plugging_driver.extend_hosting_port_info(ctx,
+                        fake_port_db_obj, hosting_device, hosting_info)
+                    self.assertIsNone(hosting_info.get('snat_subnets'))
 
     def test_extend_hosting_port_adds_segmentation_id_external_1_vrf(self):
         self.plugging_driver.apic_driver.per_tenant_context = False
@@ -828,3 +918,53 @@ class TestAciVLANTrunkingPlugDriverNeutron(TestAciVLANTrunkingPlugDriverGbp):
                                      'GigabitEthernet/2/0/1')
                     self.assertEqual(hosting_info['segmentation_id'], 40)
                     self._verify_vrf(hosting_info['vrf_id'], r1)
+
+    def test_external_net_name(self):
+        self.assertIsNotNone(self.plugging_driver.get_ext_net_name)
+
+    def test_external_net_no_gw(self):
+        class DummyPort(object):
+
+            def __init__(self, router_id):
+                self.device_id = router_id
+                self.device_owner = None
+
+            def get(self, member):
+                if member == 'dveice_id':
+                    return self.device_id
+                elif member == 'device_owner':
+                    return self.device_owner
+                else:
+                    return None
+
+        drv = self.plugging_driver
+        tenant_id = 'some_tenant_id'
+        ctx = context.Context('', tenant_id, is_admin=True)
+        with self.router() as router1:
+            r1 = router1['router']
+            dummy_port = DummyPort(r1['id'])
+            net_dict, net = drv._get_external_network_dict(ctx,
+                                                           dummy_port, r1)
+            self.assertIsNone(net)
+            self.assertEqual({}, net_dict)
+
+    def _test_allocate_hosting_port_no_router(self):
+        drv = self.plugging_driver
+        tenant_id = 'some_tenant_id'
+        ctx = context.Context('', tenant_id, is_admin=True)
+        with self.port() as port1:
+            p1 = port1['port']
+            self.assertIsNone(drv.allocate_hosting_port(ctx,
+                None, p1, None, None))
+
+    def test_allocate_hosting_port_router_no_gw(self):
+        drv = self.plugging_driver
+        tenant_id = 'some_tenant_id'
+        ctx = context.Context('', tenant_id, is_admin=True)
+        with self.port() as port1:
+            p1 = port1['port']
+            with self.router() as router1:
+                r1 = router1['router']
+                p1['device_owner'] = l3_constants.DEVICE_OWNER_ROUTER_INTF
+                self.assertIsNone(drv.allocate_hosting_port(ctx,
+                    r1['id'], p1, None, None))
