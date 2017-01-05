@@ -146,13 +146,13 @@ class L3RouterApplianceDBMixin(extraroute_db.ExtraRoute_dbonly_mixin):
 
     def _cisco_router_model_hook(self, context, original_model, query):
         original_query = query
-        query = original_query.outerjoin(
+        query = original_query.join(
             l3_models.RouterHostingDeviceBinding,
             (original_model.id ==
                 l3_models.RouterHostingDeviceBinding.router_id))
         if original_query.first() and not query.first():
             self._add_namespace_binding(context, original_query.first())
-            query = original_query.outerjoin(
+            query = original_query.join(
                 l3_models.RouterHostingDeviceBinding,
                 (original_model.id ==
                     l3_models.RouterHostingDeviceBinding.router_id))
