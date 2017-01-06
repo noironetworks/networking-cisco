@@ -249,21 +249,92 @@ class AciASR1kRoutingDriver(asr1k.ASR1kRoutingDriver):
         else:
             return port
 
+    def _get_external_subnet_from_extra_subnets(self, port):
+        for subnet in port['extra_subnets']:
+            # GBP workflow can use unrouteable subnets, which
+            # we should skip.
+            if subnet['cidr'].startswith('169.254'):
+                continue
+            return netaddr.IPNetwork(subnet['cidr']).netmask.format()
+
+    def _get_external_ip_from_extra_subnets(self, port):
+        for subnet in port['extra_subnets']:
+            # GBP workflow can use unrouteable subnets, which
+            # we should skip.
+            if subnet['cidr'].startswith('169.254'):
+                continue
+            net = netaddr.IPNetwork(subnet['cidr'])
+            external_ip = netaddr.IPAddress(net.value +
+                                            (net.hostmask.value - 1))
+            return external_ip
+
     def _get_interface_ip_from_hosting_port(self, ri, port, is_external=False):
         """
         Extract the underlying subinterface IP for a port
         e.g. 1.103.2.1
         """
         if is_external:
-            return port['fixed_ips'][0]['ip_address']
+            for fixed_ip in port['fixed_ips']:
+                LOG.warn("getting external IP %s", fixed_ip['ip_address'])
+                # GBP workflow can use unrouteable subnets, which
+                # we should skip. Look for other options under
+                # extra subnets
+                if fixed_ip['ip_address'].startswith('169.254'):
+                    return self._get_external_ip_from_extra_subnets(port)
+                return fixed_ip['ip_address']
         else:
             try:
                 info_port = self._get_info_port(ri, port)
                 cidr = info_port['hosting_info']['cidr_exposed']
+                # GBP workflow can use unrouteable subnets, which
+                # we should skip. Look for other options under
+                # extra subnets
+                if cidr.startswith('169.254'):
+                    return self._get_external_ip_from_extra_subnets(info_port)
                 return cidr.split("/")[0]
             except KeyError as e:
                 params = {'key': e}
                 raise cfg_exc.DriverExpectedKeyNotSetException(**params)
+
+    def _add_default_route(self, ri, ext_gw_port):
+        if self._fullsync and (ri.router_id in
+                               self._existing_cfg_dict['routes']):
+            LOG.debug("Default route already exists, skipping")
+            return
+        ext_gw_ip = ext_gw_port['subnets'][0]['gateway_ip']
+        # GBP workflow can use unrouteable subnets, which
+        # we should skip.
+        if ext_gw_ip and ext_gw_ip.startswith('169.254'):
+            for subnet in ext_gw_port['extra_subnets']:
+                if subnet['gateway_ip'].startswith('169.254'):
+                    continue
+                ext_gw_ip = subnet['gateway_ip']
+                break
+        if ext_gw_ip:
+            vrf_name = self._get_vrf_name(ri)
+            out_itfc = self._get_interface_name_from_hosting_port(ext_gw_port)
+            conf_str = asr1k_snippets.SET_DEFAULT_ROUTE_WITH_INTF % (
+                vrf_name, out_itfc, ext_gw_ip)
+            self._edit_running_config(conf_str, 'SET_DEFAULT_ROUTE_WITH_INTF')
+
+    def _remove_default_route(self, ri, ext_gw_port):
+        ext_gw_ip = ext_gw_port['subnets'][0]['gateway_ip']
+        # GBP workflow can use unrouteable subnets, which
+        # we should skip. Look for other options under
+        # xtra subnets
+        if ext_gw_ip and ext_gw_ip.startswith('169.254'):
+            for subnet in ext_gw_port['extra_subnets']:
+                if subnet['gateway_ip'].startswith('169.254'):
+                    continue
+                ext_gw_ip = subnet['gateway_ip']
+                break
+        if ext_gw_ip:
+            vrf_name = self._get_vrf_name(ri)
+            out_itfc = self._get_interface_name_from_hosting_port(ext_gw_port)
+            conf_str = asr1k_snippets.REMOVE_DEFAULT_ROUTE_WITH_INTF % (
+                vrf_name, out_itfc, ext_gw_ip)
+            self._edit_running_config(conf_str,
+                                      'REMOVE_DEFAULT_ROUTE_WITH_INTF')
 
     def _get_interface_gateway_ip_from_hosting_port(self, ri, port):
         """
@@ -285,7 +356,13 @@ class AciASR1kRoutingDriver(asr1k.ASR1kRoutingDriver):
         e.g. 1.103.2.0/24
         """
         if is_external:
-            return netaddr.IPNetwork(port['ip_cidr']).netmask.format()
+            # GBP workflow can use unrouteable subnets, which
+            # we should skip. Look for other options under
+            # extra subnets
+            if port['ip_cidr'].startswith('169.254'):
+                return self._get_external_subnet_from_extra_subnets(port)
+            else:
+                return netaddr.IPNetwork(port['ip_cidr']).netmask.format()
         else:
             try:
                 info_port = self._get_info_port(ri, port)

@@ -20,6 +20,7 @@ import netaddr
 from oslo_config import cfg
 from oslo_utils import uuidutils
 
+from networking_cisco import backwards_compatibility as bc
 from networking_cisco.plugins.cisco.cfg_agent.device_drivers.asr1k import (
     aci_asr1k_routing_driver as driver)
 from networking_cisco.plugins.cisco.cfg_agent.device_drivers.asr1k import (
@@ -115,11 +116,28 @@ class ASR1kRoutingDriverAci(asr1ktest.ASR1kRoutingDriver):
                             'physical_interface': self.phy_infc,
                             'segmentation_id': self.vlan_int},
                         HA_INFO: self.gw_ha_info}
+        self.gbp_cidr = '169.254.0.30/24'
+        self.gbp_gw_ip = '169.254.0.1'
+        self.gbp_gw = {'id': _uuid(),
+                       'network_id': _uuid(),
+                       'fixed_ips': [{'ip_address': self.gbp_gw_ip,
+                                      'prefixlen': self.ex_gw_prefixlen,
+                                      'subnet_id': _uuid()}],
+                       'subnets': [{'cidr': self.gbp_cidr,
+                                    'gateway_ip': self.gbp_gw_ip}],
+                       'device_owner': bc.constants.DEVICE_OWNER_ROUTER_GW,
+                       'mac_address': 'ca:fe:de:ad:be:ef',
+                       'admin_state_up': True,
+                       'hosting_info':
+                           {'physical_interface': self.phy_infc,
+                            'segmentation_id': self.vlan_ext},
+                       HA_INFO: self.ex_gw_ha_info}
         self.port = self.int_port
         int_ports = [self.port]
         self.router[l3_constants.INTERFACE_KEY] = int_ports
         self.ri.internal_ports = int_ports
         self.ri_global.internal_ports = int_ports
+        self.TEST_GW = '20.0.0.1'
         self.TEST_CIDR = '20.0.0.0/24'
         self.TEST_SNAT_IP = '20.0.0.2'
         self.TEST_SNAT_ID = _uuid()
@@ -138,6 +156,36 @@ class ASR1kRoutingDriverAci(asr1ktest.ASR1kRoutingDriver):
         self.ex_gw_port['cidr_exposed'] = self.transit_cidr
         self.ex_gw_port['extra_subnets'] = []
         self.ex_gw_port['hosting_info']['global_config'] = [
+            [self.GLOBAL_CFG_STRING_1,
+             self.GLOBAL_CFG_STRING_2,
+             self.GLOBAL_CFG_STRING_3]]
+        self.gbp_gw['hosting_info']['network_name'] = self.TEST_NET
+        self.gbp_gw['hosting_info']['vrf_id'] = self.vrf_uuid
+        self.gbp_gw['hosting_info']['gateway_ip'] = self.transit_gw_ip
+        self.gbp_gw['hosting_info']['cidr_exposed'] = self.transit_cidr
+        self.gbp_gw['hosting_info']['snat_subnets'] = [
+            {'id': self.TEST_SNAT_ID,
+             'ip': self.TEST_SNAT_IP,
+             'cidr': self.TEST_CIDR}
+        ]
+        self.gbp_gw['ip_cidr'] = self.gw_ip_cidr
+        self.gbp_gw['gateway_ip'] = self.transit_gw_ip
+        self.gbp_gw['cidr_exposed'] = self.transit_cidr
+        self.gbp_gw['extra_subnets'] = [
+            {'cidr': self.gbp_cidr,
+             'dns_nameservers': [],
+             'gateway_ip': self.gbp_gw_ip,
+             'id': _uuid(),
+             'ipv6_ra_mode': None,
+             'subnetpool_id': None},
+            {'cidr': self.TEST_CIDR,
+             'dns_nameservers': [],
+             'gateway_ip': self.TEST_GW,
+             'id': _uuid(),
+             'ipv6_ra_mode': None,
+             'subnetpool_id': None}
+        ]
+        self.gbp_gw['hosting_info']['global_config'] = [
             [self.GLOBAL_CFG_STRING_1,
              self.GLOBAL_CFG_STRING_2,
              self.GLOBAL_CFG_STRING_3]]
@@ -643,3 +691,44 @@ class ASR1kRoutingDriverAci(asr1ktest.ASR1kRoutingDriver):
                                  cfg_params_secondary)
         self.assert_edit_run_cfg(
             csr_snippets.REMOVE_SUBINTERFACE, sub_interface)
+
+    def test_external_network_added_unrouteable_subnet(self):
+        cfg.CONF.set_override('enable_multi_region', False, 'multi_region')
+        self.driver.external_gateway_added(self.ri, self.gbp_gw)
+
+        sub_interface = self.phy_infc + '.' + str(self.vlan_ext)
+        self.assert_edit_run_cfg(csr_snippets.ENABLE_INTF, sub_interface)
+
+        cfg_params_nat = (self.TEST_SNAT_POOL_ID, self.TEST_CIDR_SNAT_IP,
+                          self.TEST_CIDR_SNAT_IP, self.ex_gw_ip_mask)
+        self.assert_edit_run_cfg(asr_snippets.CREATE_NAT_POOL, cfg_params_nat)
+
+    def test_external_gateway_removed_unrouteable_subnet(self):
+        cfg.CONF.set_override('enable_multi_region', False, 'multi_region')
+        # Pre-populate the SNAT pool list
+        self.driver._add_rid_to_snat_list(
+            self.ri, self.gbp_gw,
+            self.gbp_gw['hosting_info']['snat_subnets'][0])
+        self.driver.external_gateway_removed(self.ri, self.gbp_gw)
+
+        net = netaddr.IPNetwork(self.TEST_CIDR)
+        cfg_params_nat = (self.TEST_SNAT_POOL_ID, self.TEST_CIDR_SNAT_IP,
+                          self.TEST_CIDR_SNAT_IP, net.netmask)
+        self.assert_edit_run_cfg(asr_snippets.DELETE_NAT_POOL, cfg_params_nat)
+
+        sub_interface = self.phy_infc + '.' + str(self.vlan_ext)
+        cfg_params_remove_route = (self.vrf,
+                                   sub_interface, self.ex_gw_gateway_ip)
+        self.assert_edit_run_cfg(asr_snippets.REMOVE_DEFAULT_ROUTE_WITH_INTF,
+                                 cfg_params_remove_route)
+
+    def test_external_gateway_added_global_router_unrouteable_subnet(self):
+        self.driver._interface_exists = mock.MagicMock(return_value=True)
+
+        self.driver.external_gateway_added(self.ri_global, self.gbp_gw)
+
+        sub_interface = self.phy_infc + '.' + str(self.vlan_ext)
+        cfg_args = (sub_interface, self.vlan_ext,
+                    '20.0.0.254', '255.255.255.0')
+        self.assert_edit_run_cfg(
+            asr_snippets.CREATE_SUBINTERFACE_EXTERNAL_WITH_ID, cfg_args)
