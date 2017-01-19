@@ -447,7 +447,7 @@ class TestAciVLANTrunkingPlugDriverGbp(
                 self.plugging_driver.extend_hosting_port_info(ctx,
                     fake_port_db_obj, hosting_device, hosting_info)
                 self.assertEqual(hosting_info['snat_subnets'],
-                                 [{'id': r1['tenant_id'],
+                                 [{'id': sn1['id'],
                                    'ip': FAKE_IP,
                                    'cidr': sn1['cidr']}])
 
@@ -815,7 +815,7 @@ class TestAciVLANTrunkingPlugDriverNeutron(TestAciVLANTrunkingPlugDriverGbp):
                     self.plugging_driver.extend_hosting_port_info(ctx,
                         fake_port_db_obj, hosting_device, hosting_info)
                     self.assertEqual(hosting_info['snat_subnets'],
-                                     [{'id': r1['tenant_id'],
+                                     [{'id': sn1['id'],
                                        'ip': FAKE_IP,
                                        'cidr': sn1['cidr']}],
                                      hosting_info['snat_subnets'])
