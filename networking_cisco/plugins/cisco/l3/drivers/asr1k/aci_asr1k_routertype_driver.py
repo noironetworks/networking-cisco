@@ -149,8 +149,9 @@ class AciASR1kL3RouterDriver(asr1k.ASR1kL3RouterDriver):
             context, router_context)
 
     def add_router_interface_precommit(self, context, r_port_context):
-        super(AciASR1kL3RouterDriver, self).add_router_interface_precommit(
-            context, r_port_context)
+        # NB: this purposely doesn't call the superclass, as the
+        # ACI integration allows for the possibility for a tenant
+        # network to be connected to more than one neutron router
         pass
 
     def add_router_interface_postcommit(self, context, r_port_context):

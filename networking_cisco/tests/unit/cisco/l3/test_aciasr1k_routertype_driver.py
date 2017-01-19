@@ -303,6 +303,14 @@ class AciAsr1kRouterTypeDriverTestCase(
                 self._verify_routers({r1['id'], r2['id']}, {ext_net_1_id},
                                      hd_id)
 
+    @unittest.skip("Behavior allowed in ACI integration")
+    def test_router_interface_add_refused_for_unsupported_topology(self):
+        pass
+
+    @unittest.skip("Behavior allowed in ACI integration")
+    def test_router_interface_add_refused_for_unsupported_topology_dt(self):
+        pass
+
 
 class AciAsr1kHARouterTypeDriverTestCase(
         asr1k_test.Asr1kHARouterTypeDriverTestCase):
@@ -342,6 +350,15 @@ class AciAsr1kHARouterTypeDriverTestCase(
                     ctx, floating_ip['id'])
                 self.drv.delete_floatingip_postcommit.assert_called_once_with(
                     ctx, floating_ip['id'])
+
+    @unittest.skip("Behavior allowed in ACI integration")
+    def test_router_interface_add_refused_for_unsupported_topology(self):
+        pass
+
+    @unittest.skip("Behavior allowed in ACI integration")
+    def test_router_interface_add_refused_for_unsupported_topology_dt(self):
+        pass
+
 
 
 class L3CfgAgentAciAsr1kRouterTypeDriverTestCase(
