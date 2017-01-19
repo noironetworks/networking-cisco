@@ -263,7 +263,7 @@ class AciVLANTrunkingPlugDriver(hw_vlan.HwVLANTrunkingPlugDriver):
                     # network
                     if not self._snat_subnet_for_ext_net(context, subnet, net):
                         continue
-                    snat_subnet = {'id': router['tenant_id'],
+                    snat_subnet = {'id': subnet['id'],
                                    'ip': snat_ips['host_snat_ip'],
                                    'cidr': subnet['cidr']}
                     hosting_info['snat_subnets'].append(snat_subnet)
