@@ -360,7 +360,6 @@ class AciAsr1kHARouterTypeDriverTestCase(
         pass
 
 
-
 class L3CfgAgentAciAsr1kRouterTypeDriverTestCase(
         asr1k_test.L3CfgAgentAsr1kRouterTypeDriverTestCase):
 

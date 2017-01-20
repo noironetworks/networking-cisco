@@ -15,6 +15,7 @@
 import hashlib
 import logging
 import netaddr
+import uuid
 
 from oslo_config import cfg
 
@@ -341,6 +342,13 @@ class AciASR1kRoutingDriver(asr1k.ASR1kRoutingDriver):
         # This could happen if it's the global router
         if not vrf_tag:
             return None
+        vlan = ext_gw_port['hosting_info'].get('segmentation_id')
+        if not vlan:
+            return None
+        # Create a unique VRF by adding the VLAN to the existing
+        # VRF ID, and creating a new UUID using an MD5 hash
+        vrf_string = vrf_tag.encode('utf-8') + hex(vlan)[2:]
+        vrf_tag = str(uuid.uuid3(uuid.NAMESPACE_DNS, vrf_string))
         vrf_id = (helper.N_ROUTER_PREFIX + vrf_tag)[:self.DEV_NAME_LEN]
         is_multi_region_enabled = cfg.CONF.multi_region.enable_multi_region
 
