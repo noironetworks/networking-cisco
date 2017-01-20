@@ -12,11 +12,12 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import sys
-
 import hashlib
 import mock
 import netaddr
+import sys
+import uuid
+
 from oslo_config import cfg
 from oslo_utils import uuidutils
 
@@ -45,6 +46,22 @@ PORT_ID = _uuid()
 
 
 class ASR1kRoutingDriverAci(asr1ktest.ASR1kRoutingDriver):
+    def _get_vrf_name(self, vrf_tag, vlan):
+        # Create a unique VRF by adding the VLAN to the existing
+        # VRF ID, and creating a new UUID using an MD5 hash
+        vrf_string = vrf_tag.encode('utf-8') + hex(vlan)[2:]
+        vrf_tag = str(uuid.uuid3(uuid.NAMESPACE_DNS, vrf_string))
+        vrf_id = (routing_svc_helper.N_ROUTER_PREFIX + vrf_tag)[
+                        :iosxe_driver.IosXeRoutingDriver.DEV_NAME_LEN]
+        is_multi_region_enabled = cfg.CONF.multi_region.enable_multi_region
+
+        if is_multi_region_enabled:
+            region_id = cfg.CONF.multi_region.region_id
+            vrf_name = "%s-%s" % (vrf_id, region_id)
+        else:
+            vrf_name = vrf_id
+        return vrf_name
+
     def setUp(self):
         super(ASR1kRoutingDriverAci, self).setUp()
 
@@ -63,17 +80,15 @@ class ASR1kRoutingDriverAci(asr1ktest.ASR1kRoutingDriver):
         self.ri_global.router['tenant_id'] = _uuid()
         self.router['tenant_id'] = _uuid()
         self.ri = routing_svc_helper.RouterInfo(FAKE_ID, self.router)
-        self.vrf_uuid = _uuid()
-        self.vrf = ('nrouter-' +
-                    self.vrf_uuid)[
-                        :iosxe_driver.IosXeRoutingDriver.DEV_NAME_LEN]
-        self.vrf_pid = int(hashlib.md5(
-            self.vrf.strip('nrouter-')[:6]).hexdigest()[:4], 16)
-        self.driver._get_vrfs = mock.Mock(return_value=[self.vrf])
         self.transit_gw_ip = '1.103.2.254'
         self.transit_gw_vip = '1.103.2.2'
         self.transit_cidr = '1.103.2.1/24'
-        self.transit_vlan = '1035'
+        self.transit_vlan = 1035
+        self.vrf_uuid = _uuid()
+        self.vrf = self._get_vrf_name(self.vrf_uuid, self.vlan_ext)
+        self.vrf_pid = int(hashlib.md5(
+            self.vrf.strip('nrouter-')[:6]).hexdigest()[:4], 16)
+        self.driver._get_vrfs = mock.Mock(return_value=[self.vrf])
         self.GLOBAL_CFG_STRING_1 = 'router ospf {vrf_pid} vrf {vrf}'
         self.GLOBAL_CFG_STRING_2 = 'area 0.0.0.1 nssa'
         self.GLOBAL_CFG_STRING_3 = 'router-id {rid}'
