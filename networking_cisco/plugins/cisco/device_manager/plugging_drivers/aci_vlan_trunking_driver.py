@@ -13,6 +13,7 @@
 #    under the License.
 
 import re
+import yaml
 
 from oslo_config import cfg
 from oslo_log import log as logging
@@ -114,7 +115,14 @@ class AciVLANTrunkingPlugDriver(hw_vlan.HwVLANTrunkingPlugDriver):
                 self._transit_nets_cfg = eval(networks_dict)
                 self._sanity_check_config(self._transit_nets_cfg)
             except SyntaxError:
-                raise AciDriverConfigInvalidFileFormat
+                # Check for YAML file format
+                try:
+                    self._transit_nets_cfg = yaml.load(networks_dict)
+                    self._sanity_check_config(self._transit_nets_cfg)
+                except (yaml.parser.ParserError,
+                        yaml.scanner.ScannerError,
+                        SyntaxError):
+                    raise AciDriverConfigInvalidFileFormat
         else:
             self._transit_nets_cfg = {}
         return self._transit_nets_cfg
