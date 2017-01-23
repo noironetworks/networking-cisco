@@ -133,16 +133,22 @@ class L3RouterApplianceDBMixin(extraroute_db.ExtraRoute_dbonly_mixin):
         router_type_id = self.get_namespace_router_type_id(context)
         auto_schedule = cfg.CONF.routing.auto_schedule
         share_host = cfg.CONF.routing.share_hosting_device
-        with context.session.begin(subtransactions=True):
-            r_hd_b_db = l3_models.RouterHostingDeviceBinding(
-                router_id=router_db['id'],
-                role=None,
-                router_type_id=router_type_id,
-                inflated_slot_need=0,
-                auto_schedule=auto_schedule,
-                share_hosting_device=share_host,
-                hosting_device_id=None)
-            context.session.add(r_hd_b_db)
+        # Put in a try/except, as multiple contexts
+        # may attempt to add the binding
+        try:
+            with context.session.begin(subtransactions=True):
+                r_hd_b_db = l3_models.RouterHostingDeviceBinding(
+                    router_id=router_db['id'],
+                    role=None,
+                    router_type_id=router_type_id,
+                    inflated_slot_need=0,
+                    auto_schedule=auto_schedule,
+                    share_hosting_device=share_host,
+                    hosting_device_id=None)
+                context.session.add(r_hd_b_db)
+        except db_exc.DBDuplicateEntry:
+            # ignore duplicates
+            pass
 
     def _cisco_router_model_hook(self, context, original_model, query):
         original_query = query
