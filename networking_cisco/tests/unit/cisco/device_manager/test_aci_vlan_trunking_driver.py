@@ -227,6 +227,52 @@ class TestAciVLANTrunkingPlugDriverBase(
             self.assertTrue(True)
         fileutils.delete_if_exists(self.plugging_driver._cfg_file)
 
+    def test_transit_nets_cfg_file_format_yaml(self):
+        self.plugging_driver._cfg_file = fileutils.write_to_tempfile(
+            """---
+               EDGENAT:
+                 gateway_ip: 1.109.100.254
+                 cidr_exposed: 1.109.100.1/24
+                 segmentation_id: 1066
+               EDGENATBackup:
+                 gateway_ip: 1.209.200.254
+                 cidr_exposed: 1.209.200.1/24
+                 segmentation_id: 1066
+            """
+        )
+        # thbachman: couldn't get assertRaises to work here,
+        # so used this construct instead
+        try:
+            # just accessing the member should trigger the exception
+            self.plugging_driver.transit_nets_cfg
+        except aci_vlan.AciDriverConfigInvalidFileFormat:
+            self.assertTrue(False)
+        fileutils.delete_if_exists(self.plugging_driver._cfg_file)
+
+    def test_transit_nets_cfg_invalid_file_format_yaml(self):
+        self.plugging_driver._cfg_file = fileutils.write_to_tempfile(
+            """---
+               EDGENAT:
+               ---
+                 gateway_ip: 1.109.100.254
+                 - cidr_exposed: 1.109.100.1/24
+                 segmentation_id: 1066
+               EDGENATBackup:
+                 gateway_ip: 1.209.200.254
+                 cidr_exposed: 1.209.200.1/24
+                 segmentation_id: 1066
+            """
+        )
+        # thbachman: couldn't get assertRaises to work here,
+        # so used this construct instead
+        try:
+            # just accessing the member should trigger the exception
+            self.plugging_driver.transit_nets_cfg
+            self.assertTrue(False)
+        except aci_vlan.AciDriverConfigInvalidFileFormat:
+            pass
+        fileutils.delete_if_exists(self.plugging_driver._cfg_file)
+
     def test_config_sanity_check(self):
         test_config1 = {
             'Datacenter-Out': {
