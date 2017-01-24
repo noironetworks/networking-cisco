@@ -130,12 +130,12 @@ class L3RouterApplianceDBMixin(extraroute_db.ExtraRoute_dbonly_mixin):
                      '_extend_router_dict_ha'])
 
     def _add_namespace_binding(self, context, router_db):
-        router_type_id = self.get_namespace_router_type_id(context)
-        auto_schedule = cfg.CONF.routing.auto_schedule
-        share_host = cfg.CONF.routing.share_hosting_device
         # Put in a try/except, as multiple contexts
         # may attempt to add the binding
         try:
+            router_type_id = self.get_namespace_router_type_id(context)
+            auto_schedule = cfg.CONF.routing.auto_schedule
+            share_host = cfg.CONF.routing.share_hosting_device
             with context.session.begin(subtransactions=True):
                 r_hd_b_db = l3_models.RouterHostingDeviceBinding(
                     router_id=router_db['id'],
