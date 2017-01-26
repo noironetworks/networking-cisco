@@ -175,6 +175,22 @@ class ASR1kRoutingDriverAci(asr1ktest.ASR1kRoutingDriver):
                 mock_calls[index][2]['config'],
                 confstr)
 
+    def test_get_vrf_name(self):
+        # First check using router info
+        vrf = self.driver._get_vrf_name(self.ri)
+        self.assertEqual(self.vrf, vrf)
+
+        # Verify that when there is no valid
+        # gateway port, we don't hvae a VRF
+        ri = routing_svc_helper.RouterInfo(FAKE_ID, {})
+        vrf = self.driver._get_vrf_name(ri)
+        self.assertIsNone(vrf)
+
+        # Then check using previous gateway port
+        ri.ex_gw_port = self.ex_gw_port
+        vrf = self.driver._get_vrf_name(ri)
+        self.assertEqual(self.vrf, vrf)
+
     def test_internal_network_added(self):
         cfg.CONF.set_override('enable_multi_region', False, 'multi_region')
         self.driver.internal_network_added(self.ri, self.port)

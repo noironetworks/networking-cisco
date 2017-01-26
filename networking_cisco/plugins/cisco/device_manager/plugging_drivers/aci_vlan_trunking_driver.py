@@ -303,7 +303,8 @@ class AciVLANTrunkingPlugDriver(hw_vlan.HwVLANTrunkingPlugDriver):
             # empty-string tenant IDs
             if router.get(ROUTER_ROLE_ATTR):
                 return
-            hosting_info['vrf_id'] = details['vrf_id']
+            if details and details.get('vrf_id'):
+                hosting_info['vrf_id'] = details['vrf_id']
             if ext_dict.get('global_config'):
                 hosting_info['global_config'] = (
                     ext_dict['global_config'])
