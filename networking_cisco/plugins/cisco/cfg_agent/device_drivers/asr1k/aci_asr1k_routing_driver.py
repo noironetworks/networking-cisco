@@ -335,13 +335,16 @@ class AciASR1kRoutingDriver(asr1k.ASR1kRoutingDriver):
         # that isn't there, look for the router we used to have
         # (indicates that the gateway port is being cleared, but
         # means that the infromation is still useful)
-        ext_gw_port = ri.router.get('gw_port') or ri.ex_gw_port
-        if not ext_gw_port:
+        if (ri.router.get('gw_port') and
+                ri.router['gw_port'].get('hosting_info') and
+                ri.router['gw_port']['hosting_info'].get('vrf_id')):
+            ext_gw_port = ri.router['gw_port']
+        elif (ri.ex_gw_port and ri.ex_gw_port.get('hosting_info') and
+                ri.ex_gw_port['hosting_info'].get('vrf_id')):
+            ext_gw_port = ri.ex_gw_port
+        else:
             return None
-        vrf_tag = ext_gw_port['hosting_info'].get('vrf_id')
-        # This could happen if it's the global router
-        if not vrf_tag:
-            return None
+        vrf_tag = ext_gw_port['hosting_info']['vrf_id']
         vlan = ext_gw_port['hosting_info'].get('segmentation_id')
         if not vlan:
             return None
