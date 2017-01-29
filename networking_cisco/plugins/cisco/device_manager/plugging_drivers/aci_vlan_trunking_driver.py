@@ -13,6 +13,7 @@
 #    under the License.
 
 import re
+import uuid
 import yaml
 
 from oslo_config import cfg
@@ -271,7 +272,13 @@ class AciVLANTrunkingPlugDriver(hw_vlan.HwVLANTrunkingPlugDriver):
                     # network
                     if not self._snat_subnet_for_ext_net(context, subnet, net):
                         continue
-                    snat_subnet = {'id': subnet['id'],
+                    # Uniquify the SNAT ID per VRF. This needs to be
+                    # Changed to handle different SNAT IP allocation
+                    # strategies, once they're supported
+                    snat_id = hosting_info['vrf_id'] + subnet['id']
+                    snat_id = str(uuid.uuid3(uuid.NAMESPACE_DNS,
+                                             snat_id.encode('utf-8')))
+                    snat_subnet = {'id': snat_id,
                                    'ip': snat_ips['host_snat_ip'],
                                    'cidr': subnet['cidr']}
                     hosting_info['snat_subnets'].append(snat_subnet)
