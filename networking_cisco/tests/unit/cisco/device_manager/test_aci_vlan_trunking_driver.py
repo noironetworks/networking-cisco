@@ -487,14 +487,13 @@ class TestAciVLANTrunkingPlugDriverGbp(
                 fake_port_db_obj = FakePortDb('fakeuuid', sn1['network_id'],
                     bc.constants.DEVICE_OWNER_ROUTER_GW, r1['id'])
                 fake_port_db_obj.hosting_info['segmentation_id'] = 40
-                fake_port_db_obj.hosting_info['vrf_id'] = _uuid()
                 hosting_device = {'id': '00000000-0000-0000-0000-000000000002'}
                 tenant_id = 'tenant_uuid1'
                 ctx = context.Context('', tenant_id, is_admin=True)
                 self._set_apic_driver_mocks(r1)
                 self.plugging_driver.extend_hosting_port_info(ctx,
                     fake_port_db_obj, hosting_device, hosting_info)
-                snat_id = hosting_info['vrf_id'] + sn1['id']
+                snat_id = r1['tenant_id'] + sn1['id']
                 snat_id = str(uuid.uuid3(uuid.NAMESPACE_DNS,
                                          snat_id.encode('utf-8')))
                 self.assertEqual(hosting_info['snat_subnets'],
@@ -858,7 +857,6 @@ class TestAciVLANTrunkingPlugDriverNeutron(TestAciVLANTrunkingPlugDriverGbp):
                     fake_port_db_obj = FakePortDb('fakeuuid', ext_net_id,
                         bc.constants.DEVICE_OWNER_ROUTER_GW, r1['id'])
                     fake_port_db_obj.hosting_info['segmentation_id'] = 40
-                    fake_port_db_obj.hosting_info['vrf_id'] = _uuid()
                     hosting_device = {'id':
                                       '00000000-0000-0000-0000-000000000002'}
                     tenant_id = 'tenant_uuid1'
@@ -866,7 +864,7 @@ class TestAciVLANTrunkingPlugDriverNeutron(TestAciVLANTrunkingPlugDriverGbp):
                     self._set_apic_driver_mocks(r1)
                     self.plugging_driver.extend_hosting_port_info(ctx,
                         fake_port_db_obj, hosting_device, hosting_info)
-                    snat_id = hosting_info['vrf_id'] + sn1['id']
+                    snat_id = r1['tenant_id'] + sn1['id']
                     snat_id = str(uuid.uuid3(uuid.NAMESPACE_DNS,
                                              snat_id.encode('utf-8')))
                     self.assertEqual(hosting_info['snat_subnets'],
