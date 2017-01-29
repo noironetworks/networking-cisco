@@ -275,7 +275,7 @@ class AciVLANTrunkingPlugDriver(hw_vlan.HwVLANTrunkingPlugDriver):
                     # Uniquify the SNAT ID per VRF. This needs to be
                     # Changed to handle different SNAT IP allocation
                     # strategies, once they're supported
-                    snat_id = hosting_info['vrf_id'] + subnet['id']
+                    snat_id = router['tenant_id'] + subnet['id']
                     snat_id = str(uuid.uuid3(uuid.NAMESPACE_DNS,
                                              snat_id.encode('utf-8')))
                     snat_subnet = {'id': snat_id,
