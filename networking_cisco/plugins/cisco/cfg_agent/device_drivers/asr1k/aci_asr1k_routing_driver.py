@@ -296,7 +296,7 @@ class AciASR1kRoutingDriver(asr1k.ASR1kRoutingDriver):
                 params = {'key': e}
                 raise cfg_exc.DriverExpectedKeyNotSetException(**params)
 
-    def internal_network_removed(self, ri, port, itfc_deleted=False):
+    def internal_network_removed(self, ri, port, itfc_deleted=True):
         if_configs = port['hosting_info'].get('interface_config')
         if if_configs and isinstance(if_configs, list) and itfc_deleted:
             self._remove_interface_config(ri, port, if_configs)

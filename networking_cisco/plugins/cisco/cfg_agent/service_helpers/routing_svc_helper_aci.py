@@ -77,8 +77,18 @@ class RoutingServiceHelperAci(helper.RoutingServiceHelper):
         self._process_new_ports(ri, new_ports, ex_gw_port, list_port_ids_up)
 
     def _process_gateway_cleared(self, ri, ex_gw_port):
-        super(RoutingServiceHelperAci,
-              self)._process_gateway_cleared(ri, ex_gw_port)
+        # We're about to remove this router ID from the list,
+        # so check if it's the last router for this VRF. If it is, we can
+        # call to remove the external gateway.
+        if ri.ex_gw_port or ri.router.get('gw_port'):
+            driver = self.driver_manager.get_driver(ri.id)
+            vrf_name = driver._get_vrf_name(ri)
+            router_ids = self._router_ids_by_vrf.get(vrf_name)
+            if router_ids and ri.router['id'] in router_ids and (
+                    len(router_ids) == 1):
+                # If this is the last router in a VRF, then we can safely
+                # delete the VRF from the router config (handled by the driver)
+                self._external_gateway_removed(ri, ex_gw_port)
 
         # remove the internal networks at this time,
         # while the gateway information is still available
@@ -154,12 +164,12 @@ class RoutingServiceHelperAci(helper.RoutingServiceHelper):
         indicating that the internal sub-interface for that netowrk
         on the ASR should be deleted
         """
-        itfc_deleted = False
+        itfc_deleted = True
         driver = self.driver_manager.get_driver(ri.id)
         vrf_name = driver._get_vrf_name(ri)
         if not ex_gw_port and self._is_global_router(ri):
             ex_gw_port = port
-            itfc_deleted = True
+            itfc_deleted = False
         network_name = ex_gw_port['hosting_info'].get('network_name')
         if self._router_ids_by_vrf_and_ext_net.get(
             vrf_name, {}).get(network_name) and (
@@ -176,7 +186,7 @@ class RoutingServiceHelperAci(helper.RoutingServiceHelper):
                 if not self._router_ids_by_vrf_and_ext_net[vrf_name].get(
                         network_name):
                     LOG.debug("++ REMOVING NETWORK %s" % network_name)
-                    itfc_deleted = True
+                    itfc_deleted = False
                     del self._router_ids_by_vrf_and_ext_net[
                         vrf_name][network_name]
                     if not self._router_ids_by_vrf_and_ext_net.get(vrf_name):
