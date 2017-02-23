@@ -80,6 +80,7 @@ class RoutingServiceHelperAci(helper.RoutingServiceHelper):
         # We're about to remove this router ID from the list,
         # so check if it's the last router for this VRF. If it is, we can
         # call to remove the external gateway.
+        delete_itfc = False
         if ri.ex_gw_port or ri.router.get('gw_port'):
             driver = self.driver_manager.get_driver(ri.id)
             vrf_name = driver._get_vrf_name(ri)
@@ -88,13 +89,31 @@ class RoutingServiceHelperAci(helper.RoutingServiceHelper):
                     len(router_ids) == 1):
                 # If this is the last router in a VRF, then we can safely
                 # delete the VRF from the router config (handled by the driver)
-                self._external_gateway_removed(ri, ex_gw_port)
+                delete_itfc = True
+            self._external_gateway_removed(ri, ex_gw_port,
+                                           delete_itfc=delete_itfc)
 
         # remove the internal networks at this time,
         # while the gateway information is still available
         # (has VRF network parameters)
         del_ports = copy.copy(ri.internal_ports)
         self._process_old_ports(ri, del_ports, ex_gw_port)
+
+    def _external_gateway_removed(self, ri, ex_gw_port, delete_itfc=False):
+        # The meaning of itfc_deleted in disable_internal_network_NAT
+        # is:
+        #   * True if the sub-interface has been deleted, and therefore
+        #     there is no need to disable NAT on the interface
+        #   * False if it hasn't been deleted
+        # We set this by negating the delete_itfc flag
+        itfc_deleted = not delete_itfc
+        driver = self.driver_manager.get_driver(ri.id)
+        if ri.snat_enabled and ri.internal_ports:
+            for port in ri.internal_ports:
+                driver.disable_internal_network_NAT(ri, port, ex_gw_port,
+                                                    itfc_deleted=itfc_deleted)
+        driver.external_gateway_removed(ri, ex_gw_port,
+                                        delete_itfc=delete_itfc)
 
     def _add_rid_to_vrf_list(self, ri):
         """Add router ID to a VRF list.
@@ -164,12 +183,12 @@ class RoutingServiceHelperAci(helper.RoutingServiceHelper):
         indicating that the internal sub-interface for that netowrk
         on the ASR should be deleted
         """
-        itfc_deleted = True
+        delete_itfc = False
         driver = self.driver_manager.get_driver(ri.id)
         vrf_name = driver._get_vrf_name(ri)
         if not ex_gw_port and self._is_global_router(ri):
             ex_gw_port = port
-            itfc_deleted = False
+            delete_itfc = True
         network_name = ex_gw_port['hosting_info'].get('network_name')
         if self._router_ids_by_vrf_and_ext_net.get(
             vrf_name, {}).get(network_name) and (
@@ -186,14 +205,17 @@ class RoutingServiceHelperAci(helper.RoutingServiceHelper):
                 if not self._router_ids_by_vrf_and_ext_net[vrf_name].get(
                         network_name):
                     LOG.debug("++ REMOVING NETWORK %s" % network_name)
-                    itfc_deleted = False
+                    delete_itfc = True
                     del self._router_ids_by_vrf_and_ext_net[
                         vrf_name][network_name]
                     if not self._router_ids_by_vrf_and_ext_net.get(vrf_name):
                         del self._router_ids_by_vrf_and_ext_net[vrf_name]
 
         driver.internal_network_removed(ri, port,
-                                        itfc_deleted=itfc_deleted)
+                                        delete_itfc=delete_itfc)
         if ri.snat_enabled and ex_gw_port:
+            # We either deleted the interface above or have
+            # prviously disabled it, so don't try to disable
+            # the NAT inside interface here
             driver.disable_internal_network_NAT(ri, port, ex_gw_port,
-                                                itfc_deleted=itfc_deleted)
+                                                itfc_deleted=True)

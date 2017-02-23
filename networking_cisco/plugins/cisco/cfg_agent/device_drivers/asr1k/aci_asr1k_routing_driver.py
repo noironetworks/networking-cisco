@@ -97,10 +97,10 @@ class AciASR1kRoutingDriver(asr1k.ASR1kRoutingDriver):
                 else:
                     self._add_tenant_net_route(ri, port)
 
-    def external_gateway_removed(self, ri, ext_gw_port):
+    def external_gateway_removed(self, ri, ext_gw_port, delete_itfc=False):
         if not self._is_global_router(ri):
             g_configs = ext_gw_port['hosting_info'].get('global_config')
-            if g_configs and isinstance(g_configs, list):
+            if delete_itfc and g_configs and isinstance(g_configs, list):
                 self._remove_global_config(ri, ext_gw_port, g_configs)
             if ext_gw_port['hosting_info'].get('snat_subnets'):
                 self._set_snat_pools_from_hosting_info(ri, ext_gw_port, True)
@@ -143,7 +143,7 @@ class AciASR1kRoutingDriver(asr1k.ASR1kRoutingDriver):
     def _create_sub_interface(self, ri, port, is_external=False, gw_ip=""):
         vlan = self._get_interface_vlan_from_hosting_port(port)
         if (self._fullsync and
-                int(vlan) in self._existing_cfg_dict['interfaces']):
+                int(vlan) in self.existing_cfg_dict['interfaces']):
             LOG.info(_LI("Sub-interface already exists, skipping"))
             return
         vrf_name = self._get_vrf_name(ri)
@@ -196,11 +196,7 @@ class AciASR1kRoutingDriver(asr1k.ASR1kRoutingDriver):
         group = port_ha_info['group']
         ip = self._get_interface_ip_from_hosting_port(ri, port,
             is_external=is_external)
-        if is_external:
-            ha_ip = port_ha_info['ha_port']['fixed_ips'][0]['ip_address']
-        else:
-            # TODO(tbachman): needs fixing
-            ha_ip = netaddr.IPAddress(netaddr.IPAddress(ip).value + 1).format()
+        ha_ip = self._get_ha_ip_from_hosting_port(ri, port)
         vlan = self._get_interface_vlan_from_hosting_port(port)
         if ip and group and priority:
             vrf_name = self._get_vrf_name(ri)
@@ -210,7 +206,7 @@ class AciASR1kRoutingDriver(asr1k.ASR1kRoutingDriver):
 
     def _add_tenant_net_route(self, ri, port):
         if self._fullsync and (ri.router_id in
-                               self._existing_cfg_dict['routes']):
+                               self.existing_cfg_dict['routes']):
             LOG.debug("Tenant network route already exists, skipping")
             return
         cidr = port['subnets'][0]['cidr']
@@ -255,16 +251,29 @@ class AciASR1kRoutingDriver(asr1k.ASR1kRoutingDriver):
         Extract the underlying subinterface IP for a port
         e.g. 1.103.2.1
         """
-        if is_external:
-            return port['fixed_ips'][0]['ip_address']
-        else:
-            try:
-                info_port = self._get_info_port(ri, port)
+        cidr = ""
+        info_port = self._get_info_port(ri, port)
+        try:
+            if is_external:
                 cidr = info_port['hosting_info']['cidr_exposed']
-                return cidr.split("/")[0]
-            except KeyError as e:
-                params = {'key': e}
-                raise cfg_exc.DriverExpectedKeyNotSetException(**params)
+            else:
+                cidr = info_port['hosting_info']['transit_cidr']
+        except KeyError as e:
+            params = {'key': e}
+            raise cfg_exc.DriverExpectedKeyNotSetException(**params)
+        return cidr.split("/")[0]
+
+    def _get_ha_ip_from_hosting_port(self, ri, port):
+        """
+        Extract the underlying HA IP for a port
+        e.g. 1.103.2.1
+        """
+        info_port = self._get_info_port(ri, port)
+        try:
+            return info_port['hosting_info']['ha_vip']
+        except KeyError as e:
+            params = {'key': e}
+            raise cfg_exc.DriverExpectedKeyNotSetException(**params)
 
     def _get_interface_gateway_ip_from_hosting_port(self, ri, port):
         """
@@ -273,7 +282,7 @@ class AciASR1kRoutingDriver(asr1k.ASR1kRoutingDriver):
         """
         try:
             info_port = self._get_info_port(ri, port)
-            ip = info_port['hosting_info']['gateway_ip']
+            ip = info_port['hosting_info']['transit_gw_ip']
             return ip
         except KeyError as e:
             params = {'key': e}
@@ -285,24 +294,25 @@ class AciASR1kRoutingDriver(asr1k.ASR1kRoutingDriver):
         Extract the CIDR information for the interposing subnet
         e.g. 1.103.2.0/24
         """
-        if is_external:
-            return netaddr.IPNetwork(port['ip_cidr']).netmask.format()
-        else:
-            try:
-                info_port = self._get_info_port(ri, port)
+        cidr_exposed = ""
+        info_port = self._get_info_port(ri, port)
+        try:
+            if is_external:
                 cidr_exposed = info_port['hosting_info']['cidr_exposed']
-                return netaddr.IPNetwork(cidr_exposed).netmask.format()
-            except KeyError as e:
-                params = {'key': e}
-                raise cfg_exc.DriverExpectedKeyNotSetException(**params)
+            else:
+                cidr_exposed = info_port['hosting_info']['transit_cidr']
+        except KeyError as e:
+            params = {'key': e}
+            raise cfg_exc.DriverExpectedKeyNotSetException(**params)
+        return netaddr.IPNetwork(cidr_exposed).netmask.format()
 
-    def internal_network_removed(self, ri, port, itfc_deleted=True):
+    def internal_network_removed(self, ri, port, delete_itfc=True):
         if_configs = port['hosting_info'].get('interface_config')
-        if if_configs and isinstance(if_configs, list) and itfc_deleted:
+        if if_configs and isinstance(if_configs, list) and delete_itfc:
             self._remove_interface_config(ri, port, if_configs)
         else:
             self._remove_tenant_net_route(ri, port)
-        if itfc_deleted:
+        if delete_itfc:
             self._remove_sub_interface(port)
 
     # ============== Internal "preparation" functions  ==============
@@ -571,7 +581,7 @@ class AciASR1kRoutingDriver(asr1k.ASR1kRoutingDriver):
 
     def _set_vrf_pid(self, ri, port, config):
         # Convert a VRF to a process ID for a router instance
-        vrf = self._get_vrf_name(ri).strip('nrouter-')[:6]
+        vrf = self._get_vrf_name(ri).replace('nrouter-', '')[:6]
         # strip to 4 characters to limit pid to 16-bit value
         # (limit on ASR)
         # TODO(tbachman): fix to ensure PID uniqueness
@@ -580,13 +590,26 @@ class AciASR1kRoutingDriver(asr1k.ASR1kRoutingDriver):
 
     def _set_router_id(self, ri, port, config):
         # Convert a VRF to a router ID for a router instance
-        vrf = self._get_vrf_name(ri).strip('nrouter-')[:6]
+        vrf = self._get_vrf_name(ri).replace('nrouter-', '')[:6]
         rid = netaddr.IPAddress(int(vrf, 16))
         return str(rid)
 
     def _get_snat_pool_name(self, subnet):
         snat_prefix = self._snat_prefix(subnet)
         return "%s_nat_pool" % (snat_prefix)
+
+    def _add_default_route(self, ri, ext_gw_port):
+        if self._fullsync and (ri.router_id in
+                               self.existing_cfg_dict['routes']):
+            LOG.debug("Default route already exists, skipping")
+            return
+        ext_gw_ip = ext_gw_port['hosting_info']['gateway_ip']
+        if ext_gw_ip:
+            vrf_name = self._get_vrf_name(ri)
+            out_itfc = self._get_interface_name_from_hosting_port(ext_gw_port)
+            conf_str = asr1k_snippets.SET_DEFAULT_ROUTE_WITH_INTF % (
+                vrf_name, out_itfc, ext_gw_ip)
+            self._edit_running_config(conf_str, 'SET_DEFAULT_ROUTE_WITH_INTF')
 
     def _add_rid_to_snat_list(self, ri, ext_gw_port, subnet):
         net = netaddr.IPNetwork(subnet['cidr'])

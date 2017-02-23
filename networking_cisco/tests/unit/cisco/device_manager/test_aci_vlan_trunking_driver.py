@@ -41,6 +41,14 @@ LOG = logging.getLogger(__name__)
 
 ROUTER_ROLE_ATTR = routerrole.ROUTER_ROLE_ATTR
 
+TRANSIT_NETS = ('networking_cisco.plugins.cisco.device_manager.'
+                'plugging_drivers.aci_vlan_trunking_driver.'
+                'AciVLANTrunkingPlugDriver.transit_nets_cfg')
+DEFAULT_EXT_DICT = {'Datacenter-Out':
+                    {'transit_gw_ip': '1.109.2.254',
+                     'transit_cidr': '1.109.2.1/24',
+                     'gateway_ip': '1.103.2.254',
+                     'cidr_exposed': '1.103.2.1/24'}}
 DEVICE = 'mydev'
 PORT_ID = 'myportid'
 MAC_ADDRESS = '00:11:22:33:44:55'
@@ -205,6 +213,8 @@ class TestAciVLANTrunkingPlugDriverBase(
         self.plugging_driver._cfg_file = fileutils.write_to_tempfile(
             """{
                 'EDGENAT': {
+                    'transit_gw_ip': '1.103.1.254',
+                    'transit_cidr': '1.103.1.1/24',
                     'gateway_ip': '1.109.100.254',
                     'cidr_exposed': '1.109.100.1/24',
                     'segmentation_id': 1066
@@ -212,6 +222,8 @@ class TestAciVLANTrunkingPlugDriverBase(
              }
              {
                 'EDGENATBackup': {
+                    'transit_gw_ip': '1.103.2.254',
+                    'transit_cidr': '1.103.2.1/24',
                     'gateway_ip': '1.209.200.254',
                     'cidr_exposed': '1.209.200.1/24',
                     'segmentation_id': 1066
@@ -232,10 +244,14 @@ class TestAciVLANTrunkingPlugDriverBase(
         self.plugging_driver._cfg_file = fileutils.write_to_tempfile(
             """---
                EDGENAT:
+                 transit_gw_ip: 1.103.1.254
+                 transit_cidr: 1.103.1.1/24
                  gateway_ip: 1.109.100.254
                  cidr_exposed: 1.109.100.1/24
                  segmentation_id: 1066
                EDGENATBackup:
+                 transit_gw_ip: 1.103.2.254
+                 transit_cidr: 1.103.2.1/24
                  gateway_ip: 1.209.200.254
                  cidr_exposed: 1.209.200.1/24
                  segmentation_id: 1066
@@ -255,10 +271,14 @@ class TestAciVLANTrunkingPlugDriverBase(
             """---
                EDGENAT:
                ---
+                 transit_gw_ip: 1.103.1.254
+                 transit_cidr: 1.103.1.1/24
                  gateway_ip: 1.109.100.254
                  - cidr_exposed: 1.109.100.1/24
                  segmentation_id: 1066
                EDGENATBackup:
+                 transit_gw_ip: 1.103.2.254
+                 transit_cidr: 1.103.2.1/24
                  gateway_ip: 1.209.200.254
                  cidr_exposed: 1.209.200.1/24
                  segmentation_id: 1066
@@ -277,16 +297,36 @@ class TestAciVLANTrunkingPlugDriverBase(
     def test_config_sanity_check(self):
         test_config1 = {
             'Datacenter-Out': {
+                'transit_gw_ip': '1.109.2.254',
+                'transit_cidr': '1.109.2.1/24',
                 'cidr_exposed': '1.103.2.0/24'
             }
         }
         test_config2 = {
             'Datacenter-Out': {
+                'transit_gw_ip': '1.109.2.254',
+                'transit_cidr': '1.109.2.1/24',
                 'gateway_ip': '1.103.2.1',
             }
         }
         test_config3 = {
             'Datacenter-Out': {
+                'transit_gw_ip': '1.109.2.254',
+                'transit_cidr': '1.109.2.1/24',
+                'gateway_ip': '1.103.2.254',
+                'cidr_exposed': '1.103.2.1/24',
+            }
+        }
+        test_config4 = {
+            'Datacenter-Out': {
+                'transit_gw_ip': '1.109.2.254',
+                'gateway_ip': '1.103.2.254',
+                'cidr_exposed': '1.103.2.1/24',
+            }
+        }
+        test_config5 = {
+            'Datacenter-Out': {
+                'transit_cidr': '1.109.2.1/24',
                 'gateway_ip': '1.103.2.254',
                 'cidr_exposed': '1.103.2.1/24',
             }
@@ -300,6 +340,13 @@ class TestAciVLANTrunkingPlugDriverBase(
         self.assertTrue(
             test_config3,
             self.plugging_driver._sanity_check_config(test_config3))
+        self.assertRaises(aci_vlan.AciDriverConfigMissingTransitNetworkCidr,
+                          self.plugging_driver._sanity_check_config,
+                          test_config4)
+        self.assertRaises(
+            aci_vlan.AciDriverConfigMissingTransitNetworkGatewayIp,
+            self.plugging_driver._sanity_check_config,
+            test_config5)
 
     def test_no_driver(self):
         self.plugging_driver._apic_driver = None
@@ -363,12 +410,18 @@ class TestAciVLANTrunkingPlugDriverGbp(
         self.vlan_dict = {'net1': APIC_VLAN1,
                           'net2': APIC_VLAN2,
                           'Datacenter-Out': APIC_VLAN2}
+        self.transit_nets_mock = mock.patch.object(
+            aci_vlan.AciVLANTrunkingPlugDriver,
+            'transit_nets_cfg',
+            DEFAULT_EXT_DICT)
+        self.transit_nets_mock.start()
 
     def tearDown(self):
         if self._old_config_files is None:
             test_lib.test_config.pop('config_files', None)
         else:
             test_lib.test_config['config_files'] = self._old_config_files
+        self.transit_nets_mock.stop()
         self.plugin_mock.stop()
 
         super(TestAciVLANTrunkingPlugDriverGbp, self).tearDown()
@@ -377,7 +430,7 @@ class TestAciVLANTrunkingPlugDriverGbp(
         return self.vlan_dict.get(net)
 
     def _gen_ext_net_name(self, name):
-        return aci_vlan.APIC_OWNED + _uuid() + "-" + name
+        return aci_vlan.APIC_OWNED + name + "-" + _uuid()
 
     def _set_apic_driver_mocks(self, router):
         apic_driver = self.plugging_driver.apic_driver
@@ -503,11 +556,19 @@ class TestAciVLANTrunkingPlugDriverGbp(
 
     def test_extend_hosting_port_info_adds_interface_configuration(self):
         TEST_INFO_CONFIG_LIST = ['testinfo1', 'testinfo2', 'testinfo3']
-        self.plugging_driver._default_ext_dict = {
+        test_dict = {'Datacenter-Out': {
+            'transit_gw_ip': '1.109.2.1',
+            'transit_cidr': '1.109.2.254/24',
             'gateway_ip': '1.103.2.1',
             'cidr_exposed': '1.103.2.0/24',
             'interface_config': TEST_INFO_CONFIG_LIST
-        }
+        }}
+        self.transit_nets_mock.stop()
+        self.transit_nets_mock = mock.patch.object(
+            aci_vlan.AciVLANTrunkingPlugDriver,
+            'transit_nets_cfg',
+            test_dict)
+        self.transit_nets_mock.start()
         with self.network(name=self._gen_ext_net_name(
                 'Datacenter-Out')) as network1:
             with self.subnet(network=network1) as subnet1:
@@ -538,11 +599,19 @@ class TestAciVLANTrunkingPlugDriverGbp(
 
     def test_extend_hosting_port_info_adds_global_configuration(self):
         TEST_INFO_CONFIG_LIST = ['testinfo1', 'testinfo2', 'testinfo3']
-        self.plugging_driver._default_ext_dict = {
+        test_dict = {'Datacenter-Out': {
+            'transit_gw_ip': '1.109.2.1',
+            'transit_cidr': '1.109.2.254/24',
             'gateway_ip': '1.103.2.1',
             'cidr_exposed': '1.103.2.0/24',
             'global_config': TEST_INFO_CONFIG_LIST
-        }
+        }}
+        self.transit_nets_mock.stop()
+        self.transit_nets_mock = mock.patch.object(
+            aci_vlan.AciVLANTrunkingPlugDriver,
+            'transit_nets_cfg',
+            test_dict)
+        self.transit_nets_mock.start()
         dummy_router = {'id': 'someuuid',
                         'tenant_id': 'sometenantid',
                         ROUTER_ROLE_ATTR: None}
@@ -699,12 +768,20 @@ class TestAciVLANTrunkingPlugDriverGbp(
                     self.assertIsNone(allocs)
 
     def test_allocate_hosting_port_info_adds_segment_id(self):
-        self.plugging_driver._default_ext_dict = {
+        test_dict = {'Datacenter-Out': {
+            'transit_gw_ip': '1.109.2.1',
+            'transit_cidr': '1.109.2.254/24',
             'gateway_ip': '1.103.2.254',
             'cidr_exposed': '1.103.2.1/24',
             'interface_config': 'testinfo1',
             'segmentation_id': 3003
-        }
+        }}
+        self.transit_nets_mock.stop()
+        self.transit_nets_mock = mock.patch.object(
+            aci_vlan.AciVLANTrunkingPlugDriver,
+            'transit_nets_cfg',
+            test_dict)
+        self.transit_nets_mock.start()
         with self.network(name=self._gen_ext_net_name(
                 'Datacenter-Out')) as network1:
             net1 = network1['network']
@@ -735,11 +812,19 @@ class TestAciVLANTrunkingPlugDriverGbp(
                         self.assertEqual(allocs['allocated_vlan'], 3003)
 
     def test_allocate_hosting_port_info_exception(self):
-        self.plugging_driver._default_ext_dict = {
+        test_dict = {'Datacenter-Out': {
+            'transit_gw_ip': '1.109.2.1',
+            'transit_cidr': '1.109.2.254/24',
             'gateway_ip': '1.103.2.254',
             'cidr_exposed': '1.103.2.1/24',
             'interface_config': 'testinfo1',
-        }
+        }}
+        self.transit_nets_mock.stop()
+        self.transit_nets_mock = mock.patch.object(
+            aci_vlan.AciVLANTrunkingPlugDriver,
+            'transit_nets_cfg',
+            test_dict)
+        self.transit_nets_mock.start()
         with self.network(name=self._gen_ext_net_name(
                 'Datacenter-Out')) as network1:
             net1 = network1['network']
@@ -805,6 +890,11 @@ class TestAciVLANTrunkingPlugDriverNeutron(TestAciVLANTrunkingPlugDriverGbp):
         self.vlan_dict = {'net1': APIC_VLAN1,
                           'net2': APIC_VLAN2,
                           'Datacenter-Out': APIC_VLAN2}
+        self.transit_nets_mock = mock.patch.object(
+            aci_vlan.AciVLANTrunkingPlugDriver,
+            'transit_nets_cfg',
+            DEFAULT_EXT_DICT)
+        self.transit_nets_mock.start()
 
     def tearDown(self):
         if self._old_config_files is None:
@@ -812,6 +902,7 @@ class TestAciVLANTrunkingPlugDriverNeutron(TestAciVLANTrunkingPlugDriverGbp):
         else:
             test_lib.test_config['config_files'] = self._old_config_files
 
+        self.transit_nets_mock.stop()
         super(TestAciVLANTrunkingPlugDriverGbp, self).tearDown()
 
     def _gen_ext_net_name(self, name):

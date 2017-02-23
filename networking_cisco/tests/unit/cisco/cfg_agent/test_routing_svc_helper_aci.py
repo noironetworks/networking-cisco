@@ -80,9 +80,76 @@ class TestBasicRoutingOperationsAci(helper.TestBasicRoutingOperations):
         self.driver = self._mock_driver_and_hosting_device(
             self.routing_helper)
 
-    def test_process_router(self):
-        super(TestBasicRoutingOperationsAci,
-              self).test_process_router(test_admin_state=False)
+    def test_process_router(self, test_admin_state=False):
+        router, ports = helper.prepare_router_data()
+        #Setup mock for call to proceess floating ips
+        self.routing_helper._process_router_floating_ips = mock.Mock()
+        fake_floatingips1 = {'floatingips': [
+            {'id': _uuid(),
+             'floating_ip_address': '8.8.8.8',
+             'fixed_ip_address': '7.7.7.7',
+             'port_id': _uuid()}]}
+        ri = svc_helper.RouterInfo(router['id'], router=router)
+        # Process with initial values
+        self.routing_helper._process_router(ri)
+        ex_gw_port = ri.router.get('gw_port')
+        # Assert that process_floating_ips, internal_network & external network
+        # added were all called with the right params
+        self.routing_helper._process_router_floating_ips.assert_called_with(
+            ri, ex_gw_port)
+        self.routing_helper._internal_network_added.assert_called_with(
+            ri, ports[0], ex_gw_port)
+        self.routing_helper._external_gateway_added.assert_called_with(
+            ri, ex_gw_port)
+        self._reset_mocks()
+        # remap floating IP to a new fixed ip
+        fake_floatingips2 = copy.deepcopy(fake_floatingips1)
+        fake_floatingips2['floatingips'][0]['fixed_ip_address'] = '7.7.7.8'
+        router[bc.constants.FLOATINGIP_KEY] = fake_floatingips2['floatingips']
+
+        # Process again and check that this time only the process_floating_ips
+        # was only called.
+        self.routing_helper._process_router(ri)
+        ex_gw_port = ri.router.get('gw_port')
+        self.routing_helper._process_router_floating_ips.assert_called_with(
+            ri, ex_gw_port)
+        self.assertFalse(self.routing_helper._internal_network_added.called)
+        self.assertFalse(self.routing_helper._external_gateway_added.called)
+        self._reset_mocks()
+        # remove just the floating ips
+        del router[bc.constants.FLOATINGIP_KEY]
+        # Process again and check that this time also only the
+        # process_floating_ips and external_network remove was called
+        self.routing_helper._process_router(ri)
+        ex_gw_port = ri.router.get('gw_port')
+        self.routing_helper._process_router_floating_ips.assert_called_with(
+            ri, ex_gw_port)
+        self.assertFalse(self.routing_helper._internal_network_added.called)
+        self.assertFalse(self.routing_helper._external_gateway_added.called)
+        self._reset_mocks()
+
+        if test_admin_state:
+            self._test_router_admin_port_state(router, ri, ex_gw_port)
+
+        # now no ports so state is torn down
+        del router[bc.constants.INTERFACE_KEY]
+        del router['gw_port']
+        # Update router_info object
+        ri.router = router
+        # Keep a copy of the ex_gw_port before its gone after processing.
+        ex_gw_port = ri.ex_gw_port
+        # Process router and verify that internal and external network removed
+        # were called and floating_ips_process was called
+        self.routing_helper._process_router(ri)
+        self.assertFalse(self.routing_helper.
+                         _process_router_floating_ips.called)
+        self.assertFalse(self.routing_helper._external_gateway_added.called)
+        self.assertTrue(self.routing_helper._internal_network_removed.called)
+        self.assertTrue(self.routing_helper._external_gateway_removed.called)
+        self.routing_helper._internal_network_removed.assert_called_with(
+            ri, ports[0], ex_gw_port)
+        self.routing_helper._external_gateway_removed.assert_called_with(
+            ri, ex_gw_port, delete_itfc=True)
 
     def test_process_router_2_rids_1_vrf(self):
         driver = self._mock_driver_and_hosting_device(self.routing_helper)
@@ -95,14 +162,15 @@ class TestBasicRoutingOperationsAci(helper.TestBasicRoutingOperations):
         ri2 = svc_helper.RouterInfo(router2['id'], router=router2)
         h_info1 = create_hosting_info()
         h_info2 = copy.deepcopy(h_info1)
-        ri1.router['hosting_info'] = h_info1
-        ri2.router['hosting_info'] = h_info2
+        ex_gw_port1 = ri1.router.get('gw_port')
+        ex_gw_port2 = ri2.router.get('gw_port')
+        ex_gw_port1['hosting_info'] = h_info1
+        ex_gw_port2['hosting_info'] = h_info2
 
-        driver._get_vrf_name = mock.Mock(
-            return_value=ri1.router['hosting_info']['vrf_id'])
+        vrf = ex_gw_port1['hosting_info']['vrf_id']
+        driver._get_vrf_name = mock.Mock(return_value=vrf)
         self.routing_helper._process_router(ri1)
 
-        vrf = ri1.router['hosting_info']['vrf_id']
         driver._get_vrf_name.assert_called_with(ri1)
         driver._do_create_vrf.assert_called_with(vrf)
         self.assertTrue(len(self.routing_helper._router_ids_by_vrf) == 1)
@@ -188,14 +256,12 @@ class TestNetworkRoutingOperationsAci(base.BaseTestCase):
         ri2 = svc_helper.RouterInfo(router2['id'], router=router2)
         h_info1 = create_hosting_info()
         h_info2 = copy.deepcopy(h_info1)
-        ri1.router['hosting_info'] = h_info1
-        ri2.router['hosting_info'] = h_info2
 
         ex_gw_port1 = ri1.router.get('gw_port')
         ex_gw_port2 = ri2.router.get('gw_port')
         ex_gw_port1['hosting_info'] = h_info1
         ex_gw_port2['hosting_info'] = h_info2
-        vrf = ri1.router['hosting_info']['vrf_id']
+        vrf = ex_gw_port1['hosting_info']['vrf_id']
         driver._get_vrf_name = mock.Mock(return_value=vrf)
         self.routing_helper._process_router(ri1)
 
@@ -227,7 +293,7 @@ class TestNetworkRoutingOperationsAci(base.BaseTestCase):
         self.routing_helper._process_router(ri1)
 
         driver.internal_network_removed.assert_called_with(
-            ri1, ports[0], itfc_deleted=True)
+            ri1, ports[0], delete_itfc=False)
         driver.disable_internal_network_NAT.assert_called_with(
             ri1, ports[0], ex_gw_port1, itfc_deleted=True)
         self.assertTrue(len(v_n_r_dict) == 1)
@@ -241,20 +307,21 @@ class TestNetworkRoutingOperationsAci(base.BaseTestCase):
         self.routing_helper._process_router(ri2)
 
         driver.internal_network_removed.assert_called_with(
-            ri2, ports[0], itfc_deleted=False)
+            ri2, ports[0], delete_itfc=True)
         driver.disable_internal_network_NAT.assert_called_with(
-            ri2, ports[0], ex_gw_port2, itfc_deleted=False)
+            ri2, ports[0], ex_gw_port2, itfc_deleted=True)
         self.assertEqual(v_n_r_dict, {})
 
         del ri1.router['gw_port']
         self.routing_helper._process_router(ri1)
-        self.routing_helper._external_gateway_removed.assert_not_called()
+        self.routing_helper._external_gateway_removed.assert_called_with(
+            ri1, ex_gw_port1, delete_itfc=False)
 
         del ri2.router['gw_port']
         self.routing_helper._external_gateway_removed.reset_mock()
         self.routing_helper._process_router(ri2)
         self.routing_helper._external_gateway_removed.assert_called_with(
-            ri2, ex_gw_port2)
+            ri2, ex_gw_port2, delete_itfc=True)
 
     def test_process_router_2_rids_2_vrfs_1_network(self):
         driver = _mock_driver_and_hosting_device(self.routing_helper)
@@ -270,15 +337,13 @@ class TestNetworkRoutingOperationsAci(base.BaseTestCase):
         h_info1 = create_hosting_info()
         h_info2 = copy.deepcopy(h_info1)
         h_info2['vrf_id'] = _uuid()
-        ri1.router['hosting_info'] = h_info1
-        ri2.router['hosting_info'] = h_info2
 
         ex_gw_port1 = ri1.router.get('gw_port')
         ex_gw_port2 = ri2.router.get('gw_port')
         ex_gw_port1['hosting_info'] = h_info1
         ex_gw_port2['hosting_info'] = h_info2
-        vrf1 = ri1.router['hosting_info']['vrf_id']
-        vrf2 = ri2.router['hosting_info']['vrf_id']
+        vrf1 = ex_gw_port1['hosting_info']['vrf_id']
+        vrf2 = ex_gw_port2['hosting_info']['vrf_id']
         driver._get_vrf_name = mock.Mock(return_value=vrf1)
         self.routing_helper._process_router(ri1)
 
@@ -314,9 +379,9 @@ class TestNetworkRoutingOperationsAci(base.BaseTestCase):
         self.routing_helper._process_router(ri1)
 
         driver.internal_network_removed.assert_called_with(
-            ri1, ports[0], itfc_deleted=False)
+            ri1, ports[0], delete_itfc=True)
         driver.disable_internal_network_NAT.assert_called_with(
-            ri1, ports[0], ex_gw_port1, itfc_deleted=False)
+            ri1, ports[0], ex_gw_port1, itfc_deleted=True)
         self.assertTrue(len(v_n_r_dict) == 1)
         self.assertFalse(v_n_r_dict.get(vrf1))
         self.assertTrue(len(v_n_r_dict[vrf2]) == 1)
@@ -330,23 +395,23 @@ class TestNetworkRoutingOperationsAci(base.BaseTestCase):
         self.routing_helper._process_router(ri2)
 
         driver.internal_network_removed.assert_called_with(
-            ri2, ports[0], itfc_deleted=False)
+            ri2, ports[0], delete_itfc=True)
         driver.disable_internal_network_NAT.assert_called_with(
-            ri2, ports[0], ex_gw_port2, itfc_deleted=False)
+            ri2, ports[0], ex_gw_port2, itfc_deleted=True)
         self.assertEqual(v_n_r_dict, {})
 
         del ri1.router['gw_port']
         driver._get_vrf_name = mock.Mock(return_value=vrf1)
         self.routing_helper._process_router(ri1)
         self.routing_helper._external_gateway_removed.assert_called_with(
-            ri1, ex_gw_port1)
+            ri1, ex_gw_port1, delete_itfc=True)
 
         del ri2.router['gw_port']
         self.routing_helper._external_gateway_removed.reset_mock()
         driver._get_vrf_name = mock.Mock(return_value=vrf2)
         self.routing_helper._process_router(ri2)
         self.routing_helper._external_gateway_removed.assert_called_with(
-            ri2, ex_gw_port2)
+            ri2, ex_gw_port2, delete_itfc=True)
 
     def test_process_router_2_rids_2_vrfs_2_networks(self):
         driver = _mock_driver_and_hosting_device(self.routing_helper)
@@ -362,15 +427,13 @@ class TestNetworkRoutingOperationsAci(base.BaseTestCase):
         h_info1 = create_hosting_info()
         h_info2 = create_hosting_info(net_name=TEST_NET2,
             vlan=TEST_VLAN2, gw_ip=TEST_GW_IP2, cidr=TEST_CIDR2)
-        ri1.router['hosting_info'] = h_info1
-        ri2.router['hosting_info'] = h_info2
 
         ex_gw_port1 = ri1.router.get('gw_port')
         ex_gw_port2 = ri2.router.get('gw_port')
         ex_gw_port1['hosting_info'] = h_info1
         ex_gw_port2['hosting_info'] = h_info2
-        vrf1 = ri1.router['hosting_info']['vrf_id']
-        vrf2 = ri2.router['hosting_info']['vrf_id']
+        vrf1 = ex_gw_port1['hosting_info']['vrf_id']
+        vrf2 = ex_gw_port2['hosting_info']['vrf_id']
         network_name1 = h_info1['network_name']
         network_name2 = h_info2['network_name']
         driver._get_vrf_name = mock.Mock(return_value=vrf1)
@@ -406,9 +469,9 @@ class TestNetworkRoutingOperationsAci(base.BaseTestCase):
         self.routing_helper._process_router(ri1)
 
         driver.internal_network_removed.assert_called_with(
-            ri1, ports[0], itfc_deleted=False)
+            ri1, ports[0], delete_itfc=True)
         driver.disable_internal_network_NAT.assert_called_with(
-            ri1, ports[0], ex_gw_port1, itfc_deleted=False)
+            ri1, ports[0], ex_gw_port1, itfc_deleted=True)
         self.assertTrue(len(v_n_r_dict) == 1)
         self.assertTrue(len(v_n_r_dict[vrf2]) == 1)
         self.assertFalse(v_n_r_dict.get(vrf1))
@@ -422,21 +485,21 @@ class TestNetworkRoutingOperationsAci(base.BaseTestCase):
         self.routing_helper._process_router(ri2)
 
         driver.internal_network_removed.assert_called_with(
-            ri2, ports[0], itfc_deleted=False)
+            ri2, ports[0], delete_itfc=True)
         driver.disable_internal_network_NAT.assert_called_with(
-            ri2, ports[0], ex_gw_port2, itfc_deleted=False)
+            ri2, ports[0], ex_gw_port2, itfc_deleted=True)
         self.assertEqual(v_n_r_dict, {})
 
         del ri1.router['gw_port']
         driver._get_vrf_name = mock.Mock(return_value=vrf1)
         self.routing_helper._process_router(ri1)
         self.routing_helper._external_gateway_removed.assert_called_with(
-            ri1, ex_gw_port1)
+            ri1, ex_gw_port1, delete_itfc=True)
 
         del ri2.router['gw_port']
         self.routing_helper._external_gateway_removed.reset_mock()
         driver._get_vrf_name = mock.Mock(return_value=vrf2)
         self.routing_helper._process_router(ri2)
         self.routing_helper._external_gateway_removed.assert_called_with(
-            ri2, ex_gw_port2)
+            ri2, ex_gw_port2, delete_itfc=True)
         driver._get_vrf_name = mock.Mock(return_value=vrf1)
