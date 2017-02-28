@@ -50,9 +50,6 @@ ACI_ASR1K_DRIVER_OPTS = [
 
 cfg.CONF.register_opts(ACI_ASR1K_DRIVER_OPTS, "general")
 
-DEFAULT_EXT_DICT = {'gateway_ip': '1.103.2.254',
-                    'cidr_exposed': '1.103.2.1/24'}
-
 
 class AciDriverConfigInvalidFileFormat(n_exc.BadRequest):
     message = _("The ACI Driver config file format is invalid")
@@ -63,9 +60,24 @@ class AciDriverConfigMissingGatewayIp(n_exc.BadRequest):
                 "parameter for %(ext_net)s.")
 
 
+class AciDriverConfigMissingExternalNetwork(n_exc.BadRequest):
+    message = _("The ACI Driver config is missing an entry fo "
+                "the external network %(ext_net)s.")
+
+
 class AciDriverConfigMissingCidrExposed(n_exc.BadRequest):
     message = _("The ACI Driver config is missing a cidr_exposed "
                 "parameter for %(ext_net)s.")
+
+
+class AciDriverConfigMissingTransitNetworkCidr(n_exc.BadRequest):
+    message = _("The ACI Driver config is missing transit network "
+                "CIDR for %(ext_net)s.")
+
+
+class AciDriverConfigMissingTransitNetworkGatewayIp(n_exc.BadRequest):
+    message = _("The ACI Driver config is missing transit network "
+                "gateway IP for %(ext_net)s.")
 
 
 class AciDriverConfigMissingSegmentationId(n_exc.BadRequest):
@@ -95,7 +107,6 @@ class AciVLANTrunkingPlugDriver(hw_vlan.HwVLANTrunkingPlugDriver):
         super(AciVLANTrunkingPlugDriver, self).__init__()
         self._cfg_file = cfg.CONF.general.aci_transit_nets_config_file
         self._get_ext_net_name = None
-        self._default_ext_dict = DEFAULT_EXT_DICT
         self._transit_nets_cfg = {}
         self._get_vrf_context = None
 
@@ -105,6 +116,12 @@ class AciVLANTrunkingPlugDriver(hw_vlan.HwVLANTrunkingPlugDriver):
                 raise AciDriverConfigMissingGatewayIp(ext_net=network)
             if config.get(network).get('cidr_exposed') is None:
                 raise AciDriverConfigMissingCidrExposed(ext_net=network)
+            if config.get(network).get('transit_gw_ip') is None:
+                raise AciDriverConfigMissingTransitNetworkGatewayIp(
+                    ext_net=network)
+            if config.get(network).get('transit_cidr') is None:
+                raise AciDriverConfigMissingTransitNetworkCidr(
+                    ext_net=network)
 
     @property
     def transit_nets_cfg(self):
@@ -184,9 +201,10 @@ class AciVLANTrunkingPlugDriver(hw_vlan.HwVLANTrunkingPlugDriver):
         # network names in GBP workflow need to be reduced, since
         # the network may contain UUIDs
         external_network = self.get_ext_net_name(network['name'])
-        # TODO(tbachman): see if we can get rid of the default
-        transit_net = self.transit_nets_cfg.get(
-            external_network) or self._default_ext_dict
+        try:
+            transit_net = self.transit_nets_cfg.get(external_network)
+        except KeyError:
+            raise AciDriverConfigMissingExternalNetwork(external_network)
         transit_net['network_name'] = external_network
         return transit_net, network
 
@@ -301,9 +319,11 @@ class AciVLANTrunkingPlugDriver(hw_vlan.HwVLANTrunkingPlugDriver):
         ext_dict, net = self._get_external_network_dict(context, port_db,
                                                         router)
         if is_external and ext_dict:
-            hosting_info['network_name'] = ext_dict['network_name']
-            hosting_info['cidr_exposed'] = ext_dict['cidr_exposed']
-            hosting_info['gateway_ip'] = ext_dict['gateway_ip']
+            ext_keys = ['transit_gw_ip', 'transit_cidr', 'network_name',
+                        'cidr_exposed', 'gateway_ip', 'ha_vip']
+            for ext_key in ext_keys:
+                if ext_dict.get(ext_key):
+                    hosting_info[ext_key] = ext_dict[ext_key]
             details = self.get_vrf_context(context,
                                            port_db['device_id'], port_db)
             # skip routers not created by the user -- they will have
