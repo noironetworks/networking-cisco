@@ -14,6 +14,8 @@
 #
 
 from neutron.common import rpc as n_rpc
+from neutron import service
+from neutron.services import service_base
 from oslo_config import cfg
 from oslo_log import log as logging
 from oslo_service import loopingcall
@@ -52,7 +54,6 @@ class CiscoDeviceManagerPlugin(dev_mgr_db.HostingDeviceManagerMixin,
     path_prefix = ciscocfgagentscheduler.PATH_PREFIX
 
     def __init__(self):
-        self.setup_rpc()
         basepath = networking_cisco.plugins.__path__[0]
         ext_paths = [basepath + '/cisco/extensions']
         cp = cfg.CONF.api_extensions_path
@@ -65,16 +66,18 @@ class CiscoDeviceManagerPlugin(dev_mgr_db.HostingDeviceManagerMixin,
         self.cfg_agent_scheduler = importutils.import_object(
             cfg.CONF.general.configuration_agent_scheduler_driver)
         self._setup_cfg_agent_monitoring()
+        self.start_rpc_listeners()
 
-    def setup_rpc(self):
+    def start_rpc_listeners(self):
         # RPC support
         self.topic = c_constants.DEVICE_MANAGER_PLUGIN
         self.conn = n_rpc.create_connection()
-        self.agent_notifiers[c_constants.AGENT_TYPE_CFG] = (
-            devmgr_rpc_cfgagent_api.DeviceMgrCfgAgentNotifyAPI(self))
+        self.agent_notifiers.update(
+            {c_constants.AGENT_TYPE_CFG: (
+             devmgr_rpc_cfgagent_api.DeviceMgrCfgAgentNotifyAPI(self))})
         self.endpoints = [devices_rpc.DeviceMgrCfgRpcCallback(self)]
         self.conn.create_consumer(self.topic, self.endpoints, fanout=False)
-        self.conn.consume_in_threads()
+        return self.conn.consume_in_threads()
 
     def _setup_cfg_agent_monitoring(self):
         LOG.debug('Activating periodic config agent monitor')

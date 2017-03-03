@@ -19,6 +19,8 @@ from neutron.common import topics
 from neutron.db import common_db_mixin
 #from neutron.db import l3_gwmode_db
 from neutron.plugins.common import constants
+from neutron import service
+from neutron.services import service_base
 from oslo_config import cfg
 from oslo_utils import importutils
 
@@ -40,7 +42,8 @@ from networking_cisco.plugins.cisco.l3.rpc import (
 from networking_cisco.plugins.cisco.l3.rpc import l3_router_rpc_cfg_agent_api
 
 
-class CiscoRouterPlugin(common_db_mixin.CommonDbMixin,
+class CiscoRouterPlugin(service_base.ServicePluginBase,
+                        common_db_mixin.CommonDbMixin,
                         routertype_db.RoutertypeDbMixin,
                         ha_db.HA_db_mixin,
                         l3_router_appliance_db.L3RouterApplianceDBMixin,
@@ -66,7 +69,6 @@ class CiscoRouterPlugin(common_db_mixin.CommonDbMixin,
         ha.HA_ALIAS]
 
     def __init__(self):
-        self.setup_rpc()
         basepath = networking_cisco.plugins.__path__[0]
         ext_paths = [basepath + '/cisco/extensions']
         cp = cfg.CONF.api_extensions_path
@@ -80,21 +82,24 @@ class CiscoRouterPlugin(common_db_mixin.CommonDbMixin,
             cfg.CONF.routing.router_type_aware_scheduler_driver)
         self.l3agent_scheduler = importutils.import_object(
             cfg.CONF.router_scheduler_driver)
+        self.start_rpc_listeners()
 
-    def setup_rpc(self):
+    def start_rpc_listeners(self):
         # RPC support
         self.topic = topics.L3PLUGIN
         self.conn = n_rpc.create_connection()
-        self.agent_notifiers[bc.constants.AGENT_TYPE_L3] = (
-            l3_rpc_agent_api.L3AgentNotifyAPI())
-        self.agent_notifiers[cisco_constants.AGENT_TYPE_L3_CFG] = (
-            l3_router_rpc_cfg_agent_api.L3RouterCfgAgentNotifyAPI(self))
+        self.agent_notifiers.update(
+            {bc.constants.AGENT_TYPE_L3: (
+                l3_rpc_agent_api.L3AgentNotifyAPI())})
+        self.agent_notifiers.update(
+            {cisco_constants.AGENT_TYPE_L3_CFG: (
+             l3_router_rpc_cfg_agent_api.L3RouterCfgAgentNotifyAPI(self))})
         self.endpoints = [l3_rpc.L3RpcCallback(),
                           l3cfg_rpc.L3RouterCfgRpcCallback(self)]
         self.conn.create_consumer(self.topic, self.endpoints,
                                   fanout=False)
         # Consume from all consumers in threads
-        self.conn.consume_in_threads()
+        return self.conn.consume_in_threads()
 
     def get_plugin_type(self):
         return constants.L3_ROUTER_NAT
