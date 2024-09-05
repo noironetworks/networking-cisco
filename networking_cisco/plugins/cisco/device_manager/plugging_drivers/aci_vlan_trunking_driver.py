@@ -197,8 +197,8 @@ class AciVLANTrunkingPlugDriver(hw_vlan.HwVLANTrunkingPlugDriver):
                 self._get_ext_net_name = self._get_ext_net_name_gbp
                 self._get_vrf_context = self._get_vrf_context_gbp
             except AttributeError:
-                    LOG.info("GBP service plugin not present -- will "
-                             "try APIC ML2 plugin.")
+                LOG.info("GBP service plugin not present -- will "
+                         "try APIC ML2 plugin.")
             if not self._apic_driver:
                 try:
                     self._apic_driver = (

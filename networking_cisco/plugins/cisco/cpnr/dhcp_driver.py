@@ -386,8 +386,8 @@ class CpnrDriver(SimpleCpnrDriver):
         while True:
             eventlet.sleep(cfg.CONF.cisco_pnr.sync_interval)
             if ((time.time() - last_activity) <
-               cfg.CONF.cisco_pnr.sync_interval):
-                    continue
+                    cfg.CONF.cisco_pnr.sync_interval):
+                continue
             pnr_networks = model.recover_networks()
             # Delete stale VPNs in CPNR
             deleted_keys = set(pnr_networks.keys()) - set(

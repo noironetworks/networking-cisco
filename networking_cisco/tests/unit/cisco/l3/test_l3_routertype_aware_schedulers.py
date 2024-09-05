@@ -18,10 +18,10 @@ import unittest
 
 from neutron.api.rpc.agentnotifiers import l3_rpc_agent_api
 from neutron.common import test_lib
-from neutron.tests import fake_notifier
 from neutron.tests.unit.db import test_agentschedulers_db
 from neutron.tests.unit.extensions import test_l3
 from neutron.tests.unit.scheduler import test_l3_agent_scheduler
+from neutron_lib.tests.unit import fake_notifier
 from oslo_config import cfg
 from oslo_db import exception as db_exc
 from oslo_utils import importutils
@@ -66,8 +66,6 @@ _uuid = uuidutils.generate_uuid
 HOSTING_DEVICE_ATTR = routerhostingdevice.HOSTING_DEVICE_ATTR
 HARDWARE_CATEGORY = ciscohostingdevicemanager.HARDWARE_CATEGORY
 AGENT_TYPE_L3_CFG = c_const.AGENT_TYPE_L3_CFG
-NEUTRON_VERSION = bc.NEUTRON_VERSION
-NEUTRON_NEWTON_VERSION = bc.NEUTRON_NEWTON_VERSION
 
 
 class TestSchedulingL3RouterApplianceExtensionManager(
@@ -208,14 +206,9 @@ class L3RoutertypeAwareL3AgentSchedulerTestCase(
             # router 4
             self._make_router(self.fmt, _uuid(), 'router2', arg_list=arg_list,
                               **kwargs)['router']
-            if NEUTRON_VERSION.version[0] <= NEUTRON_NEWTON_VERSION.version[0]:
-                routers = (
-                    self.l3_plugin.router_scheduler._get_unscheduled_routers(
-                        self.adminContext, self.l3_plugin))
-            else:
-                routers = (
-                    self.l3_plugin.router_scheduler._get_unscheduled_routers(
-                        self.l3_plugin, self.adminContext))
+            routers = (
+                self.l3_plugin.router_scheduler._get_unscheduled_routers(
+                    self.l3_plugin, self.adminContext))
             r_ids = set(r['id'] for r in routers)
             self.assertEqual(2, len(r_ids))
             for r in [r2, r3]:
@@ -229,10 +222,10 @@ class L3RoutertypeAwareL3AgentSchedulerTestCase(
         r1 = self._make_router(self.fmt, _uuid(), 'router1',
                                arg_list=arg_list, **kwargs)['router']
         # namespace-based routers
-        with self.router(name='router2') as router2,\
-                self.router(name='router3') as router3,\
+        with self.router(name='router2') as router2, \
+                self.router(name='router3') as router3, \
                 mock.patch.object(self.l3_plugin.l3agent_scheduler,
-                                  'schedule') as scheduler_mock,\
+                                  'schedule') as scheduler_mock, \
                 mock.patch('neutron.scheduler.l3_agent_scheduler.L3Scheduler.'
                            '_get_routers_can_schedule') as auto_scheduler_mock:
             r2 = router2['router']
@@ -465,7 +458,7 @@ class L3RoutertypeAwareHostingDeviceSchedulerBaseTestCase(
 
     def test_new_router_backlogged_and_remains_backlogged_if_no_hosting_device(
             self):
-        with mock.patch.object(self.l3_plugin, '_backlogged_routers') as m1,\
+        with mock.patch.object(self.l3_plugin, '_backlogged_routers') as m1, \
                 mock.patch.object(self.l3_plugin, '_refresh_router_backlog',
                                   False):
             back_log = set()
@@ -489,7 +482,7 @@ class L3RoutertypeAwareHostingDeviceSchedulerBaseTestCase(
             self.assertIn(r['id'], back_log)
 
     def test_backlogged_router_is_scheduled_if_hosting_device_exists(self):
-        with mock.patch.object(self.l3_plugin, '_backlogged_routers') as m1,\
+        with mock.patch.object(self.l3_plugin, '_backlogged_routers') as m1, \
                 mock.patch.object(self.l3_plugin, '_refresh_router_backlog',
                                   False):
             back_log = set()
@@ -685,7 +678,7 @@ class L3RoutertypeAwareHostingDeviceSchedulerTestCase(
     def test_router_add_to_hosting_device_insufficient_slots(self):
         with mock.patch.object(
                 self.core_plugin,
-                'acquire_hosting_device_slots') as acquire_mock,\
+                'acquire_hosting_device_slots') as acquire_mock, \
                 self.router() as router:
             acquire_mock.return_value = False
             r = router['router']
@@ -702,7 +695,7 @@ class L3RoutertypeAwareHostingDeviceSchedulerTestCase(
     def test_router_add_to_hosting_device_insufficient_slots_no_auto(self):
         with mock.patch.object(
                 self.core_plugin,
-                'acquire_hosting_device_slots') as acquire_mock,\
+                'acquire_hosting_device_slots') as acquire_mock, \
                 mock.patch.object(self.l3_plugin,
                                   '_backlog_router') as mock_b_lg:
             acquire_mock.return_value = False
@@ -840,7 +833,7 @@ class L3RoutertypeAwareHostingDeviceSchedulerTestCase(
         pass
 
     def test_list_routers_by_hosting_device(self):
-        with self.router() as router1, self.router() as router2,\
+        with self.router() as router1, self.router() as router2, \
                 self.router() as router3:
             r1 = router1['router']
             r2 = router2['router']
@@ -892,8 +885,8 @@ class L3RoutertypeAwareHostingDeviceSchedulerTestCase(
             self.assertEqual(0, len(h_list['hosting_devices']))
 
     def _test_list_active_sync_routers_on_hosting_devices(self, func):
-        with self.router(name='router1') as router1,\
-                self.router(name='router2') as router2,\
+        with self.router(name='router1') as router1, \
+                self.router(name='router2') as router2, \
                 self.router(name='router3') as router3:
             r1 = router1['router']
             r2 = router2['router']
@@ -907,8 +900,8 @@ class L3RoutertypeAwareHostingDeviceSchedulerTestCase(
             # uuid hd1_id and hd2_id will be assigned to that cfg agent
             self._register_cfg_agent_states()
             template_id = '00000000-0000-0000-0000-000000000005'
-            with self.hosting_device(template_id, no_delete=True) as h_d3,\
-                    self.router(name='router4') as router4,\
+            with self.hosting_device(template_id, no_delete=True) as h_d3, \
+                    self.router(name='router4') as router4, \
                     self.router(name='router5') as router5:
                 # hd3 should not yet have been assigned to a cfg agent
                 hd3 = h_d3['hosting_device']
@@ -936,7 +929,7 @@ class L3RoutertypeAwareHostingDeviceSchedulerTestCase(
         hds = {}
         agent_id = agent_dict[host]['id']
         for r in r_l:
-            self.assertTrue(r['id'] in r_set)
+            self.assertIn(r['id'], r_set)
             router_host = r[HOSTING_DEVICE_ATTR]
             if router_host not in hds:
                 hd = self._show('hosting_devices', router_host)
@@ -1041,8 +1034,8 @@ class L3RoutertypeAwareHostingDeviceSchedulerTestCase(
             self.adminContext, 'bogus_host')
 
     def test_list_all_routers_on_hosting_devices(self):
-        with self.router(name='router1') as router1,\
-                self.router(name='router2'),\
+        with self.router(name='router1') as router1, \
+                self.router(name='router2'), \
                 self.router(name='router3') as router3:
             r1 = router1['router']
             r3 = router3['router']
@@ -1051,8 +1044,8 @@ class L3RoutertypeAwareHostingDeviceSchedulerTestCase(
             hd2_id = '00000000-0000-0000-0000-000000000002'
             self._add_router_to_hosting_device(hd2_id, r3['id'])
             template_id = '00000000-0000-0000-0000-000000000005'
-            with self.hosting_device(template_id, no_delete=True) as h_d3,\
-                    self.router(name='router4') as router4,\
+            with self.hosting_device(template_id, no_delete=True) as h_d3, \
+                    self.router(name='router4') as router4, \
                     self.router(name='router5') as router5:
                 hd3 = h_d3['hosting_device']
                 r4 = router4['router']
@@ -1065,7 +1058,7 @@ class L3RoutertypeAwareHostingDeviceSchedulerTestCase(
                 self.assertEqual(len(r_set), len(r_l))
                 hds = {}
                 for r in r_l:
-                    self.assertTrue(r['id'] in r_set)
+                    self.assertIn(r['id'], r_set)
                     router_host = r[HOSTING_DEVICE_ATTR]
                     self.assertIsNotNone(router_host)
                     # assert that router's hosting device exists
@@ -1074,7 +1067,7 @@ class L3RoutertypeAwareHostingDeviceSchedulerTestCase(
                         hds[router_host] = hd['hosting_device']
 
     def test_router_reschedule_from_dead_hosting_device(self):
-        with mock.patch.object(self.l3_plugin, '_backlogged_routers') as m1,\
+        with mock.patch.object(self.l3_plugin, '_backlogged_routers') as m1, \
                 mock.patch.object(self.l3_plugin, '_refresh_router_backlog',
                                   False):
             back_log = set()
@@ -1082,8 +1075,8 @@ class L3RoutertypeAwareHostingDeviceSchedulerTestCase(
             m1.__contains__ = lambda obj, r_id: r_id in back_log
             m1.add.side_effect = lambda r_id: back_log.add(r_id)
             m1.discard.side_effect = lambda r_id: back_log.discard(r_id)
-            with self.router(name='router1') as router1,\
-                    self.router(name='router2') as router2,\
+            with self.router(name='router1') as router1, \
+                    self.router(name='router2') as router2, \
                     self.router(name='router3') as router3:
                 rs_initial = [r['router'] for r in [router1, router2, router3]]
                 # all routers initially un-hosted
@@ -1177,8 +1170,8 @@ class HostingDeviceRouterL3CfgAgentNotifierTestCase(
         l3_notifier = self.l3_plugin.agent_notifiers[c_const.AGENT_TYPE_L3_CFG]
         with mock.patch.object(
                 l3_notifier.client, 'prepare',
-                return_value=l3_notifier.client) as mock_prepare,\
-                mock.patch.object(l3_notifier.client, 'cast') as mock_cast,\
+                return_value=l3_notifier.client) as mock_prepare, \
+                mock.patch.object(l3_notifier.client, 'cast') as mock_cast, \
                 self.router() as router:
             r = router['router']
             # when cfg agent on host_a registers itself, hosting
@@ -1199,8 +1192,8 @@ class HostingDeviceRouterL3CfgAgentNotifierTestCase(
         l3_notifier = self.l3_plugin.agent_notifiers[c_const.AGENT_TYPE_L3_CFG]
         with mock.patch.object(
                 l3_notifier.client, 'prepare',
-                return_value=l3_notifier.client) as mock_prepare,\
-                mock.patch.object(l3_notifier.client, 'cast') as mock_cast,\
+                return_value=l3_notifier.client) as mock_prepare, \
+                mock.patch.object(l3_notifier.client, 'cast') as mock_cast, \
                 self.router() as router:
             r = router['router']
             # when cfg agent on host_a registers itself, hosting
@@ -1223,10 +1216,10 @@ class HostingDeviceRouterL3CfgAgentNotifierTestCase(
         l3_notifier = self.l3_plugin.agent_notifiers[c_const.AGENT_TYPE_L3_CFG]
         with mock.patch.object(
                 l3_notifier.client, 'prepare',
-                return_value=l3_notifier.client) as mock_prepare,\
-                mock.patch.object(l3_notifier.client, 'cast') as mock_cast,\
+                return_value=l3_notifier.client) as mock_prepare, \
+                mock.patch.object(l3_notifier.client, 'cast') as mock_cast, \
                 mock.patch.object(self.l3_plugin,
-                                  '_backlogged_routers') as mock_b_lg,\
+                                  '_backlogged_routers') as mock_b_lg, \
                 mock.patch.object(self.l3_plugin, '_refresh_router_backlog',
                                   False):
             back_log = set()
@@ -1392,15 +1385,15 @@ class L3RouterHostingDeviceBaseSchedulerTestCase(
             template_id = hdt['hosting_device_template']['id']
             credentials = device_manager_test_support._uuid()
             with self.hosting_device(template_id=template_id,
-                                     credentials_id=credentials) as hd1,\
+                                     credentials_id=credentials) as hd1, \
                     self.hosting_device(template_id=template_id,
-                                        credentials_id=credentials) as hd2,\
+                                        credentials_id=credentials) as hd2, \
                     self.hosting_device(template_id=template_id,
-                                        credentials_id=credentials) as hd3,\
+                                        credentials_id=credentials) as hd3, \
                     self.hosting_device(template_id=template_id,
-                                        credentials_id=credentials) as hd4,\
+                                        credentials_id=credentials) as hd4, \
                     self.hosting_device(template_id=template_id,
-                                        credentials_id=credentials) as hd5,\
+                                        credentials_id=credentials) as hd5, \
                     self.hosting_device(template_id=template_id,
                                         credentials_id=credentials) as hd6:
                 self._update_hosting_device_statuses(
@@ -1419,13 +1412,13 @@ class L3RouterHostingDeviceBaseSchedulerTestCase(
             template_id = hdt['hosting_device_template']['id']
             credentials = device_manager_test_support._uuid()
             with self.hosting_device(template_id=template_id,
-                                     credentials_id=credentials) as hd1,\
+                                     credentials_id=credentials) as hd1, \
                     self.hosting_device(template_id=template_id,
                                         credentials_id=credentials,
-                                        admin_state_up=False),\
+                                        admin_state_up=False), \
                     self.hosting_device(template_id=template_id,
                                         credentials_id=credentials,
-                                        admin_state_up=False),\
+                                        admin_state_up=False), \
                     self.hosting_device(template_id=template_id,
                                         credentials_id=credentials) as hd4:
                 expected = [hd1['hosting_device']['id'],

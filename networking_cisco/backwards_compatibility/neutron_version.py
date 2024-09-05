@@ -17,8 +17,3 @@ from distutils.version import StrictVersion
 from neutron import version
 
 NEUTRON_VERSION = StrictVersion(str(version.version_info))
-NEUTRON_NEWTON_VERSION = StrictVersion('9.0.0')
-NEUTRON_OCATA_VERSION = StrictVersion('10.0.0')
-NEUTRON_PIKE_VERSION = StrictVersion('11.0.0')
-NEUTRON_QUEENS_VERSION = StrictVersion('12.0.0')
-NEUTRON_ROCKY_VERSION = StrictVersion('13.0.0')

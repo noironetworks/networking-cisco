@@ -324,8 +324,8 @@ class TestRoutertypeDBPlugin(
     def test_list_routertypes(self):
         with self.hosting_device_template() as hdt:
             hdt_id = hdt['hosting_device_template']['id']
-            with self.routertype(hdt_id, 'rt1') as rt1,\
-                    self.routertype(hdt_id, 'rt2') as rt2,\
+            with self.routertype(hdt_id, 'rt1') as rt1, \
+                    self.routertype(hdt_id, 'rt2') as rt2, \
                     self.routertype(hdt_id, 'rt3') as rt3:
                 self._test_list_resources('routertype', [rt1, rt2, rt3],
                                           query_params='template_id=' + hdt_id)

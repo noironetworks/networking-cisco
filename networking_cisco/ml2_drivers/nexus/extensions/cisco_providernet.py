@@ -14,7 +14,6 @@
 
 from oslo_log import log as logging
 
-from neutron.db import common_db_mixin
 from neutron_lib.api import validators
 
 from networking_cisco import backwards_compatibility as bc
@@ -23,8 +22,7 @@ from networking_cisco.backwards_compatibility import ml2_api as api
 LOG = logging.getLogger(__name__)
 
 
-class CiscoProviderNetDriver(api.ExtensionDriver,
-                             common_db_mixin.CommonDbMixin):
+class CiscoProviderNetDriver(api.ExtensionDriver):
     _supported_extension_alias = 'provider'
 
     def initialize(self):

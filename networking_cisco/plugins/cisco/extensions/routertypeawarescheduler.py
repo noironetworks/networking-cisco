@@ -16,11 +16,11 @@ import abc
 
 from neutron.api import extensions
 from neutron.api.v2 import resource
-from neutron.common import rpc as n_rpc
 from neutron import policy
 from neutron import wsgi
 from neutron_lib.api import converters as conv
 from neutron_lib import exceptions as n_exc
+from neutron_lib import rpc as n_rpc
 from oslo_log import log as logging
 import webob.exc
 

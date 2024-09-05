@@ -15,9 +15,9 @@
 import os
 
 import mock
-from neutron.tests import fake_notifier
 from neutron.tests.unit.db import test_agentschedulers_db
 from neutron.tests.unit.db import test_db_base_plugin_v2
+from neutron_lib.tests.unit import fake_notifier
 from oslo_config import cfg
 import six
 from webob import exc
@@ -36,9 +36,6 @@ from networking_cisco.tests.unit.cisco.device_manager import (
 from networking_cisco.tests.unit.cisco.device_manager import (
     test_db_device_manager)
 
-
-NEUTRON_VERSION = bc.NEUTRON_VERSION
-NEUTRON_NEWTON_VERSION = bc.NEUTRON_NEWTON_VERSION
 
 policy_path = (os.path.abspath(networking_cisco.__path__[0]) +
                '/../etc/policy.json')
@@ -135,8 +132,6 @@ class HostingDeviceConfigAgentSchedulerTestCaseBase(
         self.plugin = self.core_plugin
         self.setup_notification_driver()
 
-        if NEUTRON_VERSION.version[0] <= NEUTRON_NEWTON_VERSION.version[0]:
-            cfg.CONF.set_override('allow_sorting', True)
         self._define_keystone_authtoken()
 
         self._mock_l3_admin_tenant()
@@ -311,7 +306,7 @@ class HostingDeviceConfigAgentSchedulerTestCase(
                 host_category=self.host_category) as hosting_device_template:
             hdt = hosting_device_template['hosting_device_template']
             with self.hosting_device(template_id=hdt['id']) as (
-                    hosting_device1),\
+                    hosting_device1), \
                     self.hosting_device(template_id=hdt['id']) as (
                         hosting_device2):
                 hd1 = hosting_device1['hosting_device']
@@ -342,9 +337,9 @@ class HostingDeviceConfigAgentSchedulerTestCase(
                 host_category=self.host_category) as hosting_device_template:
             hdt = hosting_device_template['hosting_device_template']
             with self.hosting_device(template_id=hdt['id']) as (
-                    hosting_device1),\
+                    hosting_device1), \
                     self.hosting_device(template_id=hdt['id']) as (
-                        hosting_device2),\
+                        hosting_device2), \
                     self.hosting_device(template_id=hdt['id']) as (
                         hosting_device3):
                 hd1 = hosting_device1['hosting_device']
@@ -363,7 +358,7 @@ class HostingDeviceConfigAgentSchedulerTestCase(
                 self.assertEqual(2, len(hd_list1['hosting_devices']))
                 hd1_set = {hd1['id'], hd2['id']}
                 for hd in hd_list1['hosting_devices']:
-                    self.assertTrue(hd['id'] in hd1_set)
+                    self.assertIn(hd['id'], hd1_set)
                 hd_list2 = self._list_hosting_devices_handled_by_cfg_agent(
                     cfg_agent2_id)
                 self.assertEqual(1, len(hd_list2['hosting_devices']))
@@ -494,9 +489,9 @@ class HostingDeviceConfigAgentSchedulerTestCase(
                 host_category=self.host_category) as hosting_device_template:
             hdt = hosting_device_template['hosting_device_template']
             with self.hosting_device(template_id=hdt['id']) as (
-                    hosting_device1),\
+                    hosting_device1), \
                     self.hosting_device(template_id=hdt['id']) as (
-                        hosting_device2),\
+                        hosting_device2), \
                     self.hosting_device(template_id=hdt['id']) as (
                         hosting_device3):
                 hds = [hd['hosting_device'] for hd in (
@@ -694,7 +689,7 @@ class HostingDeviceConfigAgentSchedulerTestCase(
                 host_category=self.host_category) as hosting_device_template:
             hdt = hosting_device_template['hosting_device_template']
             with self.hosting_device(
-                    template_id=hdt['id']) as hosting_device_1,\
+                    template_id=hdt['id']) as hosting_device_1, \
                     self.hosting_device(
                         template_id=hdt['id']) as hosting_device_2:
                 cfg_agent_id1 = self._agent_dict[L3_CFG_HOST_A]['id']
@@ -744,8 +739,8 @@ class HostingDeviceConfigAgentNotifierTestCase(
         cfg_notifier = self.plugin.agent_notifiers[c_const.AGENT_TYPE_CFG]
         with mock.patch.object(cfg_notifier.client, 'prepare',
                                return_value=cfg_notifier.client) as (
-            mock_prepare),\
-            mock.patch.object(cfg_notifier.client, 'cast') as mock_cast,\
+            mock_prepare), \
+            mock.patch.object(cfg_notifier.client, 'cast') as mock_cast, \
             self.hosting_device_template(host_category=self.host_category) as (
                 hosting_device_template):
             hdt = hosting_device_template['hosting_device_template']
@@ -768,8 +763,8 @@ class HostingDeviceConfigAgentNotifierTestCase(
         cfg_notifier = self.plugin.agent_notifiers[c_const.AGENT_TYPE_CFG]
         with mock.patch.object(cfg_notifier.client, 'prepare',
                                return_value=cfg_notifier.client) as (
-                mock_prepare),\
-                mock.patch.object(cfg_notifier.client, 'cast') as mock_cast,\
+                mock_prepare), \
+                mock.patch.object(cfg_notifier.client, 'cast') as mock_cast, \
                 self.hosting_device_template(
                     host_category=self.host_category) as (
                         hosting_device_template):
@@ -796,8 +791,8 @@ class HostingDeviceConfigAgentNotifierTestCase(
         cfg_notifier = self.plugin.agent_notifiers[c_const.AGENT_TYPE_CFG]
         with mock.patch.object(
                 cfg_notifier.client, 'prepare',
-                return_value=cfg_notifier.client) as mock_prepare,\
-                mock.patch.object(cfg_notifier.client, 'cast') as mock_cast,\
+                return_value=cfg_notifier.client) as mock_prepare, \
+                mock.patch.object(cfg_notifier.client, 'cast') as mock_cast, \
                 self.hosting_device_template(
                     host_category=self.host_category) as (
                         hosting_device_template):
@@ -862,9 +857,9 @@ class HostingDeviceToCfgAgentStingySchedulerTestCase(
                 host_category=self.host_category) as hosting_device_template:
             hdt = hosting_device_template['hosting_device_template']
             with self.hosting_device(template_id=hdt['id']) as (
-                    hosting_device_1),\
+                    hosting_device_1), \
                     self.hosting_device(template_id=hdt['id']) as (
-                        hosting_device_2),\
+                        hosting_device_2), \
                     self.hosting_device(template_id=hdt['id']) as (
                         hosting_device_3):
                 hd1 = hosting_device_1['hosting_device']

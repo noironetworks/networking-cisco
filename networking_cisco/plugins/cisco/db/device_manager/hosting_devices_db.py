@@ -20,7 +20,8 @@ from oslo_utils import uuidutils
 from sqlalchemy import exc as sql_exc
 from sqlalchemy.orm import exc
 
-from neutron.db import common_db_mixin
+from neutron_lib.db import api as db_api
+from neutron_lib.db import model_query
 
 from networking_cisco.backwards_compatibility import constants as svc_constants
 
@@ -33,8 +34,7 @@ AUTO_DELETE_DEFAULT = ciscohostingdevicemanager.AUTO_DELETE_DEFAULT
 
 
 class HostingDeviceDBMixin(
-        ciscohostingdevicemanager.CiscoHostingDevicePluginBase,
-        common_db_mixin.CommonDbMixin):
+        ciscohostingdevicemanager.CiscoHostingDevicePluginBase):
     """A class implementing DB functionality for hosting devices."""
 
     def create_hosting_device(self, context, hosting_device):
@@ -102,17 +102,17 @@ class HostingDeviceDBMixin(
                             sorts=None, limit=None, marker=None,
                             page_reverse=False):
         LOG.debug("get_hosting_devices() called")
-        return self._get_collection(context, hd_models.HostingDevice,
-                                    self._make_hosting_device_dict,
-                                    filters=filters, fields=fields,
-                                    sorts=sorts, limit=limit,
-                                    marker_obj=marker,
-                                    page_reverse=page_reverse)
+        return model_query.get_collection(context, hd_models.HostingDevice,
+                                          self._make_hosting_device_dict,
+                                          filters=filters, fields=fields,
+                                          sorts=sorts, limit=limit,
+                                          marker_obj=marker,
+                                          page_reverse=page_reverse)
 
     def get_hosting_devices_db(self, context, filters=None, sorts=None,
                                limit=None, marker=None, page_reverse=False):
         LOG.debug("get_hosting_devices_db() called")
-        return self._get_collection_query(
+        return model_query.get_collection_query(
             context, hd_models.HostingDevice, filters=filters, sorts=sorts,
             limit=limit, marker_obj=marker, page_reverse=page_reverse)
 
@@ -181,12 +181,13 @@ class HostingDeviceDBMixin(
                                      sorts=None, limit=None, marker=None,
                                      page_reverse=False):
         LOG.debug("get_hosting_device_templates() called")
-        return self._get_collection(context, hd_models.HostingDeviceTemplate,
-                                    self._make_hosting_device_template_dict,
-                                    filters=filters, fields=fields,
-                                    sorts=sorts, limit=limit,
-                                    marker_obj=marker,
-                                    page_reverse=page_reverse)
+        return model_query.get_collection(context,
+            hd_models.HostingDeviceTemplate,
+            self._make_hosting_device_template_dict,
+            filters=filters, fields=fields,
+            sorts=sorts, limit=limit,
+            marker_obj=marker,
+            page_reverse=page_reverse)
 
     def _get_id(self, res):
         uuid = res.get('id')
@@ -196,7 +197,7 @@ class HostingDeviceDBMixin(
 
     def _get_hosting_device(self, context, id):
         try:
-            return self._get_by_id(context, hd_models.HostingDevice, id)
+            return db_api.get_by_id(context, hd_models.HostingDevice, id)
         except exc.NoResultFound:
             raise ciscohostingdevicemanager.HostingDeviceNotFound(id=id)
 
@@ -222,7 +223,7 @@ class HostingDeviceDBMixin(
 
     def _get_hosting_device_template(self, context, id):
         try:
-            return self._get_by_id(context, hd_models.HostingDeviceTemplate,
+            return db_api.get_by_id(context, hd_models.HostingDeviceTemplate,
                                    id)
         except exc.NoResultFound:
             raise ciscohostingdevicemanager.HostingDeviceTemplateNotFound(

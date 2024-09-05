@@ -22,6 +22,7 @@ from keystoneclient import exceptions as k_exceptions
 from keystoneclient import session
 from keystoneclient.v2_0 import client as k_client
 from keystoneclient.v3 import client
+from neutron_lib.db import model_query as model_query
 from neutron_lib import exceptions as n_exc
 from oslo_config import cfg
 from oslo_log import log as logging
@@ -501,7 +502,7 @@ class HostingDeviceManagerMixin(hosting_devices_db.HostingDeviceDBMixin):
 
     def delete_all_hosting_devices(self, context, force_delete=False):
         """Deletes all hosting devices."""
-        for item in self._get_collection_query(
+        for item in model_query.get_collection_query(
                 context, hd_models.HostingDeviceTemplate):
             self.delete_all_hosting_devices_by_template(
                 context, template=item, force_delete=force_delete)

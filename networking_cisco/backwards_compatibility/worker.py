@@ -12,18 +12,9 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from networking_cisco.backwards_compatibility import neutron_version as nv
+from networking_cisco.backwards_compatibility \
+        import neutron_version as nv  # noqa
 
+from neutron.worker import NeutronBaseWorker as BaseWorker  # noqa
 
-if nv.NEUTRON_VERSION >= nv.NEUTRON_PIKE_VERSION:
-    from neutron_lib.worker import BaseWorker  # noqa
-
-elif nv.NEUTRON_VERSION >= nv.NEUTRON_NEWTON_VERSION:
-    from neutron.worker import NeutronWorker as BaseWorker  # noqa
-
-else:
-    from neutron.worker import NeutronWorker
-
-    class BaseWorker(NeutronWorker):
-        def __init__(self, worker_process_count=None):
-            super(BaseWorker, self).__init__()
+from neutron_lib.worker import BaseWorker  # noqa

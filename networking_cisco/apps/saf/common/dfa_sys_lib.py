@@ -426,7 +426,7 @@ def get_all_run_phy_intf():
         if dev_exist:
             oper_state = is_intf_up(subdir)
             if oper_state is True:
-                    intf_list.append(subdir)
+                intf_list.append(subdir)
         else:
             LOG.info("Dev dir %s does not exist, not physical intf",
                      dev_dir)

@@ -1828,5 +1828,6 @@ def dfa_server():
     except KeyboardInterrupt:
         pass
 
+
 if __name__ == '__main__':
     sys.exit(dfa_server())

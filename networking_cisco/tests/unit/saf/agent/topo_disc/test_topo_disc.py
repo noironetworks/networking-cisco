@@ -121,7 +121,7 @@ class TopoDiscTest(base.BaseTestCase):
 
         This test the case when all TLV compare functions returns False.
         """
-        with mock.patch.object(self.topo_disc, 'get_attr_obj') as attr_obj,\
+        with mock.patch.object(self.topo_disc, 'get_attr_obj') as attr_obj, \
             mock.patch('networking_cisco.apps.saf.agent.topo_disc.'
                        'pub_lldp_api.LldpApi.get_remote_evb_mode'):
             self._set_tlv_params_attr_obj(attr_obj, False)
@@ -134,7 +134,7 @@ class TopoDiscTest(base.BaseTestCase):
 
         This test the case when all TLV compare functions returns True.
         """
-        with mock.patch.object(self.topo_disc, 'get_attr_obj') as attr_obj,\
+        with mock.patch.object(self.topo_disc, 'get_attr_obj') as attr_obj, \
             mock.patch('networking_cisco.apps.saf.agent.topo_disc.'
                        'pub_lldp_api.LldpApi.get_remote_evb_mode'):
             self._set_tlv_params_attr_obj(attr_obj, True)
@@ -147,7 +147,7 @@ class TopoDiscTest(base.BaseTestCase):
 
         This test the case when all TLV compare functions returns True.
         """
-        with mock.patch.object(self.topo_disc, 'get_attr_obj') as attr_obj,\
+        with mock.patch.object(self.topo_disc, 'get_attr_obj') as attr_obj, \
             mock.patch('networking_cisco.apps.saf.agent.topo_disc.'
                        'pub_lldp_api.LldpApi.get_remote_evb_mode'):
             self._set_tlv_params_attr_obj(attr_obj, False)
@@ -356,10 +356,10 @@ class TopoDiscTest(base.BaseTestCase):
                                         update_lldp_status=True):
         """Internal helper function for all period_tast_reset functions. """
         with mock.patch('networking_cisco.apps.saf.agent.topo_disc.'
-                        'pub_lldp_api.LldpApi.get_lldp_tlv'),\
+                        'pub_lldp_api.LldpApi.get_lldp_tlv'), \
             mock.patch.object(
                 self.topo_disc, '_check_bond_interface_change',
-                return_value=bond_interface_change_ret),\
+                return_value=bond_interface_change_ret), \
             mock.patch.object(self.topo_disc, 'cmp_store_tlv_params',
                               return_value=cmp_store_tlv_ret):
             self.topo_disc.cb = mock.MagicMock()
@@ -421,10 +421,10 @@ class TopoDiscTest(base.BaseTestCase):
         """
         topo_send_cnt = 1
         with mock.patch('networking_cisco.apps.saf.agent.topo_disc.'
-                        'pub_lldp_api.LldpApi.get_lldp_tlv'),\
+                        'pub_lldp_api.LldpApi.get_lldp_tlv'), \
             mock.patch.object(
                 self.topo_disc, '_check_bond_interface_change',
-                return_value=False),\
+                return_value=False), \
             mock.patch.object(self.topo_disc, 'cmp_store_tlv_params',
                               return_value=False):
             self.topo_disc.cb = mock.MagicMock()
@@ -442,10 +442,10 @@ class TopoDiscTest(base.BaseTestCase):
         """Test the periodic task when LLDP status is False. """
         topo_send_cnt = 1
         with mock.patch('networking_cisco.apps.saf.agent.topo_disc.'
-                        'pub_lldp_api.LldpApi.get_lldp_tlv'),\
+                        'pub_lldp_api.LldpApi.get_lldp_tlv'), \
             mock.patch.object(
                 self.topo_disc, '_check_bond_interface_change',
-                return_value=False),\
+                return_value=False), \
             mock.patch.object(self.topo_disc, 'cmp_store_tlv_params',
                               return_value=False):
             self.topo_disc.cb = mock.MagicMock()

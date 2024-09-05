@@ -16,7 +16,7 @@
 from oslo_log import log as logging
 import oslo_messaging
 
-from neutron.common import rpc as n_rpc
+from neutron_lib import rpc as n_rpc
 
 from networking_cisco.plugins.cisco.common import (cisco_constants as
                                                    c_constants)

@@ -16,16 +16,11 @@
 # error we only ignore that so that other errors like import order still get
 # caught.
 
-from networking_cisco.backwards_compatibility import neutron_version as nv
+from networking_cisco.backwards_compatibility \
+        import neutron_version as nv  # noqa
 
-if nv.NEUTRON_VERSION >= nv.NEUTRON_OCATA_VERSION:
-    from neutron_lib.api.extensions import *  # noqa
-else:
-    from neutron.api.extensions import *  # noqa
+from neutron_lib.api.extensions import *  # noqa
+from neutron_lib.api import extensions
 
-if nv.NEUTRON_VERSION >= nv.NEUTRON_ROCKY_VERSION:
-    from neutron_lib.api import extensions
-    is_extension_supported = extensions.is_extension_supported
-else:
-    from neutron.common import utils
-    is_extension_supported = utils.is_extension_supported
+
+is_extension_supported = extensions.is_extension_supported

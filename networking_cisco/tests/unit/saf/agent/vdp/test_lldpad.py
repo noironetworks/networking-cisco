@@ -552,7 +552,7 @@ class LldpadDriverTest(base.BaseTestCase):
         """Test for incorrect filter in vlan query function. """
         reply = "Mock reply"
         with mock.patch.object(self.lldpad, 'check_hints',
-                               return_value=[True, None]),\
+                               return_value=[True, None]), \
             mock.patch.object(self.lldpad, 'check_filter_validity',
                               return_value=[False, 'Some failure']):
             result, reason = self.lldpad.get_vlan_from_query_reply(
@@ -564,9 +564,9 @@ class LldpadDriverTest(base.BaseTestCase):
         """Test for incorrect vsiid in vlan query function. """
         reply = "Mock reply"
         with mock.patch.object(self.lldpad, 'check_hints',
-                               return_value=[True, None]),\
+                               return_value=[True, None]), \
             mock.patch.object(self.lldpad, 'check_filter_validity',
-                              return_value=[True, None]),\
+                              return_value=[True, None]), \
             mock.patch.object(self.lldpad, 'crosscheck_query_vsiid_mac',
                               return_value=[False, None]):
             result, reason = self.lldpad.get_vlan_from_query_reply(
@@ -590,9 +590,9 @@ class LldpadDriverTest(base.BaseTestCase):
                  "e9fd0da09ipv4_addr00020l\n")
         expected_reason = vdp_const.format_failure_reason % (reply)
         with mock.patch.object(self.lldpad, 'check_hints',
-                               return_value=[True, None]),\
+                               return_value=[True, None]), \
             mock.patch.object(self.lldpad, 'check_filter_validity',
-                              return_value=[True, None]),\
+                              return_value=[True, None]), \
             mock.patch.object(self.lldpad, 'crosscheck_query_vsiid_mac',
                               return_value=[True, None]):
             result, reason = self.lldpad.get_vlan_from_query_reply(

@@ -16,10 +16,8 @@
 # error we only ignore that so that other errors like import order still get
 # caught.
 
-from networking_cisco.backwards_compatibility import neutron_version as nv
+from networking_cisco.backwards_compatibility \
+        import neutron_version as nv  # noqa
 
-from neutron.common.rpc import *  # noqa
-from neutron.common import rpc
-
-if nv.NEUTRON_VERSION < nv.NEUTRON_ROCKY_VERSION:
-    Connection = rpc.create_connection
+from neutron_lib.rpc import *  # noqa
+from neutron_lib import rpc  # noqa

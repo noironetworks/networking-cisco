@@ -182,7 +182,7 @@ class Asr1kRouterTypeDriverTestCase(
                                     same_tenant=True, same_ext_net=True):
         tenant_id_1 = _uuid()
         tenant_id_2 = tenant_id_1 if same_tenant is True else _uuid()
-        with self.network(tenant_id=tenant_id_1) as n_external_1,\
+        with self.network(tenant_id=tenant_id_1) as n_external_1, \
                 self.network(tenant_id=tenant_id_2) as n_external_2:
             ext_net_1_id = n_external_1['network']['id']
             self._set_net_external(ext_net_1_id)
@@ -264,7 +264,7 @@ class Asr1kRouterTypeDriverTestCase(
                                         same_tenant=True, same_ext_net=True):
         tenant_id_1 = _uuid()
         tenant_id_2 = tenant_id_1 if same_tenant is True else _uuid()
-        with self.network(tenant_id=tenant_id_1) as msn_n_external_1,\
+        with self.network(tenant_id=tenant_id_1) as msn_n_external_1, \
                 self.network(tenant_id=tenant_id_2) as n_external_2:
             msn_ext_net_1_id = msn_n_external_1['network']['id']
             self._set_net_external(msn_ext_net_1_id)
@@ -580,7 +580,7 @@ class Asr1kRouterTypeDriverTestCase(
             ext_gw_2 = {'network_id': ext_net_2_id}
             with self.router(tenant_id=tenant_id_1,
                              external_gateway_info=ext_gw_1,
-                             set_context=set_context) as router1,\
+                             set_context=set_context) as router1, \
                     self.router(name='router2', tenant_id=tenant_id_2,
                                 external_gateway_info=ext_gw_2,
                                 set_context=set_context) as router2:
@@ -678,7 +678,7 @@ class Asr1kRouterTypeDriverTestCase(
             ext_net_ids[ext_net_2_id] = ext_gw_2_subnets
             with self.router(tenant_id=tenant_id_1,
                              external_gateway_info=ext_gw_1,
-                             set_context=set_context) as router1,\
+                             set_context=set_context) as router1, \
                     self.router(name='router2', tenant_id=tenant_id_2,
                                 external_gateway_info=ext_gw_2,
                                 set_context=set_context) as router2:
@@ -883,7 +883,7 @@ class Asr1kRouterTypeDriverTestCase(
             ext_net_ids[ext_net_2_id] = ext_gw_2_subnets
             with self.router(tenant_id=tenant_id_1,
                              external_gateway_info=ext_gw_1,
-                             set_context=set_context) as router1,\
+                             set_context=set_context) as router1, \
                     self.router(name='router2', tenant_id=tenant_id_2,
                                 external_gateway_info=ext_gw_2,
                                 set_context=set_context) as router2:
@@ -1103,7 +1103,7 @@ class L3CfgAgentAsr1kRouterTypeDriverTestCase(
                 self.assertDictEqual(router[ha.DETAILS],
                                      expected_ha[ha.DETAILS])
             else:
-                self.assertTrue(ha.DETAILS not in router)
+                self.assertNotIn(ha.DETAILS, router)
         else:
             self.assertIsNone(router.get(ha.DETAILS))
 

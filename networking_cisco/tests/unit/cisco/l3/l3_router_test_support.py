@@ -27,7 +27,6 @@ from networking_cisco.plugins.cisco.extensions import routerrole
 from networking_cisco.plugins.cisco.extensions import routertype
 
 from neutron.common import test_lib
-from neutron.db import common_db_mixin
 from neutron.extensions import l3
 from neutron.extensions import standardattrdescription
 
@@ -114,7 +113,6 @@ class TestL3RouterBaseExtensionManager(object):
 # A L3 routing service plugin class supporting the routertype and
 # routerhost:hostingdevice extensions
 class TestL3RouterServicePlugin(
-    common_db_mixin.CommonDbMixin,
     routertype_db.RoutertypeDbMixin,
     l3_router_appliance_db.L3RouterApplianceDBMixin,
     # we need the router scheduling db but do not expose the scheduling

@@ -133,8 +133,8 @@ class SubnetInterfacePresent(exceptions.NeutronException):
 
 
 class PortIdForNexusSvi(exceptions.NeutronException):
-        """Port Id specified for Nexus SVI."""
-        message = _('Nexus hardware router gateway only uses Subnet Ids.')
+    """Port Id specified for Nexus SVI."""
+    message = _('Nexus hardware router gateway only uses Subnet Ids.')
 
 
 class PhysnetNotConfigured(exceptions.NeutronException):

@@ -19,6 +19,7 @@ from oslo_utils import timeutils
 import six
 
 from neutron.db import agentschedulers_db
+from neutron_lib.db import model_query as model_query
 
 from networking_cisco._i18n import _
 from networking_cisco import backwards_compatibility as bc
@@ -273,8 +274,8 @@ class CfgAgentSchedulerDbMixin(
         with context.session.begin(subtransactions=True):
             agent_assigned_hd_ids = {}
             filters = {'cfg_agent_id': [cfg_agent_id]}
-            for hd_db in self._get_collection_query(context, HostingDevice,
-                                                    filters=filters):
+            for hd_db in model_query.get_collection_query(context,
+                    HostingDevice, filters=filters):
                 agent_db = self.cfg_agent_scheduler.schedule_hosting_device(
                     self, context, hd_db)
                 LOG.info('Un-assigning hosting device %(hd_id)s from '

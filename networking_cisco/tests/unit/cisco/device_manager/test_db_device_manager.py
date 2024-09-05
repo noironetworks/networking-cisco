@@ -358,18 +358,18 @@ class TestDeviceManagerDBPlugin(
     def test_list_hosting_devices(self):
         with self.hosting_device_template() as hdt:
             hdt_id = hdt['hosting_device_template']['id']
-            with self.port(subnet=self._mgmt_subnet) as mgmt_port1,\
-                    self.port(subnet=self._mgmt_subnet) as mgmt_port2,\
+            with self.port(subnet=self._mgmt_subnet) as mgmt_port1, \
+                    self.port(subnet=self._mgmt_subnet) as mgmt_port2, \
                     self.port(subnet=self._mgmt_subnet) as mgmt_port3:
                 mp1_id = mgmt_port1['port']['id']
                 mp2_id = mgmt_port2['port']['id']
                 mp3_id = mgmt_port3['port']['id']
                 with self.hosting_device(
                         name='hd1', template_id=hdt_id,
-                        management_port_id=mp1_id) as hd1,\
+                        management_port_id=mp1_id) as hd1, \
                         self.hosting_device(
                             name='hd2', template_id=hdt_id,
-                            management_port_id=mp2_id) as hd2,\
+                            management_port_id=mp2_id) as hd2, \
                         self.hosting_device(
                             name='hd3', template_id=hdt_id,
                             management_port_id=mp3_id) as hd3:
@@ -463,8 +463,8 @@ class TestDeviceManagerDBPlugin(
                     self._devmgr.get_cfg_agents_for_hosting_devices = None
                     with mock.patch.object(rpc.client, 'prepare',
                                            return_value=rpc.client) as (
-                            mock_prepare),\
-                        mock.patch.object(rpc.client, 'call') as mock_call,\
+                            mock_prepare), \
+                        mock.patch.object(rpc.client, 'call') as mock_call, \
                         mock.patch.object(
                             self._devmgr,
                             'get_cfg_agents_for_hosting_devices') as agt_mock:
@@ -505,8 +505,8 @@ class TestDeviceManagerDBPlugin(
                     self._devmgr.get_cfg_agents_for_hosting_devices = None
                     with mock.patch.object(rpc.client, 'prepare',
                                            return_value=rpc.client) as (
-                            mock_prepare),\
-                        mock.patch.object(rpc.client, 'call') as mock_call,\
+                            mock_prepare), \
+                        mock.patch.object(rpc.client, 'call') as mock_call, \
                         mock.patch.object(
                             self._devmgr,
                             'get_cfg_agents_for_hosting_devices') as agt_mock:
@@ -602,10 +602,10 @@ class TestDeviceManagerDBPlugin(
     def test_list_hosting_device_templates(self):
         with self.hosting_device_template(name='hdt1',
                                           host_category=VM_CATEGORY,
-                                          image='an_image') as hdt1,\
+                                          image='an_image') as hdt1, \
                 self.hosting_device_template(name='hdt2',
                                              host_category=HW_CATEGORY,
-                                             image='an_image') as hdt2,\
+                                             image='an_image') as hdt2, \
                 self.hosting_device_template(name='hdt3',
                                              host_category=NN_CATEGORY,
                                              image='an_image') as hdt3:
@@ -951,18 +951,18 @@ class TestDeviceManagerDBPlugin(
                      force_delete=True, expected_num_remaining=0):
         auto_delete = auto_delete or [True, False, False, True, True]
         no_delete = no_delete or [True, True, True, True, True]
-        with self.hosting_device_template() as hdt1,\
+        with self.hosting_device_template() as hdt1, \
                 self.hosting_device_template() as hdt2:
             hdt0_id = hdt1['hosting_device_template']['id']
             hdt1_id = hdt2['hosting_device_template']['id']
             with self.port(subnet=self._mgmt_subnet,
-                           no_delete=no_delete[0]) as mgmt_port0,\
+                           no_delete=no_delete[0]) as mgmt_port0, \
                     self.port(subnet=self._mgmt_subnet,
-                              no_delete=no_delete[1]) as mgmt_port1,\
+                              no_delete=no_delete[1]) as mgmt_port1, \
                     self.port(subnet=self._mgmt_subnet,
-                              no_delete=no_delete[2]) as mgmt_port2,\
+                              no_delete=no_delete[2]) as mgmt_port2, \
                     self.port(subnet=self._mgmt_subnet,
-                              no_delete=no_delete[3]) as mgmt_port3,\
+                              no_delete=no_delete[3]) as mgmt_port3, \
                     self.port(subnet=self._mgmt_subnet,
                               no_delete=no_delete[4]) as mgmt_port4:
                 mp0_id = mgmt_port0['port']['id']
@@ -973,46 +973,46 @@ class TestDeviceManagerDBPlugin(
                 with self.hosting_device(
                         device_id='0_hdt0_id', template_id=hdt0_id,
                         management_port_id=mp0_id, auto_delete=auto_delete[0],
-                        no_delete=no_delete[0]),\
+                        no_delete=no_delete[0]), \
                     self.hosting_device(
                         device_id='1_hdt1_id', template_id=hdt1_id,
                         management_port_id=mp1_id, auto_delete=auto_delete[1],
-                        no_delete=no_delete[1]),\
+                        no_delete=no_delete[1]), \
                     self.hosting_device(
                         device_id='2_hdt0_id', template_id=hdt0_id,
                         management_port_id=mp2_id, auto_delete=auto_delete[2],
-                        no_delete=no_delete[2]),\
+                        no_delete=no_delete[2]), \
                     self.hosting_device(
                         device_id='3_hdt0_id', template_id=hdt0_id,
                         management_port_id=mp3_id,
                         auto_delete=auto_delete[3],
-                        no_delete=no_delete[3]),\
+                        no_delete=no_delete[3]), \
                     self.hosting_device(
                         device_id='4_hdt1_id', template_id=hdt1_id,
                         management_port_id=mp4_id, auto_delete=auto_delete[4],
                         no_delete=no_delete[4]):
-                        context = self._get_test_context(is_admin=True)
-                        if to_delete is None:
-                            self._devmgr.delete_all_hosting_devices(
-                                context, force_delete)
-                        elif to_delete == 0:
-                            template = (
-                                self._devmgr._get_hosting_device_template(
-                                    context, hdt0_id))
-                            (self._devmgr.
-                                delete_all_hosting_devices_by_template(
-                                    context, template, force_delete))
-                        else:
-                            template = (
-                                self._devmgr._get_hosting_device_template(
-                                    context, hdt1_id))
-                            (self._devmgr.
-                                delete_all_hosting_devices_by_template(
-                                    context, template, force_delete))
-                        result_hds = self._list(
-                            'hosting_devices')['hosting_devices']
-                        self.assertEqual(expected_num_remaining,
-                                         len(result_hds))
+                    context = self._get_test_context(is_admin=True)
+                    if to_delete is None:
+                        self._devmgr.delete_all_hosting_devices(
+                            context, force_delete)
+                    elif to_delete == 0:
+                        template = (
+                            self._devmgr._get_hosting_device_template(
+                                context, hdt0_id))
+                        (self._devmgr.
+                            delete_all_hosting_devices_by_template(
+                                context, template, force_delete))
+                    else:
+                        template = (
+                            self._devmgr._get_hosting_device_template(
+                                context, hdt1_id))
+                        (self._devmgr.
+                            delete_all_hosting_devices_by_template(
+                                context, template, force_delete))
+                    result_hds = self._list(
+                        'hosting_devices')['hosting_devices']
+                    self.assertEqual(expected_num_remaining,
+                                     len(result_hds))
 
     # hosting device deletion tests
     def test_delete_all_hosting_devices(self):
@@ -1091,15 +1091,15 @@ class TestDeviceManagerDBPlugin(
             credentials = {'user_name': 'bob', 'password': 'tooEasy'}
             with mock.patch.dict(
                     self.plugin._credentials,
-                    {creds_id: credentials}),\
+                    {creds_id: credentials}), \
                     self.port(subnet=self._mgmt_subnet,
-                              no_delete=True) as mgmt_port1,\
+                              no_delete=True) as mgmt_port1, \
                     self.port(subnet=self._mgmt_subnet,
                               no_delete=True) as mgmt_port2:
                 with self.hosting_device(
                         template_id=hdt_id,
                         management_port_id=mgmt_port1['port']['id'],
-                        auto_delete=True, no_delete=True),\
+                        auto_delete=True, no_delete=True), \
                      self.hosting_device(
                          template_id=hdt_id,
                          management_port_id=mgmt_port2['port']['id'],

@@ -15,7 +15,6 @@
 import contextlib
 import mock
 import os
-import unittest
 
 from neutron.db import agents_db
 from neutron.db import dns_db
@@ -23,6 +22,7 @@ from neutron.extensions import providernet as pnet
 from neutron.tests.unit.db import test_db_base_plugin_v2
 from neutron.tests.unit.extensions import test_extraroute
 from neutron.tests.unit.extensions import test_l3
+from neutron_lib.db import api as db_api
 from oslo_config import cfg
 from oslo_db import exception as db_exc
 from oslo_utils import uuidutils
@@ -37,7 +37,6 @@ from networking_cisco.backwards_compatibility import (constants as
 from networking_cisco.backwards_compatibility import (exnet_const as
     external_net)
 from networking_cisco.backwards_compatibility import attributes
-from networking_cisco.backwards_compatibility import cb_registry as registry
 from networking_cisco.backwards_compatibility import dns_const
 from networking_cisco.backwards_compatibility import extraroute_const
 from networking_cisco.backwards_compatibility import l3_const
@@ -56,9 +55,6 @@ from networking_cisco.tests.unit.cisco.l3 import test_db_routertype
 
 _uuid = uuidutils.generate_uuid
 
-
-NEUTRON_VERSION = bc.NEUTRON_VERSION
-NEUTRON_NEWTON_VERSION = bc.NEUTRON_NEWTON_VERSION
 
 CORE_PLUGIN_KLASS = device_manager_test_support.CORE_PLUGIN_KLASS
 L3_PLUGIN_KLASS = (
@@ -117,7 +113,7 @@ class TestNoL3NatPlugin(test_l3.TestNoL3NatPlugin,
         if process_extensions:
             self._apply_dict_extend_functions(
                 attributes.NETWORKS, res, network)
-        return self._fields(res, fields)
+        return db_api.resource_fields(res, fields)
 
     def get_network_profiles(self, context, filters=None, fields=None):
         return [{'id': "1234"}]
@@ -192,8 +188,6 @@ class L3RouterApplianceTestCaseBase(
 
         self.setup_notification_driver()
 
-        if NEUTRON_VERSION.version[0] <= NEUTRON_NEWTON_VERSION.version[0]:
-            cfg.CONF.set_override('allow_sorting', True)
         self._define_keystone_authtoken()
 
         cfg.CONF.register_opt(
@@ -256,13 +250,6 @@ class L3RouterApplianceRouterTypeDriverTestCase(test_l3.L3NatTestCaseMixin,
         # Remove any dict extend functions that our plugin does not support
         _dict_extend_functions = l3_router_appliance_db.DICT_EXTEND_FUNCTIONS
         _dict_extend_functions.append('_extend_router_dict_extraroute')
-        if bc.NEUTRON_VERSION < bc.NEUTRON_PIKE_VERSION:
-            for func in self.plugin._dict_extend_functions[
-                    l3_const.ROUTERS][:]:
-                if func in l3_router_appliance_db.DICT_EXTEND_FUNCTIONS:
-                    continue
-                self.plugin._dict_extend_functions[
-                        l3_const.ROUTERS].remove(func)
 
     def test_schedule_router_pre_and_post_commit(self):
         hdts = self._list(
@@ -270,19 +257,19 @@ class L3RouterApplianceRouterTypeDriverTestCase(test_l3.L3NatTestCaseMixin,
             query_params='name=%s' % test_db_device_manager.HW_TEMPLATE_NAME)
         hdt_id = hdts['hosting_device_templates'][0]['id']
         with mock.patch.object(
-                self.l3_plugin, '_refresh_router_backlog', False),\
+                self.l3_plugin, '_refresh_router_backlog', False), \
                 mock.patch('networking_cisco.plugins.cisco.l3.drivers.'
                            'noop_routertype_driver.NoopL3RouterDriver.'
-                           'schedule_router_precommit') as pre_mock,\
+                           'schedule_router_precommit') as pre_mock, \
                 mock.patch('networking_cisco.plugins.cisco.l3.drivers.'
                        'noop_routertype_driver.NoopL3RouterDriver.'
-                       'schedule_router_postcommit') as post_mock,\
+                       'schedule_router_postcommit') as post_mock, \
                 mock.patch('networking_cisco.plugins.cisco.db.l3.'
                            'l3_router_appliance_db.L3RouterApplianceDBMixin.'
-                           '_get_router_type_scheduler') as scheduler_mock,\
+                           '_get_router_type_scheduler') as scheduler_mock, \
                 mock.patch.object(
                     self.core_plugin,
-                    'acquire_hosting_device_slots') as acquire_mock,\
+                    'acquire_hosting_device_slots') as acquire_mock, \
                 self.hosting_device(hdt_id) as hosting_device:
             hd = hosting_device['hosting_device']
             scheduler_mock.return_value.schedule_router.return_value = (
@@ -296,15 +283,15 @@ class L3RouterApplianceRouterTypeDriverTestCase(test_l3.L3NatTestCaseMixin,
     def test_unschedule_router_pre_and_post_commit(self):
         with mock.patch('networking_cisco.plugins.cisco.l3.drivers.'
                         'noop_routertype_driver.NoopL3RouterDriver.'
-                        'unschedule_router_precommit') as pre_mock,\
+                        'unschedule_router_precommit') as pre_mock, \
                 mock.patch('networking_cisco.plugins.cisco.l3.drivers.'
                            'noop_routertype_driver.NoopL3RouterDriver.'
-                           'unschedule_router_postcommit') as post_mock,\
+                           'unschedule_router_postcommit') as post_mock, \
                 mock.patch('networking_cisco.plugins.cisco.db.l3.'
                            'l3_router_appliance_db.L3RouterApplianceDBMixin.'
-                           '_get_router_type_scheduler') as scheduler_mock,\
+                           '_get_router_type_scheduler') as scheduler_mock, \
                 mock.patch.object(self.l3_plugin, '_get_effective_slot_need',
-                                  return_value=5),\
+                                  return_value=5), \
                 mock.patch.object(self.core_plugin,
                                   'release_hosting_device_slots') as (
                     release_mock):
@@ -452,7 +439,7 @@ class L3RouterApplianceRouterTypeDriverTestCase(test_l3.L3NatTestCaseMixin,
             ext_net_id = s1['network_id']
             self._set_net_external(ext_net_id)
             with self.router(
-                    external_gateway_info={'network_id': ext_net_id}) as r,\
+                    external_gateway_info={'network_id': ext_net_id}) as r, \
                     self.port(s) as p:
                 self._router_interface_action('add', r['router']['id'], None,
                                               p['port']['id'])
@@ -474,7 +461,7 @@ class L3RouterApplianceRouterTypeDriverTestCase(test_l3.L3NatTestCaseMixin,
             ext_net_id = s1['network_id']
             self._set_net_external(ext_net_id)
             with self.router(
-                    external_gateway_info={'network_id': ext_net_id}) as r,\
+                    external_gateway_info={'network_id': ext_net_id}) as r, \
                     self.port(s) as p:
                 self._router_interface_action('add', r['router']['id'], None,
                                               p['port']['id'])
@@ -499,7 +486,7 @@ class L3RouterApplianceRouterTypeDriverTestCase(test_l3.L3NatTestCaseMixin,
             ext_net_id = s1['network_id']
             self._set_net_external(ext_net_id)
             with self.router(
-                    external_gateway_info={'network_id': ext_net_id}) as r,\
+                    external_gateway_info={'network_id': ext_net_id}) as r, \
                     self.port(s) as p:
                 self._router_interface_action('add', r['router']['id'], None,
                                               p['port']['id'])
@@ -529,7 +516,7 @@ class L3RouterApplianceRouterTypeDriverTestCase(test_l3.L3NatTestCaseMixin,
             ext_net_id = s1['network_id']
             self._set_net_external(ext_net_id)
             with self.router(
-                    external_gateway_info={'network_id': ext_net_id}) as r,\
+                    external_gateway_info={'network_id': ext_net_id}) as r, \
                     self.port(s) as p:
                 self._router_interface_action('add', r['router']['id'], None,
                                               p['port']['id'])
@@ -591,13 +578,13 @@ class L3RouterApplianceNamespaceTestCase(
             1)
 
     def _test_rest_api_operations_denied_for_plugin_managed_router(
-            self, func, *args, **kwargs):
-            with mock.patch.object(self.l3_plugin, '_get_router_binding_info',
-                                   return_value=lambda: None) as m:
-                # for now operations on routers of any role != None are not
-                # permitted for anyone but the l3plugin itself
-                setattr(m.return_value, 'role', 'some_role')
-                func(*args, **kwargs)
+        self, func, *args, **kwargs):
+        with mock.patch.object(self.l3_plugin, '_get_router_binding_info',
+                               return_value=lambda: None) as m:
+            # for now operations on routers of any role != None are not
+            # permitted for anyone but the l3plugin itself
+            setattr(m.return_value, 'role', 'some_role')
+            func(*args, **kwargs)
 
     def test_router_update_denied_for_plugin_managed_router(self):
         with self.router() as router:
@@ -638,33 +625,6 @@ class L3RouterApplianceVMTestCase(L3RouterApplianceNamespaceTestCase):
 
         self._mock_get_routertype_scheduler_always_none()
 
-    @unittest.skipIf(bc.NEUTRON_VERSION < bc.NEUTRON_NEWTON_VERSION,
-                     "Test not applicable prior to Newton")
-    def test_create_router_gateway_fails_nested_delete_router_failed(self):
-        (super(L3RouterApplianceNamespaceTestCase, self).
-         test_create_router_gateway_fails_nested_delete_router_failed())
-        # must disable the UT patch for 'delete_router' so that our router
-        # type cleanup, which deletes any remaining routers, can proceed
-        if bc.NEUTRON_VERSION < bc.NEUTRON_PIKE_VERSION:
-            # be lazy and stop all
-            mock.patch.stopall()
-        else:
-            # In pike, during general cleanup, there is an explicit call to
-            # stop one of the other patches, so cannot do stop all here as
-            # that trigger an exception during that general cleanup.
-            # Need a patch here for the sole purpose of determining the
-            # existing patches, so patching this very function.
-            dummy_patch = mock.patch(
-                'L3RouterApplianceVMTestCase.'
-                'test_create_router_gateway_fails_nested_delete_router_failed')
-            delete_router_patch = None
-            for p in dummy_patch._active_patches:
-                if p.attribute == 'delete_router':
-                    delete_router_patch = p
-                    break
-            if delete_router_patch:
-                delete_router_patch.stop()
-
 
 class L3AgentRouterApplianceTestCase(L3RouterApplianceTestCaseBase,
                                      test_l3.L3AgentDbTestCaseBase):
@@ -678,14 +638,6 @@ class L3AgentRouterApplianceTestCase(L3RouterApplianceTestCaseBase,
             ext_mgr=ext_mgr)
         # UTs in parent class expects self.plugin to refer to l3 plugin
         self.plugin = self.l3_plugin
-
-    # Overloaded test function that needs to be modified to run
-    @unittest.skipIf(bc.NEUTRON_VERSION < bc.NEUTRON_NEWTON_VERSION,
-                     "Test not applicable prior to Newton")
-    def test_router_delete_event_exception_preserved(self):
-        super(L3AgentRouterApplianceTestCase,
-              self).test_router_delete_event_exception_preserved()
-        registry.clear()
 
     def _test_notify_op_agent(self, target_func, *args):
         kargs = [item for item in args]
@@ -711,14 +663,6 @@ class L3CfgAgentRouterApplianceTestCase(L3RouterApplianceTestCaseBase,
         self.l3_plugin.get_sync_data = self.orig_get_sync_data
         super(L3CfgAgentRouterApplianceTestCase, self).tearDown()
 
-    # Overloaded test function that needs to be modified to run
-    @unittest.skipIf(bc.NEUTRON_VERSION < bc.NEUTRON_NEWTON_VERSION,
-                     "Test not applicable prior to Newton")
-    def test_router_delete_event_exception_preserved(self):
-        super(L3CfgAgentRouterApplianceTestCase,
-              self).test_router_delete_event_exception_preserved()
-        registry.clear()
-
     def _test_notify_op_agent(self, target_func, *args):
         kargs = [item for item in args]
         kargs.append(self._l3_cfg_agent_mock)
@@ -730,16 +674,16 @@ class L3CfgAgentRouterApplianceTestCase(L3RouterApplianceTestCaseBase,
             ext_net_id = ext_s['subnet']['network_id']
             self._set_net_external(ext_net_id)
             with self.router(
-                    external_gateway_info={'network_id': ext_net_id}) as r,\
+                    external_gateway_info={'network_id': ext_net_id}) as r, \
                     self.port(s) as p:
                 self._router_interface_action('add', r['router']['id'], None,
                                               p['port']['id'])
                 with mock.patch.object(
                         self.l3_plugin,
-                        'add_type_and_hosting_device_info') as m1,\
+                        'add_type_and_hosting_device_info') as m1, \
                         mock.patch.object(
                             self.l3_plugin,
-                            '_populate_hosting_info_for_port') as m2,\
+                            '_populate_hosting_info_for_port') as m2, \
                         mock.patch.object(
                             self._core_plugin,
                             'get_hosting_device_plugging_driver'):
@@ -763,10 +707,10 @@ class L3CfgAgentRouterApplianceTestCase(L3RouterApplianceTestCaseBase,
                                               p2['port']['id'])
                 with mock.patch.object(
                         self.l3_plugin,
-                        'add_type_and_hosting_device_info') as m1,\
+                        'add_type_and_hosting_device_info') as m1, \
                         mock.patch.object(
                             self.l3_plugin,
-                            '_populate_hosting_info_for_port') as m2,\
+                            '_populate_hosting_info_for_port') as m2, \
                         mock.patch.object(
                             self._core_plugin,
                             'get_hosting_device_plugging_driver'):

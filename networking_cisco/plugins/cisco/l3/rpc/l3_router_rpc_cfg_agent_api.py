@@ -16,7 +16,7 @@
 from oslo_log import log as logging
 import oslo_messaging
 
-from neutron.common import rpc as n_rpc
+from neutron_lib import rpc as n_rpc
 
 from networking_cisco import backwards_compatibility as bc
 from networking_cisco.backwards_compatibility import extensions

@@ -472,24 +472,24 @@ def _lookup_one_host_mapping(session=None, **bfilter):
 
 
 def get_all_host_mappings():
-    return(_lookup_all_host_mappings())
+    return (_lookup_all_host_mappings())
 
 
 def get_host_mappings(host_id):
-    return(_lookup_all_host_mappings(host_id=host_id))
+    return (_lookup_all_host_mappings(host_id=host_id))
 
 
 def get_switch_host_mappings(switch_ip):
-    return(_lookup_all_host_mappings(switch_ip=switch_ip))
+    return (_lookup_all_host_mappings(switch_ip=switch_ip))
 
 
 def get_switch_and_host_mappings(host_id, switch_ip):
-    return(_lookup_all_host_mappings(
+    return (_lookup_all_host_mappings(
         host_id=host_id, switch_ip=switch_ip))
 
 
 def get_switch_if_host_mappings(switch_ip, if_id):
-    return(_lookup_all_host_mappings(switch_ip=switch_ip,
+    return (_lookup_all_host_mappings(switch_ip=switch_ip,
                                      if_id=if_id))
 
 
@@ -681,19 +681,19 @@ def get_all_switch_vpc_allocs(switch_ip):
 
 
 def get_switch_vpc_count_min_max(switch_ip):
-    return(_lookup_vpc_count_min_max(switch_ip=switch_ip))
+    return (_lookup_vpc_count_min_max(switch_ip=switch_ip))
 
 
 def get_active_switch_vpc_allocs(switch_ip):
-    return(_lookup_all_vpc_allocs(switch_ip=switch_ip, active=True))
+    return (_lookup_all_vpc_allocs(switch_ip=switch_ip, active=True))
 
 
 def get_free_switch_vpc_allocs(switch_ip):
-    return(_lookup_all_vpc_allocs(switch_ip=switch_ip, active=False))
+    return (_lookup_all_vpc_allocs(switch_ip=switch_ip, active=False))
 
 
 def get_switch_vpc_alloc(switch_ip, vpc_id):
-    return(_lookup_one_vpc_allocs(switch_ip=switch_ip, vpc_id=vpc_id))
+    return (_lookup_one_vpc_allocs(switch_ip=switch_ip, vpc_id=vpc_id))
 
 
 def init_vpc_entries(nexus_ip, vpc_list):

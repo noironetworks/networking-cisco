@@ -34,7 +34,7 @@ class TestCiscoNexusDb(testlib_api.SqlTestCase):
     def _npb_test_obj(self, pnum, vnum, vni=0, switch='10.9.8.7',
                       instance=None, channel_group=0, is_native_vlan=False):
         """Creates a Nexus port binding test object from a pair of numbers."""
-        if pnum is 'router':
+        if pnum == 'router':
             port = pnum
         else:
             port = '1/%s' % pnum

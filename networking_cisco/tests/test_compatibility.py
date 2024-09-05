@@ -13,17 +13,11 @@
 #    under the License.
 
 
-from networking_cisco import backwards_compatibility as bc
+from networking_cisco import backwards_compatibility as bc  # noqa
+
+from neutron.tests.unit import testlib_api
 
 
-if bc.NEUTRON_VERSION < bc.NEUTRON_NEWTON_VERSION:
-    from neutron.tests.common import base
-
-    class MySQLTestCase(base.MySQLTestCase):
-        pass
-else:
-    from neutron.tests.unit import testlib_api
-
-    class MySQLTestCase(testlib_api.MySQLTestCaseMixin,
-                        testlib_api.SqlTestCaseLight):
-        pass
+class MySQLTestCase(testlib_api.MySQLTestCaseMixin,
+                    testlib_api.SqlTestCaseLight):
+    pass

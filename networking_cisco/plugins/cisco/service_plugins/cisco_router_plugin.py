@@ -14,7 +14,6 @@
 
 from neutron.api.rpc.agentnotifiers import l3_rpc_agent_api
 from neutron.api.rpc.handlers import l3_rpc
-from neutron.db import common_db_mixin
 from neutron.db import dns_db
 #from neutron.db import l3_gwmode_db
 from oslo_config import cfg
@@ -40,8 +39,7 @@ from networking_cisco.plugins.cisco.l3.rpc import (
 from networking_cisco.plugins.cisco.l3.rpc import l3_router_rpc_cfg_agent_api
 
 
-class CiscoRouterPlugin(common_db_mixin.CommonDbMixin,
-                        routertype_db.RoutertypeDbMixin,
+class CiscoRouterPlugin(routertype_db.RoutertypeDbMixin,
                         ha_db.HA_db_mixin,
                         l3_router_appliance_db.L3RouterApplianceDBMixin,
                         #l3_gwmode_db.L3_NAT_db_mixin,

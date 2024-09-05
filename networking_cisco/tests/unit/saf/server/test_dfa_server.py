@@ -582,10 +582,10 @@ class TestDFAServer(base.BaseTestCase):
         host = 'host1'
         interface = 'eth2'
         with mock.patch.object(self.rpcb, 'is_mand_arg_present',
-                               return_value=True),\
-            mock.patch('oslo_serialization.jsonutils.loads') as jsut,\
+                               return_value=True), \
+            mock.patch('oslo_serialization.jsonutils.loads') as jsut, \
             mock.patch.object(self.rpcb.obj.topology_db,
-                              'add_update_topology_db') as add_upd_mock,\
+                              'add_update_topology_db') as add_upd_mock, \
             mock.patch.object(self.rpcb.obj.topology_db, 'query_topology_db',
                               return_value=[{}]):
             jsut.return_value = {'host': host, 'protocol_interface': interface}
@@ -604,10 +604,10 @@ class TestDFAServer(base.BaseTestCase):
         host = 'host1'
         interface = 'eth2'
         with mock.patch.object(self.rpcb, 'is_mand_arg_present',
-                               return_value=False),\
-            mock.patch('oslo_serialization.jsonutils.loads') as jsut,\
+                               return_value=False), \
+            mock.patch('oslo_serialization.jsonutils.loads') as jsut, \
             mock.patch.object(self.rpcb.obj.topology_db,
-                              'delete_topology_entry') as del_upd_mock,\
+                              'delete_topology_entry') as del_upd_mock, \
             mock.patch.object(self.rpcb.obj.topology_db, 'query_topology_db',
                               return_value=[{}]):
             jsut.return_value = {'host': host, 'protocol_interface': interface}
@@ -625,12 +625,12 @@ class TestDFAServer(base.BaseTestCase):
         host = 'host1'
         interface = 'eth2'
         with mock.patch.object(self.rpcb, 'is_mand_arg_present',
-                               return_value=True),\
+                               return_value=True), \
             mock.patch('networking_cisco.apps.saf.common.utils.'
-                       'utc_time') as utc_mock,\
-            mock.patch('oslo_serialization.jsonutils.loads') as jsut,\
+                       'utc_time') as utc_mock, \
+            mock.patch('oslo_serialization.jsonutils.loads') as jsut, \
             mock.patch.object(self.rpcb.obj.topology_db,
-                              'add_update_topology_db') as add_upd_mock,\
+                              'add_update_topology_db') as add_upd_mock, \
             mock.patch.object(self.rpcb.obj.topology_db, 'query_topology_db',
                               return_value=[]):
             jsut.return_value = {'host': host, 'protocol_interface': interface}
@@ -650,14 +650,14 @@ class TestDFAServer(base.BaseTestCase):
         host = 'host1'
         interface = 'eth2'
         with mock.patch.object(self.rpcb, 'is_mand_arg_present',
-                               return_value=False),\
+                               return_value=False), \
             mock.patch('networking_cisco.apps.saf.common.utils.'
-                       'utc_time') as utc_mock,\
-            mock.patch('oslo_serialization.jsonutils.loads') as jsut,\
+                       'utc_time') as utc_mock, \
+            mock.patch('oslo_serialization.jsonutils.loads') as jsut, \
             mock.patch.object(self.rpcb.obj.topology_db,
-                              'add_update_topology_db') as add_upd_mock,\
+                              'add_update_topology_db') as add_upd_mock, \
             mock.patch.object(self.rpcb.obj.topology_db, 'query_topology_db',
-                              return_value=[]),\
+                              return_value=[]), \
             mock.patch.object(self.rpcb.obj.topology_db,
                               'delete_topology_entry') as del_upd_mock:
             jsut.return_value = {'host': host, 'protocol_interface': interface}
@@ -676,14 +676,14 @@ class TestDFAServer(base.BaseTestCase):
         host = 'host1'
         interface = 'eth2'
         with mock.patch.object(self.rpcb, 'is_mand_arg_present',
-                               return_value=False),\
+                               return_value=False), \
             mock.patch('networking_cisco.apps.saf.common.utils.'
-                       'utc_time') as utc_mock,\
-            mock.patch('oslo_serialization.jsonutils.loads') as jsut,\
+                       'utc_time') as utc_mock, \
+            mock.patch('oslo_serialization.jsonutils.loads') as jsut, \
             mock.patch.object(self.rpcb.obj.topology_db,
-                              'add_update_topology_db') as add_upd_mock,\
+                              'add_update_topology_db') as add_upd_mock, \
             mock.patch.object(self.rpcb.obj.topology_db, 'query_topology_db',
-                              return_value=None),\
+                              return_value=None), \
             mock.patch.object(self.rpcb.obj.topology_db,
                               'delete_topology_entry') as del_upd_mock:
             jsut.return_value = {'host': host, 'protocol_interface': interface}

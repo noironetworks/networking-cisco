@@ -20,6 +20,9 @@ from oslo_utils import uuidutils
 from sqlalchemy import exc as sql_exc
 from sqlalchemy.orm import exc
 
+from neutron_lib.db import api as db_api
+from neutron_lib.db import model_query as model_query
+
 from networking_cisco.plugins.cisco.db.l3 import l3_models
 import networking_cisco.plugins.cisco.extensions.routertype as routertype
 
@@ -84,12 +87,12 @@ class RoutertypeDbMixin(routertype.RoutertypePluginBase):
                         sorts=None, limit=None, marker=None,
                         page_reverse=False):
         LOG.debug("get_routertypes() called")
-        return self._get_collection(context, l3_models.RouterType,
-                                    self._make_routertype_dict,
-                                    filters=filters, fields=fields,
-                                    sorts=sorts, limit=limit,
-                                    marker_obj=marker,
-                                    page_reverse=page_reverse)
+        return model_query.get_collection(context, l3_models.RouterType,
+                                          self._make_routertype_dict,
+                                          filters=filters, fields=fields,
+                                          sorts=sorts, limit=limit,
+                                          marker_obj=marker,
+                                          page_reverse=page_reverse)
 
     def get_routertype_by_id_name(self, context, id_or_name):
         return self._make_routertype_dict(
@@ -124,7 +127,7 @@ class RoutertypeDbMixin(routertype.RoutertypePluginBase):
 
     def _get_routertype(self, context, id):
         try:
-            return self._get_by_id(context, l3_models.RouterType, id)
+            return db_api.get_by_id(context, l3_models.RouterType, id)
         except exc.NoResultFound:
             raise routertype.RouterTypeNotFound(id=id)
 
@@ -142,7 +145,7 @@ class RoutertypeDbMixin(routertype.RoutertypePluginBase):
                'cfg_agent_service_helper': routertype[
                    'cfg_agent_service_helper'],
                'cfg_agent_driver': routertype['cfg_agent_driver']}
-        return self._fields(res, fields)
+        return db_api.resource_fields(res, fields)
 
     def _get_id(self, res):
         uuid = res.get('id')

@@ -804,7 +804,7 @@ class DfaDBMixin(object):
                     router_net_id=netid).one()
             return net
         except orm_exc.NoResultFound:
-            LOG.info('Network %(segid)s does not exist' %
+            LOG.info('Network %(netid)s does not exist' %
                      ({'netid': netid}))
         except orm_exc.MultipleResultsFound:
             LOG.error("More than one enty found for netid-id %(id)s.",
@@ -836,7 +836,7 @@ class DfaDBMixin(object):
                 fw = session.query(DfaFwInfo).filter_by(fw_id=fw_id).first()
                 fw_dict = self.conv_db_dict(fw)
         except orm_exc.NoResultFound:
-            LOG.info('fw %(fwid)s does not exist' % ({'fw_id': fw_id}))
+            LOG.info('fw %(fw_id)s does not exist' % ({'fw_id': fw_id}))
         except orm_exc.MultipleResultsFound:
             LOG.error("More than one enty found for fwid-id %(id)s.",
                       ({'id': fw_id}))

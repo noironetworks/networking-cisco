@@ -574,7 +574,7 @@ class VdpMgr(object):
             ret = self.static_uplink_detect(self.veth_intf)
         else:
             ret = uplink_det.detect_uplink(self.veth_intf)
-        if ret is 'down':
+        if ret == 'down':
             if self.phy_uplink is None:
                 LOG.error("Wrong status down")
                 return
@@ -600,7 +600,7 @@ class VdpMgr(object):
                 return
             # Call API to set the uplink as "" Uplink not discovered yet
             self.save_uplink(fail_reason=constants.uplink_undiscovered_reason)
-        elif ret is 'normal':
+        elif ret == 'normal':
             if self.veth_intf is None:
                 LOG.error("Wrong status Normal")
                 return

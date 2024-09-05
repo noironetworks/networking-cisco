@@ -198,7 +198,7 @@ class NativeFirewallTest(base_test.BaseTestCase):
         vm_vdp_data_in = self._get_vm_vdp_data(status, self.net_id,
                                                self.segmentation_id,
                                                'in', msg)
-        with mock.patch.object(self.native_fw.que_obj, 'put') as que_put,\
+        with mock.patch.object(self.native_fw.que_obj, 'put') as que_put, \
             mock.patch.object(self.native_fw.os_helper,
                               'get_router_port_subnet',
                               return_value=port_data):
@@ -235,10 +235,10 @@ class NativeFirewallTest(base_test.BaseTestCase):
         subnet_lst = set()
         subnet_lst.add(self.subnet_id)
         subnet_lst.add(self.out_subnet_id)
-        with mock.patch.object(self.native_fw.que_obj, 'put') as que_put,\
+        with mock.patch.object(self.native_fw.que_obj, 'put') as que_put, \
             mock.patch.object(self.native_fw.os_helper,
                               'get_router_port_subnet',
-                              return_value=None),\
+                              return_value=None), \
             mock.patch.object(self.native_fw.os_helper,
                               'delete_intf_router',
                               return_value=True) as del_intf_rtr:
@@ -286,7 +286,7 @@ class NativeFirewallTest(base_test.BaseTestCase):
         vm_vdp_data_out = self._get_vm_vdp_data(status, self.out_net_id,
                                                 self.out_segmentation_id,
                                                 'out', msg)
-        with mock.patch.object(self.native_fw.que_obj, 'put') as que_put,\
+        with mock.patch.object(self.native_fw.que_obj, 'put') as que_put, \
             mock.patch.object(self.native_fw.os_helper,
                               'get_router_port_subnet',
                               return_value=port_data):
@@ -324,10 +324,10 @@ class NativeFirewallTest(base_test.BaseTestCase):
         subnet_lst = set()
         subnet_lst.add(self.subnet_id)
         subnet_lst.add(self.out_subnet_id)
-        with mock.patch.object(self.native_fw.que_obj, 'put') as que_put,\
+        with mock.patch.object(self.native_fw.que_obj, 'put') as que_put, \
             mock.patch.object(self.native_fw.os_helper,
                               'get_router_port_subnet',
-                              return_value=None),\
+                              return_value=None), \
             mock.patch.object(self.native_fw.os_helper,
                               'delete_intf_router',
                               return_value=True) as del_intf_rtr:
@@ -407,7 +407,7 @@ class NativeFirewallTest(base_test.BaseTestCase):
         subnet_lst.add(self.out_subnet_id)
         with mock.patch.object(self.native_fw.os_helper,
                                'program_rtr_all_nwk_next_hop',
-                               return_value=False) as prog_rtr_all_nwk,\
+                               return_value=False) as prog_rtr_all_nwk, \
             mock.patch.object(self.native_fw.os_helper,
                               'delete_intf_router',
                               return_value=True) as del_intf_rtr:
@@ -486,7 +486,7 @@ class NativeFirewallTest(base_test.BaseTestCase):
         subnet_lst.add(self.out_subnet_id)
         with mock.patch.object(self.native_fw.os_helper,
                                'program_rtr_default_gw',
-                               return_value=False) as prog_def_gw,\
+                               return_value=False) as prog_def_gw, \
             mock.patch.object(self.native_fw.os_helper,
                               'delete_intf_router',
                               return_value=True) as del_intf_rtr:
@@ -527,7 +527,7 @@ class NativeFirewallTest(base_test.BaseTestCase):
         """Test for updating the DCNM partition's static route. """
         with mock.patch.object(self.native_fw.os_helper,
                                'get_subnet_nwk_excl',
-                               return_value=[STATIC_SUB]),\
+                               return_value=[STATIC_SUB]), \
             mock.patch.object(self.native_fw.dcnm_obj,
                               'update_partition_static_route',
                               return_value=True) as upd_part:
@@ -560,10 +560,10 @@ class NativeFirewallTest(base_test.BaseTestCase):
         subnet_lst.add(self.out_subnet_id)
         with mock.patch.object(self.native_fw.os_helper,
                                'get_subnet_nwk_excl',
-                               return_value=[STATIC_SUB]),\
+                               return_value=[STATIC_SUB]), \
             mock.patch.object(self.native_fw.dcnm_obj,
                               'update_partition_static_route',
-                              return_value=False) as upd_part,\
+                              return_value=False) as upd_part, \
             mock.patch.object(self.native_fw.os_helper,
                               'delete_intf_router',
                               return_value=True) as del_intf_rtr:
@@ -618,22 +618,22 @@ class NativeFirewallTest(base_test.BaseTestCase):
                                                 self.out_segmentation_id,
                                                 'out', 'service.vnic.create')
         with mock.patch.object(self.native_fw.os_helper, 'add_intf_router',
-                               return_value=True) as add_intf_rtr,\
+                               return_value=True) as add_intf_rtr, \
                 mock.patch.object(self.native_fw.os_helper,
                                   'get_subnet_nwk_excl',
-                                  return_value=[STATIC_SUB]),\
+                                  return_value=[STATIC_SUB]), \
                 mock.patch.object(self.native_fw.dcnm_obj,
                                   'update_partition_static_route',
-                                  return_value=True) as upd_part,\
+                                  return_value=True) as upd_part, \
                 mock.patch.object(self.native_fw.os_helper,
                                   'program_rtr_default_gw',
-                                  return_value=True) as prog_def_gw,\
+                                  return_value=True) as prog_def_gw, \
                 mock.patch.object(self.native_fw.os_helper,
                                   'program_rtr_all_nwk_next_hop',
-                                  return_value=True) as prog_rtr_all_nwk,\
+                                  return_value=True) as prog_rtr_all_nwk, \
                 mock.patch.object(self.native_fw.os_helper,
                                   'get_router_port_subnet',
-                                  return_value=port_data),\
+                                  return_value=port_data), \
                 mock.patch.object(self.native_fw.que_obj, 'put') as que_put:
             FakeClass.set_return(FP.FabricApi, 'get_in_ip_addr',
                                  {'subnet': self.in_subnet,
@@ -703,10 +703,10 @@ class NativeFirewallTest(base_test.BaseTestCase):
                                                 'out', 'service.vnic.delete')
         with mock.patch.object(self.native_fw.os_helper,
                                'delete_intf_router',
-                               return_value=True) as del_intf_rtr,\
+                               return_value=True) as del_intf_rtr, \
                 mock.patch.object(self.native_fw.os_helper,
                                   'get_router_port_subnet',
-                                  return_value=port_data),\
+                                  return_value=port_data), \
                 mock.patch.object(self.native_fw.que_obj, 'put') as que_put:
 
             FakeClass.set_return(
@@ -751,12 +751,12 @@ class NativeFirewallTest(base_test.BaseTestCase):
         subnet_lst.add(self.subnet_id)
         subnet_lst.add(self.out_subnet_id)
         with mock.patch.object(self.native_fw.os_helper, 'get_subnet_nwk_excl',
-                               return_value=[NEW_STATIC_SUB]),\
+                               return_value=[NEW_STATIC_SUB]), \
             mock.patch.object(self.native_fw.os_helper, 'get_rtr_by_name',
-                              return_value=[{'id': self.rtr_id}]),\
+                              return_value=[{'id': self.rtr_id}]), \
             mock.patch.object(self.native_fw.dcnm_obj,
                               'update_partition_static_route',
-                              return_value=True) as upd_part,\
+                              return_value=True) as upd_part, \
             mock.patch.object(self.native_fw.os_helper,
                               'program_rtr_nwk_next_hop',
                               return_value=True) as prog_rtr_nwk:
@@ -798,12 +798,12 @@ class NativeFirewallTest(base_test.BaseTestCase):
         excl_lst.append(self.in_subnet)
         excl_lst.append(self.out_subnet)
         with mock.patch.object(self.native_fw.os_helper, 'get_subnet_nwk_excl',
-                               return_value=[NEW_STATIC_SUB]),\
+                               return_value=[NEW_STATIC_SUB]), \
             mock.patch.object(self.native_fw.os_helper, 'get_rtr_by_name',
-                              return_value=[{'id': self.rtr_id}]),\
+                              return_value=[{'id': self.rtr_id}]), \
             mock.patch.object(self.native_fw.dcnm_obj,
                               'update_partition_static_route',
-                              return_value=True) as upd_part,\
+                              return_value=True) as upd_part, \
             mock.patch.object(self.native_fw.os_helper,
                               'remove_rtr_nwk_next_hop',
                               return_value=True) as prog_rtr_nwk:

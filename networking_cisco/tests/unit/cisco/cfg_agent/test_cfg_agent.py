@@ -244,8 +244,8 @@ class TestCiscoCfgAgentWithStateReporting(base.BaseTestCase):
         ids_revived_hds = ['fake_hd_id1', 'fake_hd_id2']
         _dev_status_mock.check_backlogged_hosting_devices.return_value = {
             'reachable': [], 'dead': [], 'revived': ids_revived_hds}
-        with mock.patch.object(agent, '_dev_status', _dev_status_mock),\
-                mock.patch.object(agent, 'process_services') as p_s_mock,\
+        with mock.patch.object(agent, '_dev_status', _dev_status_mock), \
+                mock.patch.object(agent, 'process_services') as p_s_mock, \
                 mock.patch.object(agent, 'devmgr_rpc') as d_r_mock:
             ctx = mock.MagicMock()
             agent._process_backlogged_hosting_devices(ctx)
@@ -261,8 +261,8 @@ class TestCiscoCfgAgentWithStateReporting(base.BaseTestCase):
         ids_revived_hds = ['fake_hd_id1', 'fake_hd_id2']
         _dev_status_mock.check_backlogged_hosting_devices.return_value = {
             'reachable': [], 'dead': [], 'revived': ids_revived_hds}
-        with mock.patch.object(agent, '_dev_status', _dev_status_mock),\
-                mock.patch.object(agent, 'process_services') as p_s_mock,\
+        with mock.patch.object(agent, '_dev_status', _dev_status_mock), \
+                mock.patch.object(agent, 'process_services') as p_s_mock, \
                 mock.patch.object(agent, 'devmgr_rpc') as d_r_mock:
             ctx = mock.MagicMock()
             agent._process_backlogged_hosting_devices(ctx)

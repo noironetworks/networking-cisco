@@ -30,8 +30,6 @@ from neutron.tests.unit.extensions import base as test_extensions_base
 
 _uuid = uuidutils.generate_uuid
 _get_path = test_base._get_path
-NEUTRON_VERSION = bc.NEUTRON_VERSION
-NEUTRON_NEWTON_VERSION = bc.NEUTRON_NEWTON_VERSION
 
 
 class RouterTypeTestCase(test_extensions_base.ExtensionTestCase):
@@ -41,30 +39,14 @@ class RouterTypeTestCase(test_extensions_base.ExtensionTestCase):
         super(RouterTypeTestCase, self).setUp()
         cfg.CONF.set_override('api_extensions_path',
                               "networking_cisco/plugins/cisco/extensions")
-        if NEUTRON_VERSION.version[0] > NEUTRON_NEWTON_VERSION.version[0]:
-            plugin = ('networking_cisco.plugins.cisco.service_plugins.'
-                      'cisco_router_plugin.CiscoRouterPlugin')
-            service_type = bc.constants.L3
-        else:
-            # NOTE(bobmel): The routertype extension is for the router service.
-            # We therefore add 'router' to supported extensions of the core
-            # plugin used in these tests. That way, NeutronManager will return
-            # that plugin as the l3 router service plugin.
-            plugin = ('networking_cisco.plugins.cisco.extensions.routertype.'
-                      'RoutertypePluginBase')
-            service_type = None
+        plugin = ('networking_cisco.plugins.cisco.service_plugins.'
+                  'cisco_router_plugin.CiscoRouterPlugin')
+        service_type = bc.constants.L3
 
-        if bc.NEUTRON_VERSION >= bc.NEUTRON_ROCKY_VERSION:
-            self.setup_extension(
-                plugin, service_type, routertype.Routertype, '',
-                supported_extension_aliases=[
-                    'router', routertype.ROUTERTYPE_ALIAS])
-        else:
-            self._setUpExtension(
-                plugin, service_type,
-                routertype.RESOURCE_ATTRIBUTE_MAP, routertype.Routertype, '',
-                supported_extension_aliases=[
-                    'router', routertype.ROUTERTYPE_ALIAS])
+        self.setup_extension(
+            plugin, service_type, routertype.Routertype, '',
+            supported_extension_aliases=[
+                'router', routertype.ROUTERTYPE_ALIAS])
 
     def test_create_routertype(self):
         dummy_driver = ('networking_cisco.plugins.cisco.l3.schedulers.'
@@ -86,8 +68,7 @@ class RouterTypeTestCase(test_extensions_base.ExtensionTestCase):
             'cfg_agent_service_helper': dummy_driver,
             'cfg_agent_driver': dummy_driver}}
 
-        if bc.NEUTRON_VERSION >= bc.NEUTRON_NEWTON_VERSION:
-            data['routertype']['project_id'] = tenant_id
+        data['routertype']['project_id'] = tenant_id
 
         return_value = copy.copy(data['routertype'])
         return_value.update({'id': rt_id})

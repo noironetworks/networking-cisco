@@ -300,7 +300,7 @@ class FwMgr(dev_mgr.DeviceMgr):
         """
         LOG.debug("Initializing Native FW Manager %s", cfg.firewall.device)
         self.fw_init = False
-        if cfg.firewall.device is None or cfg.firewall.device is '':
+        if cfg.firewall.device is None or cfg.firewall.device == '':
             return
         super(FwMgr, self).__init__(cfg)
         self.events.update({

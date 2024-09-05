@@ -38,4 +38,5 @@ class L3AgentNotifyAPINoOp(object):
     def router_added_to_agent(self, context, routers, host):
         pass
 
+
 L3AgentNotifyNoOp = L3AgentNotifyAPINoOp()

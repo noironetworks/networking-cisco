@@ -261,5 +261,6 @@ def main():
         LOG.error('Exception %s is received', str(e))
         sys.exit("ERROR: %s" % str(e))
 
+
 if __name__ == '__main__':
     sys.exit(main())

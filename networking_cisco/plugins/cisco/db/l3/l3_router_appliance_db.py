@@ -31,11 +31,11 @@ from sqlalchemy.orm import joinedload
 from sqlalchemy.sql import expression as expr
 from sqlalchemy.sql import false as sql_false
 
-from neutron.common import rpc as n_rpc
-from neutron.db import common_db_mixin
 from neutron.db import extraroute_db
 from neutron.db import l3_db
+from neutron_lib.db import model_query as model_query
 from neutron_lib import exceptions as n_exc
+from neutron_lib import rpc as n_rpc
 
 from networking_cisco._i18n import _
 from networking_cisco import backwards_compatibility as bc
@@ -176,25 +176,13 @@ class L3RouterApplianceDBMixin(extraroute_db.ExtraRoute_dbonly_mixin):
     _heartbeat = None
     _is_gbp_workflow = None
 
-    if bc.NEUTRON_VERSION < bc.NEUTRON_PIKE_VERSION:
-        common_db_mixin.CommonDbMixin.register_dict_extend_funcs(
-            l3_const.ROUTERS, DICT_EXTEND_FUNCTIONS)
-
     def __new__(cls):
-        if bc.NEUTRON_VERSION < bc.NEUTRON_PIKE_VERSION:
-            common_db_mixin.CommonDbMixin.register_model_query_hook(
-                bc.Router,
-                "cisco_router_query_hook",
-                '_cisco_router_query_hook',
-                None,
-                '_cisco_router_result_filter_hook')
-        else:
-            common_db_mixin.CommonDbMixin.register_model_query_hook(
-                bc.Router,
-                "cisco_router_query_hook",
-                _cisco_router_query_hook,
-                None,
-                _cisco_router_result_filter_hook)
+        model_query.register_hook(
+            bc.Router,
+            "cisco_router_query_hook",
+            _cisco_router_query_hook,
+            None,
+            _cisco_router_result_filter_hook)
 
         return super(L3RouterApplianceDBMixin, cls).__new__(cls)
 
@@ -746,8 +734,8 @@ class L3RouterApplianceDBMixin(extraroute_db.ExtraRoute_dbonly_mixin):
 
     def get_routers_count_extended(self, context, filters=None,
                                    invert_filters=None):
-        qry = self._get_collection_query(context, bc.Router,
-                                         filters)
+        qry = model_query.get_collection_query(context, bc.Router,
+                                               filters)
         qry = self._apply_invert_filters_to_query(qry, bc.Router,
                                                   invert_filters)
         return qry.count()
@@ -1635,12 +1623,8 @@ def _notify_cfg_agent_port_update(resource, event, trigger, **kwargs):
 
 def modify_subscribe():
     # unregister the function in l3_db as it does not do what we need
-    if bc.NEUTRON_VERSION >= bc.NEUTRON_PIKE_VERSION:
-        registry.unsubscribe(l3_db.L3RpcNotifierMixin._notify_routers_callback,
-                             resources.PORT, events.AFTER_DELETE)
-    else:
-        registry.unsubscribe(l3_db._notify_routers_callback, resources.PORT,
-                             events.AFTER_DELETE)
+    registry.unsubscribe(l3_db.L3RpcNotifierMixin._notify_routers_callback,
+                         resources.PORT, events.AFTER_DELETE)
     # register our own version
     registry.subscribe(
         _notify_routers_callback, resources.PORT, events.AFTER_DELETE)

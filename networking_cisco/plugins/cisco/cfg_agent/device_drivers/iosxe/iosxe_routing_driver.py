@@ -236,9 +236,9 @@ class IosXeRoutingDriver(devicedriver_api.RoutingDriverBase):
         dest = destination_net.network
         dest_mask = destination_net.netmask
         next_hop = route['nexthop']
-        if action is 'replace':
+        if action == 'replace':
             self._add_static_route(dest, dest_mask, next_hop, vrf_name)
-        elif action is 'delete':
+        elif action == 'delete':
             self._remove_static_route(dest, dest_mask, next_hop, vrf_name)
         else:
             LOG.error('Unknown route command %s', action)

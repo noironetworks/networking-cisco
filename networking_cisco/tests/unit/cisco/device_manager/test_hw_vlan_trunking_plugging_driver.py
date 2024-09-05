@@ -260,7 +260,8 @@ class TestHwVLANTrunkingPlugDriver(
                 self._network_type = test_info1['network_types'][0]
                 self.real_get_network = self.core_plugin.get_network
                 self.real_get_networks = self.core_plugin.get_networks
-                with mock.patch.object(self.core_plugin, 'get_network') as m1,\
+                with mock.patch.object(self.core_plugin,
+                                       'get_network') as m1, \
                         mock.patch.object(self.core_plugin,
                                           'get_networks') as m2:
                     m1.side_effect = self._mocked_get_network

@@ -75,7 +75,7 @@ class CiscoNexusCfgMonitor(worker.BaseWorker):
                 try:
                     self._initialize_trunk_interfaces_to_none(
                         switch_ip, replay=False)
-                except Exception as e:
+                except Exception:
                     LOG.exception("Failed to set trunk interfaces "
                                   "to None.")
 
@@ -196,11 +196,11 @@ class CiscoNexusCfgMonitor(worker.BaseWorker):
             self._mdriver.configure_switch_entries(
                 switch_ip, port_bindings)
         except Exception as e:
-                LOG.error("Unexpected exception while replaying "
-                    "entries for switch %(switch_ip)s, Reason:%(reason)s ",
-                    {'switch_ip': switch_ip, 'reason': e})
-                self._mdriver.register_switch_as_inactive(switch_ip,
-                    'replay switch_entries')
+            LOG.error("Unexpected exception while replaying "
+                "entries for switch %(switch_ip)s, Reason:%(reason)s ",
+                {'switch_ip': switch_ip, 'reason': e})
+            self._mdriver.register_switch_as_inactive(switch_ip,
+                'replay switch_entries')
 
     def check_connections(self):
         """Check connection between OpenStack to Nexus device."""

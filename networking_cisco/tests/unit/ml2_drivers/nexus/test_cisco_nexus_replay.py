@@ -1524,6 +1524,7 @@ class TestCiscoNexusBaremetalReplayResults(
 
     }
 
+
 GET_PORT_CH_RESPONSE = {
     "totalCount": "4",
     "imdata": [

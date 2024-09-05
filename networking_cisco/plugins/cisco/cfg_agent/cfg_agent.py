@@ -31,13 +31,13 @@ from oslo_utils import importutils
 
 from neutron.agent import rpc as agent_rpc
 from neutron.common import config as common_config
-from neutron.common import rpc as n_rpc
 from neutron import manager
 from neutron import service as neutron_service
 
 from networking_cisco._i18n import _
 from networking_cisco import backwards_compatibility as bc
 from networking_cisco.backwards_compatibility import neutron_agent_conf
+from networking_cisco.backwards_compatibility import rpc as n_rpc
 from networking_cisco.backwards_compatibility import topics
 from networking_cisco.plugins.cisco.cfg_agent import device_status
 from networking_cisco.plugins.cisco.common import (cisco_constants as
@@ -90,6 +90,7 @@ class CiscoDeviceManagementApi(object):
         return cctxt.call(context,
                           'get_hosting_devices_for_agent',
                           host=self.host)
+
 
 OPTS = [
     cfg.IntOpt('rpc_loop_interval', default=10,

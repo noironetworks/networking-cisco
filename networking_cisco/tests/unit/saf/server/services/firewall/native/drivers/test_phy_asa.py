@@ -295,7 +295,7 @@ class PhyAsaTest(base_test.BaseTestCase):
         url = "https://" + MGMT_IP + "/api/cli"
         asa_payload = self._get_asa_command()
         asa_pol_payload = self._get_asa_pol_command()
-        with mock.patch(self.url_req) as url_req,\
+        with mock.patch(self.url_req) as url_req, \
                 mock.patch(self.url_open) as url_open:
             url_open.return_value.getcode.return_value = 202
             FakeClass.set_return(FP.FabricApi, 'get_in_ip_addr',
@@ -339,7 +339,7 @@ class PhyAsaTest(base_test.BaseTestCase):
     def _test_delete_fw(self):
         url = "https://" + MGMT_IP + "/api/cli"
         asa_del_payload = self._get_asa_del_command()
-        with mock.patch(self.url_req) as url_req,\
+        with mock.patch(self.url_req) as url_req, \
                 mock.patch(self.url_open) as url_open:
             url_open.return_value.getcode.return_value = 202
             FakeClass.set_return(FP.FabricApi, 'get_in_ip_addr',
@@ -382,7 +382,7 @@ class PhyAsaTest(base_test.BaseTestCase):
         asa_payload = self._get_asa_command()
         asa_pol_payload = self._get_asa_pol_command()
         asa_modf_pol_payload = self._get_asa_modf_pol_command()
-        with mock.patch(self.url_req) as url_req,\
+        with mock.patch(self.url_req) as url_req, \
                 mock.patch(self.url_open) as url_open:
             url_open.return_value.getcode.return_value = 202
             FakeClass.set_return(FP.FabricApi, 'get_in_ip_addr',

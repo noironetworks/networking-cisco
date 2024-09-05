@@ -214,9 +214,9 @@ class FwMgrTest(base.BaseTestCase):
     def _test_fw_create(self, with_rule=True):
         res_fw_dict = self._prepare_result_fw_dict()
         with mock.patch('networking_cisco.apps.saf.server.'
-                        'dfa_openstack_helper.DfaNeutronHelper'),\
+                        'dfa_openstack_helper.DfaNeutronHelper'), \
             mock.patch.object(self.fw_mgr.fabric,
-                              'prepare_fabric_fw') as prep_fab,\
+                              'prepare_fabric_fw') as prep_fab, \
             mock.patch('networking_cisco.apps.saf.db.dfa_db_models.'
                        'DfaDBMixin.get_project_name',
                        return_value=self.tenant_name):
@@ -261,10 +261,10 @@ class FwMgrTest(base.BaseTestCase):
         """
         res_fw_dict = self._prepare_result_fw_dict()
         with mock.patch('networking_cisco.apps.saf.server.'
-                        'dfa_openstack_helper.DfaNeutronHelper'),\
+                        'dfa_openstack_helper.DfaNeutronHelper'), \
             mock.patch('networking_cisco.apps.saf.db.dfa_db_models.'
                        'DfaDBMixin.get_project_name',
-                       return_value=self.tenant_name),\
+                       return_value=self.tenant_name), \
             mock.patch.object(self.fw_mgr.fabric, 'prepare_fabric_fw',
                               return_value=False) as prep_fab:
             FakeClass.set_return(dev_mgr.DeviceMgr, 'is_device_virtual', False)
@@ -304,12 +304,12 @@ class FwMgrTest(base.BaseTestCase):
         """
         res_fw_dict = self._prepare_result_fw_dict()
         with mock.patch('networking_cisco.apps.saf.server.'
-                        'dfa_openstack_helper.DfaNeutronHelper'),\
+                        'dfa_openstack_helper.DfaNeutronHelper'), \
             mock.patch('networking_cisco.apps.saf.db.dfa_db_models.'
                        'DfaDBMixin.get_project_name',
-                       return_value=self.tenant_name),\
+                       return_value=self.tenant_name), \
             mock.patch.object(self.fw_mgr.fabric,
-                              'prepare_fabric_fw') as prep_fab,\
+                              'prepare_fabric_fw') as prep_fab, \
             mock.patch.object(self.fw_mgr, 'create_fw_device',
                               return_value=False) as create_fw_dev:
             FakeClass.set_return(dev_mgr.DeviceMgr, 'is_device_virtual', False)
@@ -346,12 +346,12 @@ class FwMgrTest(base.BaseTestCase):
     def _test_fw_delete(self, with_rule=True):
         res_fw_dict = self._prepare_result_fw_dict()
         with mock.patch('networking_cisco.apps.saf.server.'
-                        'dfa_openstack_helper.DfaNeutronHelper'),\
+                        'dfa_openstack_helper.DfaNeutronHelper'), \
             mock.patch.object(self.fw_mgr,
-                              'delete_fw_device') as delete_fw_dev,\
+                              'delete_fw_device') as delete_fw_dev, \
             mock.patch.object(self.fw_mgr.fabric,
-                              'delete_fabric_fw') as del_fab,\
-            mock.patch.object(self.fw_mgr, 'delete_fw') as del_fw,\
+                              'delete_fabric_fw') as del_fab, \
+            mock.patch.object(self.fw_mgr, 'delete_fw') as del_fw, \
             mock.patch('networking_cisco.apps.saf.db.dfa_db_models.'
                        'DfaDBMixin.get_project_name',
                        return_value=self.tenant_name):
@@ -401,12 +401,12 @@ class FwMgrTest(base.BaseTestCase):
         """
         res_fw_dict = self._prepare_result_fw_dict()
         with mock.patch('networking_cisco.apps.saf.server.'
-                        'dfa_openstack_helper.DfaNeutronHelper'),\
+                        'dfa_openstack_helper.DfaNeutronHelper'), \
             mock.patch.object(self.fw_mgr, 'delete_fw_device',
-                              return_value=False) as delete_fw_dev,\
+                              return_value=False) as delete_fw_dev, \
             mock.patch.object(self.fw_mgr.fabric,
-                              'delete_fabric_fw') as del_fab,\
-            mock.patch.object(self.fw_mgr, 'delete_fw') as del_fw,\
+                              'delete_fabric_fw') as del_fab, \
+            mock.patch.object(self.fw_mgr, 'delete_fw') as del_fw, \
             mock.patch('networking_cisco.apps.saf.db.dfa_db_models.'
                        'DfaDBMixin.get_project_name',
                        return_value=self.tenant_name):
@@ -451,12 +451,12 @@ class FwMgrTest(base.BaseTestCase):
         """
         res_fw_dict = self._prepare_result_fw_dict()
         with mock.patch('networking_cisco.apps.saf.server.'
-                        'dfa_openstack_helper.DfaNeutronHelper'),\
+                        'dfa_openstack_helper.DfaNeutronHelper'), \
             mock.patch.object(self.fw_mgr,
-                              'delete_fw_device') as delete_fw_dev,\
+                              'delete_fw_device') as delete_fw_dev, \
             mock.patch.object(self.fw_mgr.fabric, 'delete_fabric_fw',
-                              return_value=False) as del_fab,\
-            mock.patch.object(self.fw_mgr, 'delete_fw') as del_fw,\
+                              return_value=False) as del_fab, \
+            mock.patch.object(self.fw_mgr, 'delete_fw') as del_fw, \
             mock.patch('networking_cisco.apps.saf.db.dfa_db_models.'
                        'DfaDBMixin.get_project_name',
                        return_value=self.tenant_name):

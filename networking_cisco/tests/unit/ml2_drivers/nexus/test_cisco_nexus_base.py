@@ -333,6 +333,7 @@ class FakePortContext(object):
         self._new_bound_segment = None
         self._next_segments_to_bind = None
 
+
 NEXUS_CONF_TEMPLATE = """
 [ml2_mech_cisco_nexus:%(ip_addr)s]
 username=admin

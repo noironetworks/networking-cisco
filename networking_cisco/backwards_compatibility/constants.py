@@ -16,29 +16,14 @@
 # error we only ignore that so that other errors like import order still get
 # caught.
 
-from networking_cisco.backwards_compatibility import neutron_version as nv
+from networking_cisco.backwards_compatibility \
+        import neutron_version as nv  # noqa
 
 # Pull in all the neutron_lib constants
 from neutron_lib.constants import *  # noqa
 
-if nv.NEUTRON_VERSION >= nv.NEUTRON_PIKE_VERSION:
-    from neutron_lib.plugins.constants import *  # noqa
-
-# Compatibility additions for releases before Newton
-if nv.NEUTRON_VERSION < nv.NEUTRON_NEWTON_VERSION:
-    from neutron.api.v2.attributes import ATTR_NOT_SPECIFIED  # noqa: F401
-
-# Compatibility additions for releases before Ocata
-if nv.NEUTRON_VERSION < nv.NEUTRON_OCATA_VERSION:
-    from neutron.plugins.common.constants import L3_ROUTER_NAT as L3  # noqa: F401
-
-# Compatibility additions for all releases before Pike
-if nv.NEUTRON_VERSION < nv.NEUTRON_PIKE_VERSION:
-    from neutron.plugins.common.constants import MAX_VLAN_TAG  # noqa: F401
-    from neutron.plugins.common.constants import MAX_VXLAN_VNI  # noqa: F401
-    from neutron.plugins.common.constants import TYPE_FLAT  # noqa: F401
-    from neutron.plugins.common.constants import TYPE_VLAN  # noqa: F401
-    from neutron.plugins.common.constants import TYPE_VXLAN  # noqa: F401
+from neutron_lib.plugins.constants import *  # noqa
 
 # Additional things that haven't moved to neutron_lib yet
-from neutron.plugins.common.constants import EXT_TO_SERVICE_MAPPING  # noqa: F401
+from neutron.plugins.common.constants import \
+        EXT_TO_SERVICE_MAPPING  # noqa: F401

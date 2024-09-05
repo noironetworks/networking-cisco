@@ -23,13 +23,8 @@ from neutron_lib import exceptions as nexception
 
 from networking_cisco._i18n import _
 from networking_cisco import backwards_compatibility as bc
-from networking_cisco.backwards_compatibility import attributes as attr
 from networking_cisco.plugins.cisco.common import cisco_constants as constants
 from networking_cisco.plugins.cisco.common import utils
-
-
-NEUTRON_VERSION = bc.NEUTRON_VERSION
-NEUTRON_NEWTON_VERSION = bc.NEUTRON_NEWTON_VERSION
 
 
 # Hosting device and hosting device template exceptions
@@ -233,8 +228,6 @@ class Ciscohostingdevicemanager(bc.extensions.ExtensionDescriptor):
         """Returns Ext Resources."""
         plural_mappings = resource_helper.build_plural_mappings(
             {}, RESOURCE_ATTRIBUTE_MAP)
-        if NEUTRON_VERSION.version[0] <= NEUTRON_NEWTON_VERSION.version[0]:
-            attr.PLURALS.update(plural_mappings)
         action_map = {DEVICE: {'get_hosting_device_config': 'GET'}}
         return resource_helper.build_resource_info(plural_mappings,
                                                    RESOURCE_ATTRIBUTE_MAP,

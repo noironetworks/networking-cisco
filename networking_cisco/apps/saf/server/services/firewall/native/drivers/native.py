@@ -144,7 +144,7 @@ class NativeFirewall(base.BaseDriver, FP.FabricApi):
                               "Max attempts reached")
             else:
                 max_get_router_info_retry = False
-        if status is 'up':
+        if status == 'up':
             event_type = 'service.vnic.create'
         else:
             event_type = 'service.vnic.delete'

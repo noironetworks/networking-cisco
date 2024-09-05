@@ -770,7 +770,7 @@ class CiscoNexusRestapiDriver(object):
         else:
             native_vlan = 'vlan-' + str(vlanid)
             debug_desc = "createif"
-            if vlanid is "":
+            if vlanid == "":
                 increment_it = ""
             else:
                 increment_it = "+"

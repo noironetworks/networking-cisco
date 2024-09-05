@@ -231,5 +231,6 @@ def dfa_cli():
     sys.argv.append('/etc/saf/enabler_conf.ini')
     DfaCli().cmdloop()
 
+
 if __name__ == '__main__':
     sys.exit(dfa_cli())

@@ -12,17 +12,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from networking_cisco.backwards_compatibility import neutron_version as nv
+from networking_cisco.backwards_compatibility import \
+        neutron_version as nv  # noqa
 
-
-if nv.NEUTRON_VERSION >= nv.NEUTRON_ROCKY_VERSION:
-    from neutron_lib.api.attributes import *  # noqa
-else:
-    # NOTE(sambetts) Because of neutron _MovedGlobals we can not import * from
-    # neutron.api.v2.attributes so instead we monkey patch the real one and
-    # then make this module point at the real one
-    from neutron.api.v2 import attributes as _attributes
-    import sys
-
-    _attributes.RESOURCES = _attributes.RESOURCE_ATTRIBUTE_MAP
-    sys.modules[__name__] = _attributes
+from neutron_lib.api.attributes import *  # noqa

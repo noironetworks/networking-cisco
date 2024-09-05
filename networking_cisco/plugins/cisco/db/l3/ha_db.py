@@ -947,7 +947,7 @@ class HA_db_mixin(object):
             'name': ''}}
         if extensions.is_extension_supported(self._core_plugin,
                                              "dns-integration"):
-                port['port'].update(dns_name='')
+            port['port'].update(dns_name='')
         core_plugin = bc.get_plugin()
         return core_plugin.create_port(context, port)
 

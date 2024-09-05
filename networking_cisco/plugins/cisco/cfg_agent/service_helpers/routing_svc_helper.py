@@ -26,8 +26,6 @@ from oslo_utils import excutils
 from oslo_utils import importutils
 import six
 
-from neutron.common import exceptions as n_exc
-
 from neutron_lib import exceptions as n_lib_exc
 
 from networking_cisco._i18n import _
@@ -443,7 +441,7 @@ class RoutingServiceHelper(object):
         except oslo_messaging.MessagingException:
             LOG.exception("RPC Error in fetching routers from plugin")
             self.fullsync = True
-            raise n_exc.AbortSyncRouters()
+            raise n_lib_exc.AbortSyncRouters()
 
         LOG.debug("Periodic_sync_routers_task successfully completed")
         # adjust chunk size after successful sync
@@ -648,7 +646,7 @@ class RoutingServiceHelper(object):
 
             for r in routers:
                 if not r['admin_state_up']:
-                        continue
+                    continue
                 cur_router_ids.add(r['id'])
 
             # identify list of routers(ids) that no longer exist

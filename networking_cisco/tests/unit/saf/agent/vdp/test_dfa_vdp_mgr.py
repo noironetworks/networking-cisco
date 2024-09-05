@@ -65,7 +65,7 @@ class DfaVdpMgrTest(base.BaseTestCase):
     def _test_dfa_mgr_init(self):
         '''Test routine for init '''
         with mock.patch('networking_cisco.apps.saf.common.utils.'
-                        'EventProcessingThread') as event_fn,\
+                        'EventProcessingThread') as event_fn, \
                 mock.patch('networking_cisco.apps.saf.common.'
                            'utils.PeriodicTask') as period_fn:
             event_obj = event_fn.return_value

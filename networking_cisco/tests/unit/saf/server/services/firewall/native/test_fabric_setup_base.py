@@ -327,7 +327,6 @@ class FabricBaseTest(base.BaseTestCase):
 
     def _fill_fw_dcnm_out_net_dict(self):
         return {'router_id': self.router_id,
-                'out_network_id': self.out_net_id,
                 'name': self.fw_name,
                 'router_net_id': self.rtr_net_id,
                 'tenant_id': self.tenant_id,
@@ -386,7 +385,7 @@ class FabricBaseTest(base.BaseTestCase):
         with mock.patch('networking_cisco.apps.saf.server.services.firewall.'
                         'native.fabric_setup_base.ServiceIpSegTenantMap.'
                         'get_state',
-                        return_value=fw_const.OS_IN_NETWORK_STATE),\
+                        return_value=fw_const.OS_IN_NETWORK_STATE), \
             mock.patch.object(self.fabric_base.os_helper, 'create_network',
                               return_value=id_list) as create_nwk:
             FakeClass.set_return(fsb.FabricApi, 'get_in_ip_addr',
@@ -444,7 +443,7 @@ class FabricBaseTest(base.BaseTestCase):
         with mock.patch('networking_cisco.apps.saf.server.services.firewall.'
                         'native.fabric_setup_base.ServiceIpSegTenantMap.'
                         'get_state',
-                        return_value=fw_const.OS_IN_NETWORK_STATE),\
+                        return_value=fw_const.OS_IN_NETWORK_STATE), \
             mock.patch.object(self.fabric_base.os_helper, 'create_network',
                               return_value=id_list) as create_nwk:
             FakeClass.set_return(fsb.FabricApi, 'get_in_ip_addr',
@@ -494,7 +493,7 @@ class FabricBaseTest(base.BaseTestCase):
         with mock.patch('networking_cisco.apps.saf.server.services.firewall.'
                         'native.fabric_setup_base.ServiceIpSegTenantMap.'
                         'get_state',
-                        return_value=fw_const.OS_OUT_NETWORK_STATE),\
+                        return_value=fw_const.OS_OUT_NETWORK_STATE), \
             mock.patch.object(self.fabric_base.os_helper, 'create_network',
                               return_value=id_list) as create_nwk:
             FakeClass.set_return(fsb.FabricApi, 'get_out_ip_addr',
@@ -553,7 +552,7 @@ class FabricBaseTest(base.BaseTestCase):
         with mock.patch('networking_cisco.apps.saf.server.services.firewall.'
                         'native.fabric_setup_base.ServiceIpSegTenantMap.'
                         'get_state',
-                        return_value=fw_const.OS_OUT_NETWORK_STATE),\
+                        return_value=fw_const.OS_OUT_NETWORK_STATE), \
             mock.patch.object(self.fabric_base.os_helper, 'create_network',
                               return_value=id_list) as create_nwk:
             FakeClass.set_return(fsb.FabricApi, 'get_out_ip_addr',
@@ -605,9 +604,9 @@ class FabricBaseTest(base.BaseTestCase):
         with mock.patch('networking_cisco.apps.saf.server.services.firewall.'
                         'native.fabric_setup_base.ServiceIpSegTenantMap.'
                         'get_state',
-                        return_value=fw_const.OS_DUMMY_RTR_STATE),\
+                        return_value=fw_const.OS_DUMMY_RTR_STATE), \
             mock.patch.object(self.fabric_base.os_helper, 'create_network',
-                              return_value=id_list) as create_nwk,\
+                              return_value=id_list) as create_nwk, \
             mock.patch.object(self.fabric_base.os_helper, 'add_intf_router',
                               return_value=True) as add_intf_rtr:
             self.fabric_base.fabric_fsm[fw_const.DCNM_IN_NETWORK_STATE][0] = \
@@ -667,11 +666,11 @@ class FabricBaseTest(base.BaseTestCase):
         with mock.patch('networking_cisco.apps.saf.server.services.firewall.'
                         'native.fabric_setup_base.ServiceIpSegTenantMap.'
                         'get_state',
-                        return_value=fw_const.OS_DUMMY_RTR_STATE),\
+                        return_value=fw_const.OS_DUMMY_RTR_STATE), \
             mock.patch.object(self.fabric_base.os_helper, 'create_network',
-                              return_value=id_list) as create_nwk,\
+                              return_value=id_list) as create_nwk, \
             mock.patch.object(self.fabric_base.os_helper, 'add_intf_router',
-                              return_value=False) as add_intf_rtr,\
+                              return_value=False) as add_intf_rtr, \
             mock.patch.object(self.fabric_base.os_helper, 'delete_network',
                               return_value=id_list):
             # update_fw_db is removed from here. Because both this and
@@ -719,9 +718,9 @@ class FabricBaseTest(base.BaseTestCase):
         with mock.patch('networking_cisco.apps.saf.server.services.firewall.'
                         'native.fabric_setup_base.ServiceIpSegTenantMap.'
                         'get_state',
-                        return_value=fw_const.OS_DUMMY_RTR_STATE),\
+                        return_value=fw_const.OS_DUMMY_RTR_STATE), \
             mock.patch.object(self.fabric_base.os_helper, 'create_network',
-                              return_value=id_list) as create_nwk,\
+                              return_value=id_list) as create_nwk, \
             mock.patch.object(self.fabric_base.os_helper, 'add_intf_router',
                               return_value=True) as add_intf_rtr:
             self.fabric_base.fabric_fsm[fw_const.DCNM_IN_NETWORK_STATE][0] = \
@@ -774,9 +773,9 @@ class FabricBaseTest(base.BaseTestCase):
         with mock.patch('networking_cisco.apps.saf.server.services.firewall.'
                         'native.fabric_setup_base.ServiceIpSegTenantMap.'
                         'get_state',
-                        return_value=fw_const.DCNM_IN_NETWORK_STATE),\
+                        return_value=fw_const.DCNM_IN_NETWORK_STATE), \
             mock.patch('networking_cisco.apps.saf.common.utils.'
-                       'Dict2Obj') as dict_obj,\
+                       'Dict2Obj') as dict_obj, \
             mock.patch.object(self.fabric_base.dcnm_obj,
                               'create_service_network') as create_nwk:
             self.fabric_base.fabric_fsm[
@@ -826,7 +825,7 @@ class FabricBaseTest(base.BaseTestCase):
         with mock.patch('networking_cisco.apps.saf.server.services.firewall.'
                         'native.fabric_setup_base.ServiceIpSegTenantMap.'
                         'get_state',
-                        return_value=fw_const.DCNM_IN_PART_UPDATE_STATE),\
+                        return_value=fw_const.DCNM_IN_PART_UPDATE_STATE), \
             mock.patch.object(self.fabric_base.dcnm_obj,
                               'update_project') as update_proj:
             self.fabric_base.fabric_fsm[fw_const.DCNM_OUT_PART_STATE][0] = \
@@ -875,7 +874,7 @@ class FabricBaseTest(base.BaseTestCase):
         with mock.patch('networking_cisco.apps.saf.server.services.firewall.'
                         'native.fabric_setup_base.ServiceIpSegTenantMap.'
                         'get_state',
-                        return_value=fw_const.DCNM_OUT_PART_STATE),\
+                        return_value=fw_const.DCNM_OUT_PART_STATE), \
             mock.patch.object(self.fabric_base.dcnm_obj,
                               'create_partition') as create_part:
             self.fabric_base.fabric_fsm[fw_const.DCNM_OUT_NETWORK_STATE][0] = \
@@ -929,9 +928,9 @@ class FabricBaseTest(base.BaseTestCase):
         with mock.patch('networking_cisco.apps.saf.server.services.firewall.'
                         'native.fabric_setup_base.ServiceIpSegTenantMap.'
                         'get_state',
-                        return_value=fw_const.DCNM_OUT_NETWORK_STATE),\
+                        return_value=fw_const.DCNM_OUT_NETWORK_STATE), \
             mock.patch('networking_cisco.apps.saf.common.utils.'
-                       'Dict2Obj') as dict_obj,\
+                       'Dict2Obj') as dict_obj, \
             mock.patch.object(self.fabric_base.dcnm_obj,
                               'create_service_network') as create_nwk:
             self.fabric_base.fabric_fsm[
@@ -981,10 +980,10 @@ class FabricBaseTest(base.BaseTestCase):
         with mock.patch('networking_cisco.apps.saf.server.services.firewall.'
                         'native.fabric_setup_base.ServiceIpSegTenantMap.'
                         'get_state',
-                        return_value=fw_const.DCNM_OUT_PART_UPDATE_STATE),\
+                        return_value=fw_const.DCNM_OUT_PART_UPDATE_STATE), \
             mock.patch.object(self.fabric_base.dcnm_obj,
                               'get_partition_segmentId',
-                              return_value=self.ext_part),\
+                              return_value=self.ext_part), \
             mock.patch.object(self.fabric_base.dcnm_obj,
                               'update_project') as update_proj:
             # update_fw_db is removed from here. Because both this and
@@ -1030,13 +1029,13 @@ class FabricBaseTest(base.BaseTestCase):
         fake_fw_obj = utils.Dict2Obj(fw_db_data.get(self.fw_id))
         with mock.patch('networking_cisco.apps.saf.server.services.firewall.'
                         'native.fabric_setup_base.ServiceIpSegTenantMap.'
-                        'get_state', return_value=state),\
+                        'get_state', return_value=state), \
             mock.patch('networking_cisco.apps.saf.server.services.firewall.'
                        'native.fabric_setup_base.ServiceIpSegTenantMap.'
-                       'fixup_state', return_value=state),\
+                       'fixup_state', return_value=state), \
             mock.patch.object(self.fabric_base.os_helper,
                               'delete_network_all_subnets',
-                              return_value=True) as delete_nwk,\
+                              return_value=True) as delete_nwk, \
             mock.patch.object(
                 self.fabric_base.service_segs,
                 'release_segmentation_id') as rel_seg, \
@@ -1132,13 +1131,13 @@ class FabricBaseTest(base.BaseTestCase):
         fake_fw_obj = utils.Dict2Obj(fw_db_data.get(self.fw_id))
         with mock.patch('networking_cisco.apps.saf.server.services.firewall.'
                         'native.fabric_setup_base.ServiceIpSegTenantMap.'
-                        'get_state', return_value=state),\
+                        'get_state', return_value=state), \
             mock.patch('networking_cisco.apps.saf.server.services.firewall.'
                        'native.fabric_setup_base.ServiceIpSegTenantMap.'
-                       'fixup_state', return_value=state),\
+                       'fixup_state', return_value=state), \
             mock.patch.object(self.fabric_base.os_helper,
                               'delete_network_all_subnets',
-                              return_value=False) as delete_nwk,\
+                              return_value=False) as delete_nwk, \
             mock.patch.object(
                 self.fabric_base.service_segs,
                 'release_segmentation_id') as rel_seg, \
@@ -1230,17 +1229,17 @@ class FabricBaseTest(base.BaseTestCase):
         with mock.patch('networking_cisco.apps.saf.server.services.firewall.'
                         'native.fabric_setup_base.ServiceIpSegTenantMap.'
                         'get_state',
-                        return_value=fw_const.OS_DUMMY_RTR_STATE),\
+                        return_value=fw_const.OS_DUMMY_RTR_STATE), \
             mock.patch('networking_cisco.apps.saf.server.services.firewall.'
                        'native.fabric_setup_base.ServiceIpSegTenantMap.'
                        'fixup_state',
-                       return_value=fw_const.OS_DUMMY_RTR_STATE),\
+                       return_value=fw_const.OS_DUMMY_RTR_STATE), \
             mock.patch.object(self.fabric_base.os_helper,
                               'delete_intf_router',
-                              return_value=True) as delete_intf_rtr,\
+                              return_value=True) as delete_intf_rtr, \
             mock.patch.object(self.fabric_base.os_helper,
                               'delete_network_all_subnets',
-                              return_value=True) as delete_all_subnets,\
+                              return_value=True) as delete_all_subnets, \
             mock.patch.object(self.fabric_base,
                               'delete_network_db') as del_nwk_db:
             self.fabric_base.fabric_fsm[fw_const.OS_OUT_NETWORK_STATE][1] = \
@@ -1301,17 +1300,17 @@ class FabricBaseTest(base.BaseTestCase):
         with mock.patch('networking_cisco.apps.saf.server.services.firewall.'
                         'native.fabric_setup_base.ServiceIpSegTenantMap.'
                         'get_state',
-                        return_value=fw_const.OS_DUMMY_RTR_STATE),\
+                        return_value=fw_const.OS_DUMMY_RTR_STATE), \
             mock.patch('networking_cisco.apps.saf.server.services.firewall.'
                        'native.fabric_setup_base.ServiceIpSegTenantMap.'
                        'fixup_state',
-                       return_value=fw_const.OS_DUMMY_RTR_STATE),\
+                       return_value=fw_const.OS_DUMMY_RTR_STATE), \
             mock.patch.object(self.fabric_base.os_helper,
                               'delete_intf_router',
-                              return_value=False) as delete_intf_rtr,\
+                              return_value=False) as delete_intf_rtr, \
             mock.patch.object(self.fabric_base.os_helper,
                               'delete_network_all_subnets',
-                              return_value=True) as delete_all_subnets,\
+                              return_value=True) as delete_all_subnets, \
             mock.patch.object(self.fabric_base,
                               'delete_network_db') as del_nwk_db:
             # update_fw_db is removed from here. Because both this and
@@ -1365,12 +1364,12 @@ class FabricBaseTest(base.BaseTestCase):
         fw_db_data = self._fill_fw_db_data(state)
         with mock.patch('networking_cisco.apps.saf.server.services.firewall.'
                         'native.fabric_setup_base.ServiceIpSegTenantMap.'
-                        'get_state', return_value=state),\
+                        'get_state', return_value=state), \
             mock.patch('networking_cisco.apps.saf.server.services.firewall.'
                        'native.fabric_setup_base.ServiceIpSegTenantMap.'
-                       'fixup_state', return_value=state),\
+                       'fixup_state', return_value=state), \
             mock.patch('networking_cisco.apps.saf.common.utils.'
-                       'Dict2Obj') as dict_obj,\
+                       'Dict2Obj') as dict_obj, \
             mock.patch.object(self.fabric_base.dcnm_obj,
                               'delete_service_network') as delete_nwk:
             self.fabric_base.fabric_fsm[prev_state][1] = mock.MagicMock()
@@ -1433,11 +1432,11 @@ class FabricBaseTest(base.BaseTestCase):
         with mock.patch('networking_cisco.apps.saf.server.services.firewall.'
                         'native.fabric_setup_base.ServiceIpSegTenantMap.'
                         'get_state',
-                        return_value=fw_const.DCNM_IN_PART_UPDATE_STATE),\
+                        return_value=fw_const.DCNM_IN_PART_UPDATE_STATE), \
             mock.patch('networking_cisco.apps.saf.server.services.firewall.'
                        'native.fabric_setup_base.ServiceIpSegTenantMap.'
                        'fixup_state',
-                       return_value=fw_const.DCNM_IN_PART_UPDATE_STATE),\
+                       return_value=fw_const.DCNM_IN_PART_UPDATE_STATE), \
             mock.patch.object(self.fabric_base.dcnm_obj,
                               'update_project') as update_project:
             self.fabric_base.fabric_fsm[
@@ -1494,11 +1493,11 @@ class FabricBaseTest(base.BaseTestCase):
         with mock.patch('networking_cisco.apps.saf.server.services.firewall.'
                         'native.fabric_setup_base.ServiceIpSegTenantMap.'
                         'get_state',
-                        return_value=fw_const.DCNM_OUT_PART_STATE),\
+                        return_value=fw_const.DCNM_OUT_PART_STATE), \
             mock.patch('networking_cisco.apps.saf.server.services.firewall.'
                        'native.fabric_setup_base.ServiceIpSegTenantMap.'
                        'fixup_state',
-                       return_value=fw_const.DCNM_OUT_PART_STATE),\
+                       return_value=fw_const.DCNM_OUT_PART_STATE), \
             mock.patch.object(self.fabric_base.dcnm_obj,
                               'delete_partition') as delete_partition:
             self.fabric_base.fabric_fsm[
@@ -1551,7 +1550,7 @@ class FabricBaseTest(base.BaseTestCase):
         with mock.patch('networking_cisco.apps.saf.server.services.firewall.'
                         'native.fabric_setup_base.ServiceIpSegTenantMap.'
                         'get_state',
-                        return_value=fw_const.DCNM_OUT_PART_UPDATE_STATE),\
+                        return_value=fw_const.DCNM_OUT_PART_UPDATE_STATE), \
             mock.patch('networking_cisco.apps.saf.server.services.firewall.'
                        'native.fabric_setup_base.ServiceIpSegTenantMap.'
                        'fixup_state',

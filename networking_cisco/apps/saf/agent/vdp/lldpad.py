@@ -392,7 +392,7 @@ class LldpadDriver(object):
             return vdp_keyword_str
         oui_list = []
         if oui_id is not None and oui_data is not None:
-            if oui_id is 'cisco':
+            if oui_id == 'cisco':
                 oui_list = self.gen_cisco_vdp_oui(oui_id, oui_data)
         mode_str = "mode=" + mode
         vdp_keyword_str = dict(mode=mode_str, mgrid=mgrid_str,

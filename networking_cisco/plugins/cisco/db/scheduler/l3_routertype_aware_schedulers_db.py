@@ -22,7 +22,7 @@ from networking_cisco._i18n import _
 from neutron.db import agents_db
 from neutron.db import l3_agentschedulers_db
 from neutron.db import models_v2
-from neutron.db import portbindings_db as p_binding
+from neutron.plugins.ml2 import models as models
 
 from networking_cisco import backwards_compatibility as bc
 from networking_cisco.backwards_compatibility import l3_const
@@ -222,8 +222,8 @@ class L3RouterTypeAwareSchedulerDbMixin(
             models_v2.Port,
             l3_models.RouterHostingDeviceBinding.hosting_device_id ==
             models_v2.Port.device_id)
-        query = query.join(p_binding.PortBindingPort)
-        query = query.filter(p_binding.PortBindingPort.host == host)
+        query = query.join(models.PortBinding)
+        query = query.filter(models.PortBinding.host == host)
         query = query.filter(models_v2.Port.name == 'mgmt')
         router_ids = [item[0] for item in query]
         return self.get_sync_data_ext(context, router_ids=router_ids,
@@ -237,18 +237,18 @@ class L3RouterTypeAwareSchedulerDbMixin(
 
     def get_hosts_for_routers(self, context, routers, admin_state_up=None,
                               check_active=False):
-        query = context.session.query(p_binding.PortBindingPort.host,
+        query = context.session.query(models.PortBinding.host,
                                       agents_db.Agent)
         query = query.join(
             models_v2.Port,
-            models_v2.Port.id == p_binding.PortBindingPort.port_id)
+            models_v2.Port.id == models.PortBinding.port_id)
         query = query.join(
             l3_models.RouterHostingDeviceBinding,
             l3_models.RouterHostingDeviceBinding.hosting_device_id ==
             models_v2.Port.device_id)
         query = query.join(
             agents_db.Agent,
-            agents_db.Agent.host == p_binding.PortBindingPort.host)
+            agents_db.Agent.host == models.PortBinding.host)
         query = query.filter(sql.and_(
             agents_db.Agent.topic == topics.L3_AGENT,
             l3_models.RouterHostingDeviceBinding.router_id.in_(routers)))

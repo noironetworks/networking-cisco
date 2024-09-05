@@ -583,7 +583,7 @@ class TestAciVLANTrunkingPlugDriverGbp(
                     self.real_get_networks = self.core_plugin.get_networks
                     self._set_apic_driver_mocks(r1)
                     with mock.patch.object(self.core_plugin,
-                                           'get_network') as m1,\
+                                           'get_network') as m1, \
                             mock.patch.object(self.core_plugin,
                                               'get_networks') as m2:
                         m1.side_effect = self._mocked_get_network

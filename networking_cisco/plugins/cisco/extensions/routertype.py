@@ -20,12 +20,8 @@ from neutron_lib import exceptions
 
 from networking_cisco._i18n import _
 from networking_cisco import backwards_compatibility as bc
-from networking_cisco.backwards_compatibility import attributes as attr
 from networking_cisco.plugins.cisco.common import utils
 
-
-NEUTRON_VERSION = bc.NEUTRON_VERSION
-NEUTRON_NEWTON_VERSION = bc.NEUTRON_NEWTON_VERSION
 
 ROUTERTYPE = 'routertype'
 ROUTERTYPE_ALIAS = ROUTERTYPE
@@ -133,8 +129,6 @@ class Routertype(bc.extensions.ExtensionDescriptor):
         """Returns Ext Resources."""
         plural_mappings = resource_helper.build_plural_mappings(
             {}, RESOURCE_ATTRIBUTE_MAP)
-        if NEUTRON_VERSION.version[0] <= NEUTRON_NEWTON_VERSION.version[0]:
-            attr.PLURALS.update(plural_mappings)
         return resource_helper.build_resource_info(plural_mappings,
                                                    RESOURCE_ATTRIBUTE_MAP,
                                                    bc.constants.L3)
