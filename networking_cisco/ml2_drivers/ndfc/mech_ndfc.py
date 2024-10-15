@@ -20,8 +20,14 @@ import os
 
 from networking_cisco.ml2_drivers.ndfc import cache
 from networking_cisco.ml2_drivers.ndfc import config
+from networking_cisco.ml2_drivers.ndfc import db as nc_ml2_db
 from networking_cisco.ml2_drivers.ndfc.ndfc import Ndfc
+from neutron.db import models_v2
+from neutron.plugins.ml2 import models
+from neutron_lib.api.definitions import portbindings
+from neutron_lib import constants
 from neutron_lib import context as n_context
+from neutron_lib.db import api as db_api
 from neutron_lib.plugins import directory
 from neutron_lib.plugins.ml2 import api
 from neutron_lib import rpc as n_rpc
@@ -29,9 +35,15 @@ from oslo_config import cfg
 from oslo_log import log
 import oslo_messaging
 from oslo_utils import fileutils
+import sqlalchemy as sa
+from sqlalchemy.ext import baked
+from sqlalchemy import func
 
 
 LOG = log.getLogger(__name__)
+
+BAKERY = baked.bakery(500, _size_alert=lambda c: LOG.warning(
+    "sqlalchemy baked query cache size exceeded in %s", __name__))
 
 
 class KeystoneNotificationEndpoint(object):
@@ -115,6 +127,69 @@ class NDFCMechanismDriver(api.MechanismDriver):
                 network_id)
         return network_db
 
+    def _get_topology(self, session, host):
+        topology = {}
+        query = BAKERY(lambda s: s.query(
+            nc_ml2_db.NxosHostLink,
+            nc_ml2_db.NxosTors))
+        query += lambda q: q.outerjoin(
+            nc_ml2_db.NxosTors,
+            nc_ml2_db.NxosTors.tor_serial_number ==
+            nc_ml2_db.NxosHostLink.serial_number)
+        query += lambda q: q.filter(
+            nc_ml2_db.NxosHostLink.host_name == sa.bindparam('host'))
+        leaf_table = query(session).params(
+            host=host).all()
+
+        for host_link, tor in leaf_table:
+            interface_name = host_link.switch_port
+            if tor:
+                leaf_serial_number = tor.leaf_serial_number
+                tor_serial_number = tor.tor_serial_number
+                tor_name = tor.tor_name
+                leaf_map = topology.setdefault(
+                        leaf_serial_number, {'tor_sw_intf_map': {}})
+                tor_map = leaf_map['tor_sw_intf_map'].setdefault(
+                        tor_serial_number, {'tor_interfaces': [],
+                            'tor_name': tor_name})
+                if interface_name not in tor_map['tor_interfaces']:
+                    tor_map['tor_interfaces'].append(interface_name)
+            else:
+                leaf_map = topology.setdefault(host_link.serial_number,
+                        {'interfaces': []})
+                if interface_name not in leaf_map['interfaces']:
+                    leaf_map['interfaces'].append(interface_name)
+        return topology
+
+    def get_topology(self, context, network, host, detach=False):
+        with db_api.CONTEXT_READER.using(
+            context._plugin_context) as session:
+            query = BAKERY(lambda s: s.query(
+                func.count(models.PortBindingLevel.host)))
+            query += lambda q: q.outerjoin(
+                models_v2.Port,
+                models_v2.Port.id ==
+                models.PortBindingLevel.port_id)
+            query += lambda q: q.filter(
+                models_v2.Port.network_id == sa.bindparam('network_id'))
+            query += lambda q: q.filter(
+                models.PortBindingLevel.host == sa.bindparam('host'))
+            query += lambda q: q.group_by(models.PortBindingLevel.host)
+            count = query(session).params(
+                network_id=network['id'],
+                host=host).scalar()
+
+            if not detach and count > 1:
+                return
+            if detach and count > 0:
+                return
+            return self._get_topology(session, host)
+
+    def _is_port_bound(self, port):
+        return port.get(portbindings.VIF_TYPE) not in [
+            portbindings.VIF_TYPE_UNBOUND,
+            portbindings.VIF_TYPE_BINDING_FAILED]
+
     def purge_resources(self, tenant_id):
         ctx = n_context.get_admin_context()
         networks = self.plugin.get_networks(ctx)
@@ -179,6 +254,47 @@ class NDFCMechanismDriver(api.MechanismDriver):
                 LOG.debug("NDFC Network %s failed to create", network_name)
         else:
             LOG.debug("VRF name for tenant %s not found", tenant_id)
+
+    def attach_network(self, context, host):
+        network = context.network.current
+
+        topology_result = self.get_topology(context, network, host)
+        if topology_result:
+            self.project_details_cache.ensure_project(network['tenant_id'])
+            prj_details = self.project_details_cache.get_project_details(
+                network['tenant_id'])
+            vrf_name = prj_details[0]
+            if network['provider:network_type'] == constants.TYPE_VLAN:
+                vlan_id = network['provider:segmentation_id']
+                res = self.ndfc.attach_network(vrf_name, network['name'],
+                    vlan_id, topology_result)
+                if res:
+                    LOG.debug("NDFC Network %s attached successfully",
+                        network['name'])
+                else:
+                    LOG.debug("NDFC Network %s failed to attach",
+                        network['name'])
+
+    def detach_network(self, context, host):
+        network = context.network.current
+
+        topology_result = self.get_topology(context, network,
+                host, detach=True)
+        if topology_result:
+            self.project_details_cache.ensure_project(network['tenant_id'])
+            prj_details = self.project_details_cache.get_project_details(
+                network['tenant_id'])
+            vrf_name = prj_details[0]
+            if network['provider:network_type'] == constants.TYPE_VLAN:
+                vlan_id = network['provider:segmentation_id']
+                res = self.ndfc.detach_network(vrf_name, network['name'],
+                    vlan_id, topology_result)
+                if res:
+                    LOG.debug("NDFC Network %s detached successfully",
+                        network['name'])
+                else:
+                    LOG.debug("NDFC Network %s failed to detach",
+                        network['name'])
 
     def update_network(self, tenant_id, network_name, vlan_id,
             gateway_ip, physical_network):
@@ -289,3 +405,20 @@ class NDFCMechanismDriver(api.MechanismDriver):
         if physical_network:
             self.update_network(tenant_id, network_name,
                     vlan_id, gateway, physical_network)
+
+    def update_port_postcommit(self, context):
+        port = context.current
+
+        if context.original_host and context.original_host != context.host:
+            self.detach_network(context, context.original_host)
+
+        if self._is_port_bound(port) and port[
+            'status'] == 'ACTIVE' and 'migrating_to' not in port.get(
+                'binding:profile', {}):
+            self.attach_network(context, context.host)
+
+    def delete_port_postcommit(self, context):
+        port = context.current
+
+        if self._is_port_bound(port):
+            self.detach_network(context, context.host)

@@ -25,6 +25,7 @@ from neutron_lib.plugins import directory
 from networking_cisco.ml2_drivers.ndfc.cache import ProjectDetailsCache
 from networking_cisco.ml2_drivers.ndfc import config as ndfc_conf
 from networking_cisco.ml2_drivers.ndfc import mech_ndfc
+from networking_cisco.ml2_drivers.ndfc import ndfc
 from neutron.common import config
 from neutron.tests.unit import fake_resources as fakes
 from neutron.tests.unit.plugins.ml2 import test_plugin
@@ -53,38 +54,29 @@ TEST_TENANT_NAMES = {
 }
 
 
-FABRIC_TOPOLOGY = {
-    "Fabric": "SgmScale",
-    "NetworkIdStart": 40000,
-    "Physnets": [
+TEST_LEAF_ATTACHMENTS = {
+    'FDO24170Q2T':
+    {
+        'tor_sw_intf_map':
         {
-            "Name": "physnet1",
-            "Switches": [
-                {
-                    "Ip": "172.28.9.245",
-                    "Serial": "FLM273901SA",
-                    "Interfaces": "Ethernet1/24,Ethernet1/25",
-                    "TorInterfaces": "test-9-26(Ethernet1/4,Ethernet1/5)"
-                },
-                {
-                    "Ip": "172.28.9.246",
-                    "Serial": "FLM273901TQ",
-                    "Interfaces": "Ethernet1/24,Ethernet1/25",
-                    "TorInterfaces": "test-9-26(Ethernet1/4,Ethernet1/5)"
-                },
-                {
-                    "Ip": "172.28.9.249",
-                    "Serial": "FLM27400AHJ",
-                    "Interfaces": "Ethernet1/50"
-                },
-                {
-                    "Ip": "172.28.9.250",
-                    "Serial": "FLM27400AJD",
-                    "Interfaces": "Ethernet1/50"
-                }
-            ]
+            'FDO24230D5G': {
+                'tor_interfaces': ['Port-Channel11'],
+                'tor_name': '65-N9336FX2'},
+            'FDO24230DAX': {'tor_interfaces':
+                ['Port-Channel11'], 'tor_name': '66-N9332FX2'}
         }
-    ]
+    },
+    'FDO24170TNU':
+    {
+        'tor_sw_intf_map':
+        {
+            'FDO24230D5G': {
+                'tor_interfaces': ['Port-Channel11'],
+                'tor_name': '65-N9336FX2'},
+            'FDO24230DAX': {
+                'tor_interfaces': ['Port-Channel11'],
+                'tor_name': '66-N9332FX2'}}
+    }
 }
 
 
@@ -151,10 +143,23 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
         self.mock_get_network = mock.patch.object(
                 mech_ndfc.NDFCMechanismDriver,
                 'get_network', return_value=None).start()
-        self.mock_network = {'name': 'fake-network-name',
-            'project_id': 'fake-project-id',
-            'provider:segmentation_id': 'fake-segmentation-id',
-            'provider:physical_network': 'fake-physical_-network'}
+        self.mock_get_topology = mock.patch.object(
+                mech_ndfc.NDFCMechanismDriver,
+                'get_topology', return_value=None).start()
+        self.mock_create_vrf = mock.patch.object(
+            ndfc.Ndfc, 'create_vrf', return_value=None).start()
+        self.mock_delete_vrf = mock.patch.object(
+            ndfc.Ndfc, 'delete_vrf', return_value=None).start()
+        self.mock_create_network = mock.patch.object(
+            ndfc.Ndfc, 'create_network', return_value=None).start()
+        self.mock_update_network = mock.patch.object(
+            ndfc.Ndfc, 'update_network', return_value=None).start()
+        self.mock_delete_network = mock.patch.object(
+            ndfc.Ndfc, 'delete_network', return_value=None).start()
+        self.mock_attach_network = mock.patch.object(
+            ndfc.Ndfc, 'attach_network', return_value=None).start()
+        self.mock_detach_network = mock.patch.object(
+            ndfc.Ndfc, 'detach_network', return_value=None).start()
         super(TestNDFCMechanismDriver, self).setUp()
         mm = directory.get_plugin().mechanism_manager
         self.ndfc_mech = mm.mech_drivers['ndfc'].obj
@@ -188,9 +193,11 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
         return fakes.FakeSubnetContext(fake_subnet)
 
     @mock.patch.object(mech_ndfc.NDFCMechanismDriver, 'get_network')
+    @mock.patch.object(ndfc.Ndfc, 'create_network')
+    @mock.patch.object(ndfc.Ndfc, 'update_network')
+    @mock.patch.object(ndfc.Ndfc, 'delete_network')
     def test_network_postcommit(self, *args):
         # Test create and delete network postcommit methods
-        self.mock_get_network = self.mock_network
         fake_network_context = self._create_fake_network_context('local')
         self.ndfc_mech.create_network_postcommit(fake_network_context)
         self.ndfc_mech.delete_network_postcommit(fake_network_context)
@@ -202,12 +209,32 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
         self.ndfc_mech.delete_network_postcommit(fake_network_context)
 
         # Test create and delete subnet postcommit methods
+        self.mock_get_network = fake_network_context.current
         fake_subnet_context = self._create_fake_subnet_context(
                 'fake-network-id', '10.10.10.0/824')
         self.ndfc_mech.create_subnet_postcommit(fake_subnet_context)
         self.ndfc_mech.delete_subnet_postcommit(fake_subnet_context)
 
-    def test_keystone_notification_endpoint(self):
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver, 'get_topology')
+    @mock.patch.object(ndfc.Ndfc, 'attach_network')
+    @mock.patch.object(ndfc.Ndfc, 'detach_network')
+    def test_port_postcommit(self, *args):
+        # Test update and delete port postcommit methods
+        self.mock_get_topology = TEST_LEAF_ATTACHMENTS
+        fake_network_context = self._create_fake_network_context('vlan',
+                'physnet1', '10')
+        fake_port = fakes.FakePort.create_one_port(
+            attrs={'binding:vnic_type': 'virtio-forwarder'}).info()
+        fake_port_context = mock.Mock(current=fake_port, original=fake_port)
+        fake_port_context.network = fake_network_context
+        fake_port_context.host = 'current-host'
+        fake_port_context.original_host = 'original-host'
+        self.ndfc_mech.update_port_postcommit(fake_port_context)
+        self.ndfc_mech.delete_port_postcommit(fake_port_context)
+
+    @mock.patch.object(ndfc.Ndfc, 'create_vrf')
+    @mock.patch.object(ndfc.Ndfc, 'delete_vrf')
+    def test_keystone_notification_endpoint(self, *args):
         payload = {}
 
         payload['resource_info'] = 'test-tenant'

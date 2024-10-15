@@ -42,3 +42,11 @@ class Ndfc(object):
 
     def delete_network(self, network_name, vlan, physnet):
         return 1
+
+    def attach_network(self, vrf_name, network_name,
+            vlan_id, topology_result):
+        return 1
+
+    def detach_network(self, vrf_name, network_name,
+            vlan_id, topology_result):
+        return 1
