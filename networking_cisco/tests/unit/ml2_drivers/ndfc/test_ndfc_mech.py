@@ -1,4 +1,4 @@
-# Copyright 2024 Cisco Systems, Inc.
+# Copyright 2025 Cisco Systems, Inc.
 # All Rights Reserved
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -146,20 +146,6 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
         self.mock_get_topology = mock.patch.object(
                 mech_ndfc.NDFCMechanismDriver,
                 'get_topology', return_value=None).start()
-        self.mock_create_vrf = mock.patch.object(
-            ndfc.Ndfc, 'create_vrf', return_value=None).start()
-        self.mock_delete_vrf = mock.patch.object(
-            ndfc.Ndfc, 'delete_vrf', return_value=None).start()
-        self.mock_create_network = mock.patch.object(
-            ndfc.Ndfc, 'create_network', return_value=None).start()
-        self.mock_update_network = mock.patch.object(
-            ndfc.Ndfc, 'update_network', return_value=None).start()
-        self.mock_delete_network = mock.patch.object(
-            ndfc.Ndfc, 'delete_network', return_value=None).start()
-        self.mock_attach_network = mock.patch.object(
-            ndfc.Ndfc, 'attach_network', return_value=None).start()
-        self.mock_detach_network = mock.patch.object(
-            ndfc.Ndfc, 'detach_network', return_value=None).start()
         super(TestNDFCMechanismDriver, self).setUp()
         mm = directory.get_plugin().mechanism_manager
         self.ndfc_mech = mm.mech_drivers['ndfc'].obj
