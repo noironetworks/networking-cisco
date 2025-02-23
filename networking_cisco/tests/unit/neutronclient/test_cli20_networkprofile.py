@@ -19,8 +19,8 @@ import sys
 import mock
 
 from networking_cisco.neutronclient import networkprofile as np
-from neutronclient import shell
-from neutronclient.tests.unit import test_cli20
+from networking_cisco.tests.unit import test_cli20
+from openstackclient import shell
 
 
 class CLITestV20NetworkProfile(test_cli20.CLITestV20Base):
@@ -37,7 +37,7 @@ class CLITestV20NetworkProfile(test_cli20.CLITestV20Base):
         return ext
 
     def test_ext_cmd_loaded(self):
-        shell.NeutronShell('2.0')
+        shell.OpenStackShell('2.0')
         ext_cmd = {'cisco-network-profile-list': np.NetworkProfileList,
                    'cisco-network-profile-show': np.NetworkProfileShow,
                    'cisco-network-profile-create': np.NetworkProfileCreate,

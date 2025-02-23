@@ -19,10 +19,11 @@ import sys
 import mock
 
 from neutronclient.common import exceptions
-from neutronclient import shell
-from neutronclient.tests.unit import test_cli20
 
 from networking_cisco.neutronclient import routertype
+from networking_cisco.tests.unit import test_cli20
+
+from openstackclient import shell
 
 
 class CLITestV20RouterType(test_cli20.CLITestV20Base):
@@ -40,7 +41,7 @@ class CLITestV20RouterType(test_cli20.CLITestV20Base):
         return contrib
 
     def test_ext_cmd_loaded(self):
-        shell.NeutronShell('2.0')
+        shell.OpenStackShell('2.0')
         ext_cmd = {'cisco-router-type-list': routertype.RouterTypeList,
                    'cisco-router-type-create': routertype.RouterTypeCreate,
                    'cisco-router-type-update': routertype.RouterTypeUpdate,
@@ -49,7 +50,7 @@ class CLITestV20RouterType(test_cli20.CLITestV20Base):
         self.assertDictContainsSubset(ext_cmd, shell.COMMANDS['2.0'])
 
     def test_ext_cmd_help_doc_with_extension_name(self):
-        shell.NeutronShell('2.0')
+        shell.OpenStackShell('2.0')
         ext_cmd = {'cisco-router-type-list': routertype.RouterTypeList,
                    'cisco-router-type-create': routertype.RouterTypeCreate,
                    'cisco-router-type-update': routertype.RouterTypeUpdate,
