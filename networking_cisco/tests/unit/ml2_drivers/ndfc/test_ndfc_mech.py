@@ -24,6 +24,7 @@ from neutron_lib.plugins import directory
 
 from networking_cisco.ml2_drivers.ndfc.cache import ProjectDetailsCache
 from networking_cisco.ml2_drivers.ndfc import config as ndfc_conf
+from networking_cisco.ml2_drivers.ndfc import db as nc_ml2_db
 from networking_cisco.ml2_drivers.ndfc import mech_ndfc
 from networking_cisco.ml2_drivers.ndfc import ndfc
 from neutron.common import config
@@ -149,6 +150,21 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
         super(TestNDFCMechanismDriver, self).setUp()
         mm = directory.get_plugin().mechanism_manager
         self.ndfc_mech = mm.mech_drivers['ndfc'].obj
+        self.context = mock.MagicMock()
+        self.ndfc_mech.ndfc.ndfc_obj.get_po = mock.MagicMock(return_value='10')
+        self.ndfc_mech.ndfc.ndfc_obj.get_switches = mock.MagicMock(
+            return_value={
+                '192.168.1.1':
+                {
+                    'serial': '123',
+                    'ip': '192.168.1.1',
+                    'role': 'tor',
+                    'name': 'Switch1',
+                    'tor_leaf_nodes': {'leaf1': 'sn1'},
+                    'tor_leaf_intf': {'leaf1': 'intf1'}
+                }
+            }
+        )
         FakeProjectManager.reset()
         self.saved_keystone_client = ksc_client.Client
         ksc_client.Client = FakeKeystoneClient
@@ -238,3 +254,78 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
         FakeProjectManager.set('test-tenant2',
             'tenant2', 'bad\"\'descr')
         keystone_ep.info(None, None, 'identity.project.created', payload, None)
+
+    @mock.patch('neutron_lib.db.api.CONTEXT_WRITER.using')
+    def test_update_link_no_switch(self, mock_db_writer):
+        self.ndfc_mech.update_link(self.context, 'host1', 'intf1',
+                'mac1', '', '', '', '', '', 'serial1')
+        mock_db_writer.assert_not_called()
+
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver, '_get_host_link')
+    @mock.patch('neutron_lib.db.api.CONTEXT_WRITER.using')
+    def test_update_link_existing_host_link(self, mock_db_writer,
+            mock_get_host_link):
+        self.ndfc_mech.update_link(self.context, 'host1', 'intf1',
+                'mac1', '192.168.1.1', '', '', '', '', 'serial1')
+        session = mock_db_writer.return_value.__enter__.return_value
+        session.add.assert_not_called()
+
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver, '_get_tor_entry')
+    @mock.patch('neutron_lib.db.api.CONTEXT_WRITER.using')
+    def test_update_link_add_tor_entries(self, mock_db_writer,
+            mock_get_tor_entry):
+        mock_get_tor_entry.return_value = []
+        session = mock_db_writer.return_value.__enter__.return_value
+        self.ndfc_mech.update_link(self.context, 'host1', 'intf1',
+            'mac1', '192.168.1.1', 'module1', 'pod1', 'port1',
+            'desc1', 'serial1')
+
+        # Capture the call arguments for session.add
+        add_call_args = session.add.call_args_list
+
+        # Check if the expected NxosTors was added by comparing attributes
+        found_match = any(
+            (call_args[0][0].tor_serial_number == 'serial1' and
+             call_args[0][0].leaf_serial_number == 'sn1' and
+             call_args[0][0].tor_name == 'module1')
+            for call_args in add_call_args
+        )
+
+        self.assertTrue(found_match,
+            "Expected NxosTors entry not found in session.add calls")
+
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver, '_get_tor_entry')
+    @mock.patch('neutron_lib.db.api.CONTEXT_WRITER.using')
+    def test_update_link_port_channel(self, mock_db_writer,
+            mock_get_tor_entry):
+        session = mock_db_writer.return_value.__enter__.return_value
+        self.ndfc_mech.update_link(self.context, 'host1', 'intf1',
+                'mac1', '192.168.1.1', '', '', '', '', 'serial1')
+
+        # Capture the call arguments for session.add
+        add_call_args = session.add.call_args_list
+
+        # Check if the expected NxosHostLink was added
+        added_host_link = nc_ml2_db.NxosHostLink(
+            host_name='host1',
+            interface_name='intf1',
+            serial_number='serial1',
+            switch_ip='192.168.1.1',
+            switch_mac='mac1',
+            switch_port='Port-Channel10'
+        )
+
+        # Compare attributes instead of object identity
+        found_match = any(
+            (call_args[0][0].host_name == added_host_link.host_name and
+             call_args[0][0].interface_name ==
+             added_host_link.interface_name and
+             call_args[0][0].serial_number == added_host_link.serial_number and
+             call_args[0][0].switch_ip == added_host_link.switch_ip and
+             call_args[0][0].switch_mac == added_host_link.switch_mac and
+             call_args[0][0].switch_port == added_host_link.switch_port)
+            for call_args in add_call_args
+        )
+
+        self.assertTrue(found_match,
+            "Expected NxosHostLink entry not found in session.add calls")
