@@ -8,21 +8,21 @@
             nodeset: ubuntu-focal
             required-projects:
               - name: openstack/requirements
-                override-checkout: unmaintained/2023.1
+                override-checkout: stable/2023.2
         - openstack-tox-py39:
             required-projects:
               - name: openstack/requirements
-                override-checkout: unmaintained/2023.1
+                override-checkout: stable/2023.2
             voting: false
         - openstack-tox-py311:
             required-projects:
               - name: openstack/requirements
-                override-checkout: unmaintained/2023.1
+                override-checkout: stable/2023.2
             voting: false
         - openstack-tox-py312:
             required-projects:
               - name: openstack/requirements
-                override-checkout: unmaintained/2023.1
+                override-checkout: stable/2023.2
             voting: false
     gate:
       jobs:
@@ -30,19 +30,19 @@
             nodeset: ubuntu-focal
             required-projects:
               - name: openstack/requirements
-                override-checkout: unmaintained/2023.1
+                override-checkout: stable/2023.2
         - openstack-tox-py39:
             required-projects:
               - name: openstack/requirements
-                override-checkout: unmaintained/2023.1
+                override-checkout: stable/2023.2
             voting: false
         - openstack-tox-py311:
             required-projects:
               - name: openstack/requirements
-                override-checkout: unmaintained/2023.1
+                override-checkout: stable/2023.2
             voting: false
         - openstack-tox-py312:
             required-projects:
               - name: openstack/requirements
-                override-checkout: unmaintained/2023.1
+                override-checkout: stable/2023.2
             voting: false
