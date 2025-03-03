@@ -19,8 +19,9 @@ import sys
 import mock
 
 from networking_cisco.neutronclient import policyprofile as pp
-from neutronclient import shell
-from neutronclient.tests.unit import test_cli20
+from networking_cisco.tests.unit import test_cli20
+
+from openstackclient import shell
 
 
 class CLITestV20PolicyProfile(test_cli20.CLITestV20Base):
@@ -36,7 +37,7 @@ class CLITestV20PolicyProfile(test_cli20.CLITestV20Base):
         return ext
 
     def test_ext_cmd_loaded(self):
-        shell.NeutronShell('2.0')
+        shell.OpenStackShell('2.0')
         ext_cmd = {'cisco-policy-profile-list': pp.PolicyProfileList,
                    'cisco-policy-profile-show': pp.PolicyProfileShow}
         self.assertDictContainsSubset(ext_cmd, shell.COMMANDS['2.0'])

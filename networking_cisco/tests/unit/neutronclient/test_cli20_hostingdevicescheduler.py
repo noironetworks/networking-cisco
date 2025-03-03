@@ -19,9 +19,8 @@ import sys
 
 from mox3 import mox
 
-from neutronclient.tests.unit import test_cli20
-
 from networking_cisco.neutronclient import hostingdevicescheduler as scheduler
+from networking_cisco.tests.unit import test_cli20
 
 AGENT_ID = 'agent_id1'
 HOSTING_DEVICE_ID = 'hd_id1'
