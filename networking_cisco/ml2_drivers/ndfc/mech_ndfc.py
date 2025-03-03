@@ -22,6 +22,7 @@ from networking_cisco.ml2_drivers.ndfc import cache
 from networking_cisco.ml2_drivers.ndfc import config
 from networking_cisco.ml2_drivers.ndfc import db as nc_ml2_db
 from networking_cisco.ml2_drivers.ndfc.ndfc import Ndfc
+from networking_cisco.rpc import topo_rpc_handler
 from neutron.db import models_v2
 from neutron.plugins.ml2 import models
 from neutron_lib.api.definitions import portbindings
@@ -74,7 +75,8 @@ class KeystoneNotificationEndpoint(object):
             return oslo_messaging.NotificationResult.HANDLED
 
 
-class NDFCMechanismDriver(api.MechanismDriver):
+class NDFCMechanismDriver(api.MechanismDriver,
+        topo_rpc_handler.TopologyRpcHandlerMixin):
     def __init__(self):
         super(NDFCMechanismDriver, self).__init__()
 
@@ -99,6 +101,19 @@ class NDFCMechanismDriver(api.MechanismDriver):
         self.project_details_cache = cache.ProjectDetailsCache()
         self.tenants_file = 'tenants.json'
         self.load_tenants()
+        self.start_rpc_listeners()
+        self.switch_map = {}
+
+    @property
+    def switches(self):
+        # TODO(sanaval): add synchronization with NDFC for the switches
+        if not self.switch_map:
+            self.switch_map = self.ndfc.ndfc_obj.get_switches(self.fabric_name)
+        return self.switch_map
+
+    def start_rpc_listeners(self):
+        LOG.info("NDFC MD starting RPC listeners")
+        return self._start_rpc_listeners()
 
     @property
     def plugin(self):
@@ -422,3 +437,58 @@ class NDFCMechanismDriver(api.MechanismDriver):
 
         if self._is_port_bound(port):
             self.detach_network(context, context.host)
+
+    def _get_host_link(self, context, host, interface):
+        with db_api.CONTEXT_READER.using(context) as session:
+            return session.query(
+                nc_ml2_db.NxosHostLink).filter(
+                    nc_ml2_db.NxosHostLink.host_name == host).filter(
+                        nc_ml2_db.NxosHostLink.interface_name ==
+                        interface).all()
+
+    def _get_tor_entry(self, context, tor_sn, leaf_sn):
+        with db_api.CONTEXT_READER.using(context) as session:
+            return session.query(
+                nc_ml2_db.NxosTors).filter(
+                    nc_ml2_db.NxosTors.tor_serial_number == tor_sn).filter(
+                            nc_ml2_db.NxosTors.leaf_serial_number ==
+                            leaf_sn).all()
+
+    # Topology RPC method handler
+    def update_link(self, context, host, interface, mac,
+                    switch, module, pod_id, port,
+                    port_description, serial_number):
+        LOG.debug('Topology RPC: update_link: %s',
+                  ', '.join([str(p) for p in
+                             (host, interface, mac, switch, module, port,
+                              pod_id, port_description, serial_number)]))
+        # FIXME(This only creates the link - doesn't update it)
+        if not switch:
+            return
+        # FIXME: our variable name/positions are wrong
+        switch_interface = pod_id
+        hlink = self._get_host_link(context, host, interface)
+        if hlink:
+            # There was neither a change nor a refresh required.
+            return
+        # Now see if we need to add entries to the ToR table as well
+        switch_info = self.switches.get(switch)
+        if switch_info and switch_info.get('role') == 'tor':
+            leaf_map = switch_info.get('tor_leaf_nodes')
+            for leaf_name, leaf_sn in leaf_map.items():
+                tors = self._get_tor_entry(context, serial_number, leaf_sn)
+                if tors:
+                    continue
+                with db_api.CONTEXT_WRITER.using(context) as session:
+                    session.add(nc_ml2_db.NxosTors(
+                        tor_serial_number=serial_number,
+                        leaf_serial_number=leaf_sn, tor_name=module))
+        po = self.ndfc.ndfc_obj.get_po(
+                switch_info.get('serial'), switch_interface)
+        if po != "":
+            switch_interface = "Port-Channel" + po
+        with db_api.CONTEXT_WRITER.using(context) as session:
+            session.add(nc_ml2_db.NxosHostLink(host_name=host,
+                interface_name=interface, serial_number=serial_number,
+                switch_ip=switch, switch_mac=mac,
+                switch_port=switch_interface))
