@@ -9,6 +9,11 @@
             required-projects:
               - name: openstack/requirements
                 override-checkout: stable/2024.1
+        - openstack-tox-py38:
+            required-projects:
+              - name: openstack/requirements
+                override-checkout: stable/2024.1
+            voting: false
         - openstack-tox-py39:
             required-projects:
               - name: openstack/requirements
@@ -31,6 +36,11 @@
             required-projects:
               - name: openstack/requirements
                 override-checkout: stable/2024.1
+        - openstack-tox-py38:
+            required-projects:
+              - name: openstack/requirements
+                override-checkout: stable/2024.1
+            voting: false
         - openstack-tox-py39:
             required-projects:
               - name: openstack/requirements
