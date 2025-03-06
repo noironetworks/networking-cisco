@@ -465,8 +465,7 @@ class NDFCMechanismDriver(api.MechanismDriver,
         # FIXME(This only creates the link - doesn't update it)
         if not switch:
             return
-        # FIXME: our variable name/positions are wrong
-        switch_interface = pod_id
+        switch_interface = port
         hlink = self._get_host_link(context, host, interface)
         if hlink:
             # There was neither a change nor a refresh required.
