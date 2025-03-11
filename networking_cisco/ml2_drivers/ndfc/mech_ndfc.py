@@ -180,19 +180,17 @@ class NDFCMechanismDriver(api.MechanismDriver,
         with db_api.CONTEXT_READER.using(
             context._plugin_context) as session:
             query = BAKERY(lambda s: s.query(
-                func.count(models.PortBindingLevel.host)))
+                func.count(sa.distinct(models.PortBindingLevel.port_id))))
             query += lambda q: q.outerjoin(
                 models_v2.Port,
-                models_v2.Port.id ==
-                models.PortBindingLevel.port_id)
+                models_v2.Port.id == models.PortBindingLevel.port_id)
             query += lambda q: q.filter(
                 models_v2.Port.network_id == sa.bindparam('network_id'))
             query += lambda q: q.filter(
                 models.PortBindingLevel.host == sa.bindparam('host'))
-            query += lambda q: q.group_by(models.PortBindingLevel.host)
             count = query(session).params(
                 network_id=network['id'],
-                host=host).scalar()
+                host=host).scalar() or 0
 
             if not detach and count > 1:
                 return
@@ -427,9 +425,7 @@ class NDFCMechanismDriver(api.MechanismDriver,
         if context.original_host and context.original_host != context.host:
             self.detach_network(context, context.original_host)
 
-        if self._is_port_bound(port) and port[
-            'status'] == 'ACTIVE' and 'migrating_to' not in port.get(
-                'binding:profile', {}):
+        if self._is_port_bound(port):
             self.attach_network(context, context.host)
 
     def delete_port_postcommit(self, context):
@@ -438,21 +434,13 @@ class NDFCMechanismDriver(api.MechanismDriver,
         if self._is_port_bound(port):
             self.detach_network(context, context.host)
 
-    def _get_host_link(self, context, host, interface):
-        with db_api.CONTEXT_READER.using(context) as session:
-            return session.query(
-                nc_ml2_db.NxosHostLink).filter(
-                    nc_ml2_db.NxosHostLink.host_name == host).filter(
-                        nc_ml2_db.NxosHostLink.interface_name ==
-                        interface).all()
-
     def _get_tor_entry(self, context, tor_sn, leaf_sn):
         with db_api.CONTEXT_READER.using(context) as session:
             return session.query(
                 nc_ml2_db.NxosTors).filter(
                     nc_ml2_db.NxosTors.tor_serial_number == tor_sn).filter(
                             nc_ml2_db.NxosTors.leaf_serial_number ==
-                            leaf_sn).all()
+                            leaf_sn).one_or_none()
 
     # Topology RPC method handler
     def update_link(self, context, host, interface, mac,
@@ -466,28 +454,42 @@ class NDFCMechanismDriver(api.MechanismDriver,
         if not switch:
             return
         switch_interface = port
-        hlink = self._get_host_link(context, host, interface)
-        if hlink:
-            # There was neither a change nor a refresh required.
-            return
-        # Now see if we need to add entries to the ToR table as well
-        switch_info = self.switches.get(switch)
-        if switch_info and switch_info.get('role') == 'tor':
-            leaf_map = switch_info.get('tor_leaf_nodes')
-            for leaf_name, leaf_sn in leaf_map.items():
-                tors = self._get_tor_entry(context, serial_number, leaf_sn)
-                if tors:
-                    continue
-                with db_api.CONTEXT_WRITER.using(context) as session:
-                    session.add(nc_ml2_db.NxosTors(
-                        tor_serial_number=serial_number,
-                        leaf_serial_number=leaf_sn, tor_name=module))
-        po = self.ndfc.ndfc_obj.get_po(
-                switch_info.get('serial'), switch_interface)
-        if po != "":
-            switch_interface = "Port-Channel" + po
         with db_api.CONTEXT_WRITER.using(context) as session:
-            session.add(nc_ml2_db.NxosHostLink(host_name=host,
-                interface_name=interface, serial_number=serial_number,
-                switch_ip=switch, switch_mac=mac,
-                switch_port=switch_interface))
+            hlink = session.query(
+                nc_ml2_db.NxosHostLink).filter(
+                    nc_ml2_db.NxosHostLink.host_name == host).filter(
+                        nc_ml2_db.NxosHostLink.interface_name ==
+                        interface).one_or_none()
+            if (hlink and
+                hlink['serial_number'] == serial_number and
+                hlink['switch_ip'] == switch and
+                hlink['switch_mac'] == mac and
+                hlink['switch_port'] == port):
+                # There was neither a change nor a refresh required.
+                return
+            # Now see if we need to add entries to the ToR table as well
+            switch_info = self.switches.get(switch)
+            if switch_info and switch_info.get('role') == 'tor':
+                leaf_map = switch_info.get('tor_leaf_nodes')
+                for leaf_name, leaf_sn in leaf_map.items():
+                    tor = self._get_tor_entry(context, serial_number, leaf_sn)
+                    if tor:
+                        continue
+                    with db_api.CONTEXT_WRITER.using(context) as session:
+                        session.add(nc_ml2_db.NxosTors(
+                            tor_serial_number=serial_number,
+                            leaf_serial_number=leaf_sn, tor_name=module))
+            po = self.ndfc.ndfc_obj.get_po(
+                switch_info.get('serial'), switch_interface)
+            if po != "":
+                switch_interface = "Port-Channel" + po
+            if hlink:
+                hlink['serial_number'] = serial_number
+                hlink['switch_ip'] = switch
+                hlink['switch_mac'] = mac
+                hlink['switch_port'] = switch_interface
+            else:
+                session.add(nc_ml2_db.NxosHostLink(host_name=host,
+                    interface_name=interface, serial_number=serial_number,
+                    switch_ip=switch, switch_mac=mac,
+                    switch_port=switch_interface))
