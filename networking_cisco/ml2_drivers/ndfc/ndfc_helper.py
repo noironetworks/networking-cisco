@@ -400,7 +400,7 @@ class NdfcHelper:
         if res and res.status_code in self._resp_ok:
             LOG.info("attach network successful")
             return True
-        LOG.error("attach betwork failed with res %s", res)
+        LOG.error("attach network failed with res %s", res)
         return False
 
     def attach_deploy_network(self, fabric, payload, deploy_payload):

@@ -261,12 +261,20 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
                 'mac1', '', '', '', '', '', 'serial1')
         mock_db_writer.assert_not_called()
 
-    @mock.patch.object(mech_ndfc.NDFCMechanismDriver, '_get_host_link')
     @mock.patch('neutron_lib.db.api.CONTEXT_WRITER.using')
-    def test_update_link_existing_host_link(self, mock_db_writer,
-            mock_get_host_link):
+    def test_update_link_existing_host_link(self, mock_db_writer):
+        mock_hlink = {
+            'serial_number': 'serial1',
+            'switch_ip': '192.168.1.1',
+            'switch_mac': 'mac1',
+            'switch_port': 'port1'
+        }
+        session = mock_db_writer.return_value.__enter__.return_value
+        session.query.return_value.filter.return_value.filter.return_value \
+            .one_or_none.return_value = mock_hlink
+
         self.ndfc_mech.update_link(self.context, 'host1', 'intf1',
-                'mac1', '192.168.1.1', '', '', '', '', 'serial1')
+                'mac1', '192.168.1.1', '', '', 'port1', '', 'serial1')
         session = mock_db_writer.return_value.__enter__.return_value
         session.add.assert_not_called()
 
@@ -296,11 +304,14 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
 
     @mock.patch.object(mech_ndfc.NDFCMechanismDriver, '_get_tor_entry')
     @mock.patch('neutron_lib.db.api.CONTEXT_WRITER.using')
-    def test_update_link_port_channel(self, mock_db_writer,
+    def test_update_link_add_host_entry(self, mock_db_writer,
             mock_get_tor_entry):
         session = mock_db_writer.return_value.__enter__.return_value
+        session.query.return_value.filter.return_value.filter.return_value \
+            .one_or_none.return_value = None
+
         self.ndfc_mech.update_link(self.context, 'host1', 'intf1',
-                'mac1', '192.168.1.1', '', '', '', '', 'serial1')
+                'mac1', '192.168.1.1', '', '', 'Ethernet1/51', '', 'serial1')
 
         # Capture the call arguments for session.add
         add_call_args = session.add.call_args_list
@@ -329,3 +340,23 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
 
         self.assertTrue(found_match,
             "Expected NxosHostLink entry not found in session.add calls")
+
+    @mock.patch('neutron_lib.db.api.CONTEXT_WRITER.using')
+    def test_update_link_update_host_entry(self, mock_db_writer):
+        session = mock_db_writer.return_value.__enter__.return_value
+        mock_hlink = {
+            'serial_number': 'old_serial',
+            'switch_ip': 'old_ip',
+            'switch_mac': 'old_mac',
+            'switch_port': 'old_port'
+        }
+        session.query.return_value.filter.return_value.filter.return_value \
+            .one_or_none.return_value = mock_hlink
+
+        self.ndfc_mech.update_link(self.context, 'host1', 'intf1',
+                'mac1', '192.168.1.1', '', '', 'port1', '', 'serial1')
+
+        self.assertEqual(mock_hlink['serial_number'], 'serial1')
+        self.assertEqual(mock_hlink['switch_ip'], '192.168.1.1')
+        self.assertEqual(mock_hlink['switch_mac'], 'mac1')
+        self.assertEqual(mock_hlink['switch_port'], 'Port-Channel10')
