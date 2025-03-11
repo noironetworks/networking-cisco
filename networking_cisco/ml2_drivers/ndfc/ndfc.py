@@ -351,7 +351,7 @@ class Ndfc:
         if not ret:
             LOG.error("NDFC attach network failed for fabric %s, vrf %s "
                       "network %s", self.fabric, vrf_name, network_name)
-        LOG.info("Completed attaching for %s:%s:%s ret %s",
+        LOG.info("Network Attachment for %s:%s:%s ret %s",
                  self.fabric, vrf_name, network_name, ret)
         return ret
 
@@ -379,7 +379,7 @@ class Ndfc:
         if not ret:
             LOG.error("NDFC attach network failed for fabric %s, vrf %s "
                       "network %s", self.fabric, vrf_name, network_name)
-        LOG.info("Completed detaching for %s:%s:%s ret %s",
+        LOG.info("Network Detachment for %s:%s:%s ret %s",
                  self.fabric, vrf_name, network_name, ret)
         return ret
 
