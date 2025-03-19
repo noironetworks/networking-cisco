@@ -68,7 +68,7 @@ class NxosTopologyHandler(lldp_topology.LldpTopologyHandler):
             mgmt_ip = chassis_dict.get('mgmt-ip')
             mac = chassis_dict.get('mac')
             port_dict = interfaces[interface].get('port')
-            port = port_dict.get('descr')
+            port = port_dict.get('ifname')
             sn = self._get_serial_number(interfaces[interface])
             peer = (self.host, interface, mac,
                     mgmt_ip, sys_name, port, 0, 0, sn)
