@@ -219,7 +219,7 @@ class TestNDFCHelper(TestNDFCHelperBase, test_plugin.Ml2PluginV2TestCase):
                 'lanAttachList': [
                     {
                         'switchSerialNo': 'SN123',
-                        'portNames': ['Ethernet1/1', 'Ethernet1/2'],
+                        'portNames': 'Ethernet1/1,Ethernet1/2',
                         'switchRole': 'leaf',
                         'switchName': 'Switch1'
                     }
