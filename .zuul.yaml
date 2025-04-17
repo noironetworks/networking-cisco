@@ -14,6 +14,11 @@
               - name: openstack/requirements
                 override-checkout: unmaintained/2023.1
             voting: false
+        - openstack-tox-py310:
+            required-projects:
+              - name: openstack/requirements
+                override-checkout: stable/2024.1
+            voting: false
         - openstack-tox-py311:
             required-projects:
               - name: openstack/requirements
@@ -35,6 +40,11 @@
             required-projects:
               - name: openstack/requirements
                 override-checkout: unmaintained/2023.1
+            voting: false
+        - openstack-tox-py310:
+            required-projects:
+              - name: openstack/requirements
+                override-checkout: stable/2024.1
             voting: false
         - openstack-tox-py311:
             required-projects:
