@@ -162,8 +162,7 @@ class Ndfc:
             if len(tor_complete_intf) > 0:
                 attach_snum["torPorts"] = tor_complete_intf
             flag = True
-        if leaf_info.get('interfaces') is not None and len(leaf_info.get(
-            'interfaces')) > 0:
+        if 'interfaces' in leaf_info:
             leaf_intf_str = ",".join(leaf_info['interfaces'])
             attach_snum["switchPorts"] = leaf_intf_str
             flag = True
@@ -204,13 +203,13 @@ class Ndfc:
             if attach_snum is None:
                 LOG.error("Leaf %s has no regular or ToR interfaces")
                 continue
-            if attach_snum.get("switchPorts") is None and attach_snum.get(
-                    "torPorts") is None:
+            if not attach_snum.get("switchPorts") and not attach_snum.get(
+                    "torPorts"):
                 attach_snum["deployment"] = False
             if leaf_snum in leaf_attachments:
                 if leaf_attachments[leaf_snum].get("interfaces") is not None:
-                    attach_snum["detachSwitchPorts"] = (
-                            leaf_attachments["leaf_snum"].get("interfaces"))
+                    interfaces = leaf_attachments[leaf_snum].get("interfaces")
+                    attach_snum["detachSwitchPorts"] = ','.join(interfaces)
             attach_list.append(attach_snum)
         attach_dct = [{"networkName": network_name,
             "lanAttachList": attach_list}]

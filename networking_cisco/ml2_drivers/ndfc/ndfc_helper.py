@@ -195,7 +195,7 @@ class NdfcHelper:
                         switch_map[snum]["tor_sw_intf_map"] = tor_sw_intf_map
                     else:
                         new_intf_list = []
-                        for intf in lan_attach.get('portNames'):
+                        for intf in lan_attach.get('portNames').split(","):
                             new_intf = self._get_new_intf_name(intf)
                             new_intf_list.append(new_intf)
                         switch_map[snum]["interfaces"] = new_intf_list
