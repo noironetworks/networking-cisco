@@ -241,6 +241,35 @@ class TestNDFCHelper(TestNDFCHelperBase, test_plugin.Ml2PluginV2TestCase):
         }
         self.assertEqual(result, expected_result)
 
+    def test_parse_tor_interface_map_valid(self):
+        portnames = "SN1(Ethernet1/1) SN2(Ethernet1/2) SN3(Port-channel1)"
+        expected_result = {
+            "SN_SN1": {
+                "tor_interfaces": ["Ethernet1/1"],
+                "tor_name": "SN1"
+            },
+            "SN_SN2": {
+                "tor_interfaces": ["Ethernet1/2"],
+                "tor_name": "SN2"
+            },
+            "SN_SN3": {
+                "tor_interfaces": ["Port-Channel1"],
+                "tor_name": "SN3"
+            }
+        }
+        result = self.helper._parse_tor_interface_map(portnames)
+        self.assertEqual(result, expected_result)
+
+    def test_parse_tor_interface_map_invalid_format(self):
+        portnames = "InvalidFormat"
+        result = self.helper._parse_tor_interface_map(portnames)
+        self.assertEqual(result, {})
+
+    def test_parse_tor_interface_map_empty(self):
+        portnames = ""
+        result = self.helper._parse_tor_interface_map(portnames)
+        self.assertEqual(result, {})
+
     @mock.patch('requests.get')
     @mock.patch('requests.post')
     def test_get_network_switch_map(self, mock_post, mock_get):
@@ -279,6 +308,40 @@ class TestNDFCHelper(TestNDFCHelperBase, test_plugin.Ml2PluginV2TestCase):
             'SN125': 'Network1'
         }
         self.assertEqual(result, expected_result)
+
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'login', return_value=True)
+    @mock.patch.object(ndfc_helper.NdfcHelper, '_get_network_info')
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'logout')
+    def test_get_network_info_success(self, mock_logout,
+            mock_get_network_info, mock_login):
+        mock_get_network_info.return_value = {'network': 'info'}
+        fabric = 'test_fabric'
+        network = 'test_network'
+
+        result = self.helper.get_network_info(fabric, network)
+
+        expected_result = {'network': 'info'}
+        self.assertEqual(result, expected_result)
+        mock_login.assert_called_once()
+        mock_get_network_info.assert_called_once_with(fabric, network)
+        mock_logout.assert_called_once()
+
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'login', return_value=True)
+    @mock.patch.object(ndfc_helper.NdfcHelper, '_get_network_info')
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'logout')
+    def test_get_network_info_failure(self, mock_logout,
+            mock_get_network_info, mock_login):
+        mock_get_network_info.return_value = None
+
+        fabric = 'test_fabric'
+        network = 'test_network'
+
+        result = self.helper.get_network_info(fabric, network)
+
+        self.assertIsNone(result)
+        mock_login.assert_called_once()
+        mock_get_network_info.assert_called_once_with(fabric, network)
+        mock_logout.assert_called_once()
 
     @mock.patch('requests.get')
     @mock.patch('requests.post')
@@ -320,6 +383,59 @@ class TestNDFCHelper(TestNDFCHelperBase, test_plugin.Ml2PluginV2TestCase):
             }
         }
         self.assertEqual(result, expected_result)
+
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'login', return_value=True)
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'logout')
+    @mock.patch('requests.get')
+    def test_get_switches_role_tor(self, mock_get, mock_logout, mock_login):
+        mock_inventory_response = mock.MagicMock()
+        mock_inventory_response.status_code = 200
+        mock_inventory_response.json.return_value = [
+            {
+                'serialNumber': 'SN123',
+                'ipAddress': '192.168.1.10',
+                'switchRole': 'tor',
+                'logicalName': 'Switch1'
+            }
+        ]
+        mock_topology_response = mock.MagicMock()
+        mock_topology_response.status_code = 200
+        mock_topology_response.json.return_value = {
+            'nodeList': [
+                {'data': {'logicalName': 'Leaf1',
+                    'switchRole': 'leaf',
+                    'serialNumber': 'SN124'}},
+                {'data': {'logicalName': 'Switch1',
+                    'switchRole': 'tor',
+                    'serialNumber': 'SN123'}}
+            ],
+            'edgeList': [
+                {'data': {'fromSwitch': 'Switch1',
+                    'toSwitch': 'Leaf1',
+                    'fromInterface': 'Eth1',
+                    'toInterface': 'Eth2'}}
+            ]
+        }
+        mock_get.side_effect = [mock_inventory_response,
+                mock_topology_response]
+
+        fabric = 'test_fabric'
+
+        result = self.helper.get_switches(fabric)
+
+        expected_result = {
+            '192.168.1.10': {
+                'serial': 'SN123',
+                'ip': '192.168.1.10',
+                'role': 'tor',
+                'name': 'Switch1',
+                'tor_leaf_nodes': {'Leaf1': 'SN124'},
+                'tor_leaf_intf': {'Leaf1': 'Eth2'}
+            }
+        }
+        self.assertEqual(result, expected_result)
+        mock_login.assert_called_once()
+        mock_logout.assert_called_once()
 
     @mock.patch('requests.get')
     @mock.patch('requests.post')

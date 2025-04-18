@@ -141,12 +141,6 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
                 group='ndfc')
         self.mock_keystone_auth = mock.patch.object(
             ProjectDetailsCache, 'get_auth', return_value=None).start()
-        self.mock_get_network = mock.patch.object(
-                mech_ndfc.NDFCMechanismDriver,
-                'get_network', return_value=None).start()
-        self.mock_get_topology = mock.patch.object(
-                mech_ndfc.NDFCMechanismDriver,
-                'get_topology', return_value=None).start()
         super(TestNDFCMechanismDriver, self).setUp()
         mm = directory.get_plugin().mechanism_manager
         self.ndfc_mech = mm.mech_drivers['ndfc'].obj
@@ -187,14 +181,40 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
 
     def _create_fake_subnet_context(self,
                                     network_id,
-                                    cidr):
+                                    cidr,
+                                    old_network_id=None,
+                                    old_cidr=None):
         subnet_attrs = {'network_id': network_id,
                         'gateway_ip': cidr}
         fake_subnet = \
             fakes.FakeSubnet.create_one_subnet(attrs=subnet_attrs).info()
+        if old_network_id:
+            old_subnet_attrs = {'network_id': old_network_id,
+                                'gateway_ip': old_cidr}
+            fake_old_subnet = fakes.FakeSubnet.create_one_subnet(
+                    attrs=old_subnet_attrs).info()
+            return fakes.FakeSubnetContext(fake_subnet, fake_old_subnet)
         return fakes.FakeSubnetContext(fake_subnet)
 
+    @mock.patch.object(directory, 'get_plugin')
+    def test_get_network(self, mock_get_plugin):
+        fake_network_id = 'fake-network-id'
+        expected_network = fakes.FakeNetwork.create_one_network(
+                {'id': fake_network_id}).info()
+
+        mock_plugin = mock.Mock()
+        mock_plugin.get_network.return_value = expected_network
+        mock_get_plugin.return_value = mock_plugin
+
+        network = self.ndfc_mech.get_network(self.context, fake_network_id)
+
+        self.assertEqual(network, expected_network)
+        mock_plugin.get_network.assert_called_once_with(
+                self.context._plugin_context, fake_network_id)
+
     @mock.patch.object(mech_ndfc.NDFCMechanismDriver, 'get_network')
+    @mock.patch.object(ProjectDetailsCache, 'get_project_details',
+            return_value=['mock_vrf_name'])
     @mock.patch.object(ndfc.Ndfc, 'create_network')
     @mock.patch.object(ndfc.Ndfc, 'update_network')
     @mock.patch.object(ndfc.Ndfc, 'delete_network')
@@ -210,11 +230,15 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
         self.ndfc_mech.create_network_postcommit(fake_network_context)
         self.ndfc_mech.delete_network_postcommit(fake_network_context)
 
-        # Test create and delete subnet postcommit methods
+        # Test create, update and delete subnet postcommit methods
         self.mock_get_network = fake_network_context.current
         fake_subnet_context = self._create_fake_subnet_context(
-                'fake-network-id', '10.10.10.0/824')
+                'fake-network-id', '10.10.10.0/24')
         self.ndfc_mech.create_subnet_postcommit(fake_subnet_context)
+        fake_subnet_context = self._create_fake_subnet_context(
+                'fake-network-id', '20.20.20.0/24',
+                'fake-network-id', '10.10.10.0/24')
+        self.ndfc_mech.update_subnet_postcommit(fake_subnet_context)
         self.ndfc_mech.delete_subnet_postcommit(fake_subnet_context)
 
     @mock.patch.object(mech_ndfc.NDFCMechanismDriver, 'get_topology')
@@ -360,3 +384,19 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
         self.assertEqual(mock_hlink['switch_ip'], '192.168.1.1')
         self.assertEqual(mock_hlink['switch_mac'], 'mac1')
         self.assertEqual(mock_hlink['switch_port'], 'Port-Channel10')
+
+    def test_get_topology_attach(self):
+        fake_network_context = self._create_fake_network_context(
+                'local', 'physnet1', '10')
+        topology = self.ndfc_mech.get_topology(self.context,
+                fake_network_context.current, 'host1')
+        self.assertIsNotNone(topology)
+
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver,
+            '_get_topology', return_value={'host': 'host1'})
+    def test_get_topology_detach(self, mock_get_topology):
+        fake_network_context = self._create_fake_network_context(
+                'local', 'physnet1', '10')
+        topology = self.ndfc_mech.get_topology(self.context,
+                fake_network_context.current, 'host1', detach=True)
+        self.assertEqual(topology, {'host': 'host1'})
