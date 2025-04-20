@@ -233,7 +233,8 @@ class Ndfc:
                 exist_attach_copy[leaf_snum] = leaf_info
                 continue
             exist_leaf_info = exist_attach_copy[leaf_snum]
-            if exist_leaf_info.get('interfaces') is None:
+            if 'interfaces' in exist_leaf_info and exist_leaf_info.get(
+                    'interfaces') is None:
                 exist_attach_copy[leaf_snum]['interfaces'] = leaf_info.get(
                     'interfaces')
             else:
