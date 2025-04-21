@@ -233,17 +233,17 @@ class Ndfc:
                 exist_attach_copy[leaf_snum] = leaf_info
                 continue
             exist_leaf_info = exist_attach_copy[leaf_snum]
-            if 'interfaces' in exist_leaf_info and exist_leaf_info.get(
-                    'interfaces') is None:
-                exist_attach_copy[leaf_snum]['interfaces'] = leaf_info.get(
-                    'interfaces')
-            else:
-                if leaf_info.get('interfaces') is not None:
-                    exist_leaf_intf = exist_leaf_info.get('interfaces')
-                    for intf in leaf_info.get('interfaces'):
-                        if intf not in exist_leaf_intf:
-                            exist_attach_copy[leaf_snum]['interfaces'].append(
-                                intf)
+            if 'interfaces' in leaf_info:
+                if exist_leaf_info.get('interfaces') is None:
+                    exist_attach_copy[leaf_snum]['interfaces'] = leaf_info.get(
+                        'interfaces')
+                else:
+                    if leaf_info.get('interfaces') is not None:
+                        exist_leaf_intf = exist_leaf_info.get('interfaces')
+                        for intf in leaf_info.get('interfaces'):
+                            if intf not in exist_leaf_intf:
+                                exist_attach_copy[leaf_snum][
+                                    'interfaces'].append(intf)
             if 'tor_sw_intf_map' not in leaf_info:
                 continue
             if 'tor_sw_intf_map' not in exist_leaf_info:
