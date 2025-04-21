@@ -387,7 +387,7 @@ class Ndfc:
         ret = self.ndfc_obj.delete_network(fabric, network_name)
         LOG.info("For %s:%s delete network returned %s",
                  fabric, network_name, ret)
-        if ret:
+        if not ret:
             LOG.error("Unable to delete network for %s", network_name)
         LOG.info("Delete network for %s returned %s", network_name, ret)
         return ret
