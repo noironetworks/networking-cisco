@@ -168,7 +168,7 @@ class NdfcHelper:
                           tor_intf, tor_str)
                 return tor_map
             tor_list = []
-            for tor_intf in tor_intfs_str[0].split():
+            for tor_intf in tor_intfs_str[0].split(","):
                 new_intf = self._get_new_intf_name(tor_intf)
                 LOG.debug("get_intf_name called with %s and new intf is %s",
                           tor_intf, new_intf)
