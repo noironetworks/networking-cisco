@@ -66,6 +66,10 @@ class TestNDFC(TestNDFCBase, test_plugin.Ml2PluginV2TestCase):
                 vlan, gw, physnet)
         self.assertTrue(ret)
 
+        ret = self.ndfc_instance.delete_network(network_name,
+                vlan, physnet)
+        self.assertTrue(ret)
+
     @mock.patch.object(ndfc_helper.NdfcHelper, 'attach_deploy_network')
     @mock.patch.object(ndfc_helper.NdfcHelper,
             'get_network_switch_interface_map')
@@ -82,3 +86,157 @@ class TestNDFC(TestNDFCBase, test_plugin.Ml2PluginV2TestCase):
         ret = self.ndfc_instance.detach_network(vrf_name, network_name,
                 vlan, leaf_attachments)
         self.assertTrue(ret)
+
+    def test_create_detach_payload(self):
+        vrf_name = 'test_vrf'
+        network_name = 'test_network'
+        vlan = '100'
+
+        leaf_attachments = {
+            'leaf1': {
+                'interfaces': ['eth1', 'eth2'],
+                'tor_sw_intf_map': {
+                    'tor1': {
+                        'tor_name': 'tor_switch_1',
+                        'tor_interfaces': ['tor_intf1']
+                    }
+                }
+            }
+        }
+        collated_attach = {
+            'leaf1': {
+                'interfaces': ['eth1', 'eth2'],
+                'tor_sw_intf_map': {
+                    'tor1': {
+                        'tor_name': 'tor_switch_1',
+                        'tor_interfaces': ['tor_intf1']
+                    }
+                }
+            }
+        }
+        detach_payload = self.ndfc_instance._create_detach_payload(
+            leaf_attachments, collated_attach, vrf_name, network_name, vlan)
+
+        expected_payload = [{
+            'networkName': network_name,
+            'lanAttachList': [
+                {
+                    'fabric': self.ndfc_instance.fabric,
+                    'networkName': network_name,
+                    'serialNumber': 'leaf1',
+                    'detachSwitchPorts': 'eth1,eth2',
+                    'vlan': vlan,
+                    'dot1QVlan': ndfc.constants.DOT1Q_VLAN,
+                    'switchPorts': 'eth1,eth2',
+                    'untagged': 'false',
+                    'freeformConfig': '',
+                    'deployment': 'true',
+                    'extensionValues': '',
+                    'instanceValues': '',
+                    'torPorts': 'tor_switch_1(tor_intf1)'
+                }
+            ]
+        }]
+        self.assertEqual(detach_payload, expected_payload)
+
+    def test_merge_attachments(self):
+        existing_attachments = {
+            'leaf1': {
+                'interfaces': ['eth1'],
+                'tor_sw_intf_map': {
+                    'SN_tor_switch_1': {
+                        'tor_name': 'tor_switch_1',
+                        'tor_interfaces': ['tor_intf1']
+                    }
+                }
+            },
+            'leaf2': {
+                'interfaces': ['eth3']
+            }
+        }
+        new_attachments = {
+            'leaf1': {
+                'interfaces': ['eth2'],
+                'tor_sw_intf_map': {
+                    'SN_tor_switch_1': {
+                        'tor_name': 'tor_switch_1',
+                        'tor_interfaces': ['tor_intf2']
+                    }
+                }
+            },
+            'leaf3': {
+                'interfaces': ['eth4'],
+                'tor_sw_intf_map': {
+                    'SN_tor_switch_2': {
+                        'tor_name': 'tor_switch_2',
+                        'tor_interfaces': ['tor_intf3']
+                    }
+                }
+            }
+        }
+        merged_attachments = self.ndfc_instance._merge_attachments(
+            existing_attachments, new_attachments)
+
+        expected_attachments = {
+            'leaf1': {
+                'interfaces': ['eth1', 'eth2'],
+                'tor_sw_intf_map': {
+                    'SN_tor_switch_1': {
+                        'tor_name': 'tor_switch_1',
+                        'tor_interfaces': ['tor_intf1', 'tor_intf2']
+                    }
+                }
+            },
+            'leaf3': {
+                'interfaces': ['eth4'],
+                'tor_sw_intf_map': {
+                    'SN_tor_switch_2': {
+                        'tor_name': 'tor_switch_2',
+                        'tor_interfaces': ['tor_intf3']
+                    }
+                }
+            }
+        }
+        self.assertEqual(merged_attachments, expected_attachments)
+
+    def test_remove_attachments(self):
+        existing_attachments = {
+            'leaf1': {
+                'interfaces': ['eth1', 'eth2'],
+                'tor_sw_intf_map': {
+                    'SN_tor_switch_1': {
+                        'tor_name': 'tor_switch_1',
+                        'tor_interfaces': ['tor_intf1', 'tor_intf2']
+                    }
+                }
+            },
+            'leaf2': {
+                'interfaces': ['eth3']
+            }
+        }
+        remove_attachments = {
+            'leaf1': {
+                'interfaces': ['eth2'],
+                'tor_sw_intf_map': {
+                    'SN_tor_switch_1': {
+                        'tor_name': 'tor_switch_1',
+                        'tor_interfaces': ['tor_intf2']
+                    }
+                }
+            }
+        }
+        remaining_attachments = self.ndfc_instance._remove_attachments(
+            existing_attachments, remove_attachments)
+
+        expected_attachments = {
+            'leaf1': {
+                'interfaces': ['eth1'],
+                'tor_sw_intf_map': {
+                    'SN_tor_switch_1': {
+                        'tor_name': 'tor_switch_1',
+                        'tor_interfaces': ['tor_intf1']
+                    }
+                }
+            }
+        }
+        self.assertEqual(remaining_attachments, expected_attachments)
