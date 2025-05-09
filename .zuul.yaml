@@ -8,36 +8,36 @@
             nodeset: ubuntu-focal
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2023.2
+                override-checkout: 2023.2-eol
         - openstack-tox-py38:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2023.2
+                override-checkout: 2023.2-eol
             voting: false
         - openstack-tox-py39:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2023.2
+                override-checkout: 2023.2-eol
             voting: false
         - openstack-tox-py310:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2023.2
+                override-checkout: 2023.2-eol
             voting: false
         - openstack-tox-py310:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2024.1
+                override-checkout: 2023.2-eol
             voting: false
         - openstack-tox-py311:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2023.2
+                override-checkout: 2023.2-eol
             voting: false
         - openstack-tox-py312:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2023.2
+                override-checkout: 2023.2-eol
             voting: false
     gate:
       jobs:
@@ -45,34 +45,34 @@
             nodeset: ubuntu-focal
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2023.2
+                override-checkout: 2023.2-eol
         - openstack-tox-py38:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2023.2
+                override-checkout: 2023.2-eol
             voting: false
         - openstack-tox-py39:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2023.2
+                override-checkout: 2023.2-eol
             voting: false
         - openstack-tox-py310:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2023.2
+                override-checkout: 2023.2-eol
             voting: false
         - openstack-tox-py310:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2024.1
+                override-checkout: 2023.2-eol
             voting: false
         - openstack-tox-py311:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2023.2
+                override-checkout: 2023.2-eol
             voting: false
         - openstack-tox-py312:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2023.2
+                override-checkout: 2023.2-eol
             voting: false
