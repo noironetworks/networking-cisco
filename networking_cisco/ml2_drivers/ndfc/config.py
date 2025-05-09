@@ -42,6 +42,7 @@ ndfc_opts = [
                help=("The username for logging in to the NDFC host.")),
     cfg.StrOpt('pwd',
                default="",
+               secret=True,
                help=("The password for logging in to the NDFC host.")),
     cfg.StrOpt('fabric_name',
                default="",
