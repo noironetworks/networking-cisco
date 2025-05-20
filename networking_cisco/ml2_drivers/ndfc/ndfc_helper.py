@@ -304,7 +304,7 @@ class NdfcHelper:
         if res and res.status_code in self._resp_ok:
             LOG.info("create network successful")
             return True
-        LOG.info("create network failed with res %s, payload %s", res,
+        LOG.error("create network failed with res %s, payload %s", res,
                  json.dumps(payload))
         return False
 
@@ -340,7 +340,7 @@ class NdfcHelper:
         if res and res.status_code in self._resp_ok:
             LOG.info("update network successful")
             return True
-        LOG.info("update network failed with res %s and payload %s", res,
+        LOG.error("update network failed with res %s and payload %s", res,
                  json.dumps(payload))
         return False
 
@@ -441,7 +441,7 @@ class NdfcHelper:
         if res and res.status_code in self._resp_ok:
             LOG.info("delete network successful")
             return True
-        LOG.info("delete network failed with res %s", res)
+        LOG.error("delete network failed with res %s", res)
         return False
 
     def delete_network(self, fabric, network):
@@ -499,7 +499,7 @@ class NdfcHelper:
         if res and res.status_code in self._resp_ok:
             LOG.info("create vrf successful")
             return True
-        LOG.info("create vrf failed with res %s", res)
+        LOG.error("create vrf failed with res %s", res)
         return False
 
     def create_vrf(self, fabric, payload):
@@ -534,7 +534,7 @@ class NdfcHelper:
             LOG.info("delete vrf successful")
             return True
         else:
-            LOG.info("delete vrf failed with res %s", res)
+            LOG.error("delete vrf failed with res %s", res)
             return False
 
     def delete_vrf(self, fabric, vrf):

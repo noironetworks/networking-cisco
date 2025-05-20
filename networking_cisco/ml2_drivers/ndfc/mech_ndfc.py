@@ -235,7 +235,7 @@ class NDFCMechanismDriver(api.MechanismDriver,
         if res:
             LOG.debug("NDFC VRF %s created successfully", vrf_name)
         else:
-            LOG.debug("NDFC VRF %s failed to create", vrf_name)
+            LOG.error("NDFC VRF %s failed to create", vrf_name)
 
     def delete_vrf(self, tenant_id):
         vrf_name = self.tenants.pop(tenant_id, None)
@@ -246,7 +246,7 @@ class NDFCMechanismDriver(api.MechanismDriver,
             if res:
                 LOG.debug("NDFC VRF %s deleted successfully", vrf_name)
             else:
-                LOG.debug("NDFC VRF %s failed to delete", vrf_name)
+                LOG.error("NDFC VRF %s failed to delete", vrf_name)
         else:
             LOG.debug("VRF name for tenant %s not found", tenant_id)
 
@@ -264,7 +264,7 @@ class NDFCMechanismDriver(api.MechanismDriver,
             if res:
                 LOG.debug("NDFC Network %s created successfully", network_name)
             else:
-                LOG.debug("NDFC Network %s failed to create", network_name)
+                LOG.error("NDFC Network %s failed to create", network_name)
         else:
             LOG.debug("VRF name for tenant %s not found", tenant_id)
 
@@ -285,7 +285,7 @@ class NDFCMechanismDriver(api.MechanismDriver,
                     LOG.debug("NDFC Network %s attached successfully",
                         network['name'])
                 else:
-                    LOG.debug("NDFC Network %s failed to attach",
+                    LOG.error("NDFC Network %s failed to attach",
                         network['name'])
 
     def detach_network(self, context, host):
@@ -306,7 +306,7 @@ class NDFCMechanismDriver(api.MechanismDriver,
                     LOG.debug("NDFC Network %s detached successfully",
                         network['name'])
                 else:
-                    LOG.debug("NDFC Network %s failed to detach",
+                    LOG.error("NDFC Network %s failed to detach",
                         network['name'])
 
     def update_network(self, tenant_id, network_name, vlan_id,
@@ -325,7 +325,7 @@ class NDFCMechanismDriver(api.MechanismDriver,
             if res:
                 LOG.debug("NDFC Network %s updated successfully", network_name)
             else:
-                LOG.debug("NDFC Network %s failed to update", network_name)
+                LOG.error("NDFC Network %s failed to update", network_name)
         else:
             LOG.debug("VRF name for tenant %s not found", tenant_id)
 
@@ -336,7 +336,7 @@ class NDFCMechanismDriver(api.MechanismDriver,
         if res:
             LOG.debug("NDFC Network %s deleted successfully", network_name)
         else:
-            LOG.debug("NDFC Network %s failed to delete", network_name)
+            LOG.error("NDFC Network %s failed to delete", network_name)
 
     def create_network_postcommit(self, context):
         network = context.current
