@@ -57,7 +57,7 @@ class Ndfc:
                "vrfTemplateParams": "{}",
                "vrfExtensionTemplate": "Default_VRF_Extension_Universal"}
         ret = self.ndfc_obj.create_vrf(fabric, dct)
-        LOG.debug("For fabric %s, vrf %s, create vrf returned %s", fabric,
+        LOG.info("For fabric %s, vrf %s, create vrf returned %s", fabric,
                 vrf_name, ret)
         return ret
 
@@ -93,7 +93,7 @@ class Ndfc:
         return dct
 
     def create_network(self, vrf_name, network_name, vlan, physnet):
-        LOG.info("Create network called for vrf %s network %s vlan %s and "
+        LOG.debug("Create network called for vrf %s network %s vlan %s and "
             "physnet %s", vrf_name, network_name, vlan, physnet)
         payload = self._get_create_network_payload(vrf_name, network_name,
                 vlan)
@@ -115,7 +115,7 @@ class Ndfc:
             return payload
 
     def update_network(self, vrf_name, network_name, vlan, gw, physnet):
-        LOG.info("NDFC update network called for %s:%s:%s with GW %s",
+        LOG.debug("Update network called for %s:%s:%s with GW %s",
                 vrf_name, network_name, vlan, gw)
         fabric = self.fabric
         payload = self._get_update_network_payload(fabric, network_name, gw)
@@ -123,11 +123,11 @@ class Ndfc:
         deploy_payload = self._get_deploy_payload(network_name)
         LOG.debug("Deploy payload is %s", deploy_payload)
         if len(deploy_payload) == 0:
-            LOG.info("No switches found, only doing an update network, "
+            LOG.debug("No switches found, only doing an update network, "
                 "payload %s", payload)
             ret = self.ndfc_obj.update_network(fabric, network_name, payload)
         else:
-            LOG.info("Doing an update and deploy on the network")
+            LOG.debug("Doing an update and deploy on the network")
             ret = self.ndfc_obj.update_deploy_network(fabric, network_name,
                     payload, deploy_payload)
         LOG.info("For %s:%s update network returned %s", fabric, network_name,
@@ -349,7 +349,7 @@ class Ndfc:
         ret = self.ndfc_obj.attach_deploy_network(
             self.fabric, attach_payload, deploy_payload)
         if not ret:
-            LOG.error("NDFC attach network failed for fabric %s, vrf %s "
+            LOG.error("Attach network failed for fabric %s, vrf %s "
                       "network %s", self.fabric, vrf_name, network_name)
         LOG.info("Network Attachment for %s:%s:%s ret %s",
                  self.fabric, vrf_name, network_name, ret)
@@ -377,24 +377,22 @@ class Ndfc:
         ret = self.ndfc_obj.attach_deploy_network(
             self.fabric, attach_payload, deploy_payload)
         if not ret:
-            LOG.error("NDFC attach network failed for fabric %s, vrf %s "
+            LOG.error("Detach network failed for fabric %s, vrf %s "
                       "network %s", self.fabric, vrf_name, network_name)
         LOG.info("Network Detachment for %s:%s:%s ret %s",
                  self.fabric, vrf_name, network_name, ret)
         return ret
 
     def delete_network(self, network_name, vlan, physnet):
+        LOG.debug("Delete network called with %s", network_name)
         fabric = self.fabric
         ret = self.ndfc_obj.delete_network(fabric, network_name)
         LOG.info("For %s:%s delete network returned %s",
                  fabric, network_name, ret)
-        if not ret:
-            LOG.error("Unable to delete network for %s", network_name)
-        LOG.info("Delete network for %s returned %s", network_name, ret)
         return ret
 
     def delete_vrf(self, vrf_name):
-        LOG.info("Delete vrf called with %s", vrf_name)
+        LOG.debug("Delete vrf called with %s", vrf_name)
         fabric = self.fabric
         ret = self.ndfc_obj.delete_vrf(fabric, vrf_name)
         LOG.info("For %s:%s delete vrf returned %s", fabric, vrf_name, ret)

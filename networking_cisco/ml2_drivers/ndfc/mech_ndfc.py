@@ -112,7 +112,7 @@ class NDFCMechanismDriver(api.MechanismDriver,
         return self.switch_map
 
     def start_rpc_listeners(self):
-        LOG.info("NDFC MD starting RPC listeners")
+        LOG.debug("NDFC MD starting RPC listeners")
         return self._start_rpc_listeners()
 
     @property
@@ -233,7 +233,7 @@ class NDFCMechanismDriver(api.MechanismDriver,
         LOG.debug("Create NDFC VRF with vrf name: %s", vrf_name)
         res = self.ndfc.create_vrf(vrf_name)
         if res:
-            LOG.debug("NDFC VRF %s created successfully", vrf_name)
+            LOG.info("NDFC VRF %s created successfully", vrf_name)
         else:
             LOG.error("NDFC VRF %s failed to create", vrf_name)
 
@@ -244,7 +244,7 @@ class NDFCMechanismDriver(api.MechanismDriver,
             LOG.debug("Delete NDFC VRF with vrf name: %s", vrf_name)
             res = self.ndfc.delete_vrf(vrf_name)
             if res:
-                LOG.debug("NDFC VRF %s deleted successfully", vrf_name)
+                LOG.info("NDFC VRF %s deleted successfully", vrf_name)
             else:
                 LOG.error("NDFC VRF %s failed to delete", vrf_name)
         else:
@@ -262,7 +262,7 @@ class NDFCMechanismDriver(api.MechanismDriver,
             res = self.ndfc.create_network(vrf_name, network_name,
                     vlan_id, physical_network)
             if res:
-                LOG.debug("NDFC Network %s created successfully", network_name)
+                LOG.info("NDFC Network %s created successfully", network_name)
             else:
                 LOG.error("NDFC Network %s failed to create", network_name)
         else:
@@ -282,7 +282,7 @@ class NDFCMechanismDriver(api.MechanismDriver,
                 res = self.ndfc.attach_network(vrf_name, network['name'],
                     vlan_id, topology_result)
                 if res:
-                    LOG.debug("NDFC Network %s attached successfully",
+                    LOG.info("NDFC Network %s attached successfully",
                         network['name'])
                 else:
                     LOG.error("NDFC Network %s failed to attach",
@@ -303,7 +303,7 @@ class NDFCMechanismDriver(api.MechanismDriver,
                 res = self.ndfc.detach_network(vrf_name, network['name'],
                     vlan_id, topology_result)
                 if res:
-                    LOG.debug("NDFC Network %s detached successfully",
+                    LOG.info("NDFC Network %s detached successfully",
                         network['name'])
                 else:
                     LOG.error("NDFC Network %s failed to detach",
@@ -323,7 +323,7 @@ class NDFCMechanismDriver(api.MechanismDriver,
             res = self.ndfc.update_network(vrf_name, network_name,
                     vlan_id, gateway_ip, physical_network)
             if res:
-                LOG.debug("NDFC Network %s updated successfully", network_name)
+                LOG.info("NDFC Network %s updated successfully", network_name)
             else:
                 LOG.error("NDFC Network %s failed to update", network_name)
         else:
@@ -334,7 +334,7 @@ class NDFCMechanismDriver(api.MechanismDriver,
         res = self.ndfc.delete_network(network_name,
                 vlan_id, physical_network)
         if res:
-            LOG.debug("NDFC Network %s deleted successfully", network_name)
+            LOG.info("NDFC Network %s deleted successfully", network_name)
         else:
             LOG.error("NDFC Network %s failed to delete", network_name)
 
