@@ -302,12 +302,20 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
         session = mock_db_writer.return_value.__enter__.return_value
         session.add.assert_not_called()
 
-    @mock.patch.object(mech_ndfc.NDFCMechanismDriver, '_get_tor_entry')
     @mock.patch('neutron_lib.db.api.CONTEXT_WRITER.using')
-    def test_update_link_add_tor_entries(self, mock_db_writer,
-            mock_get_tor_entry):
-        mock_get_tor_entry.return_value = []
+    def test_update_link_add_tor_entries(self, mock_db_writer):
         session = mock_db_writer.return_value.__enter__.return_value
+        mock_hlink_query = mock.Mock()
+        mock_hlink_query.filter.return_value.filter.return_value \
+            .one_or_none.return_value = None
+        mock_tor_query = mock.Mock()
+        mock_tor_query.filter.return_value.filter.return_value \
+            .one_or_none.return_value = None
+        session.query.side_effect = lambda model: {
+            nc_ml2_db.NxosHostLink: mock_hlink_query,
+            nc_ml2_db.NxosTors: mock_tor_query,
+        }.get(model)
+
         self.ndfc_mech.update_link(self.context, 'host1', 'intf1',
             'mac1', '192.168.1.1', 'module1', 'pod1', 'port1',
             'desc1', 'serial1')
@@ -326,13 +334,19 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
         self.assertTrue(found_match,
             "Expected NxosTors entry not found in session.add calls")
 
-    @mock.patch.object(mech_ndfc.NDFCMechanismDriver, '_get_tor_entry')
     @mock.patch('neutron_lib.db.api.CONTEXT_WRITER.using')
-    def test_update_link_add_host_entry(self, mock_db_writer,
-            mock_get_tor_entry):
+    def test_update_link_add_host_entry(self, mock_db_writer):
         session = mock_db_writer.return_value.__enter__.return_value
-        session.query.return_value.filter.return_value.filter.return_value \
+        mock_hlink_query = mock.Mock()
+        mock_hlink_query.filter.return_value.filter.return_value \
             .one_or_none.return_value = None
+        mock_tor_query = mock.Mock()
+        mock_tor_query.filter.return_value.filter.return_value \
+            .one_or_none.return_value = None
+        session.query.side_effect = lambda model: {
+            nc_ml2_db.NxosHostLink: mock_hlink_query,
+            nc_ml2_db.NxosTors: mock_tor_query,
+        }.get(model)
 
         self.ndfc_mech.update_link(self.context, 'host1', 'intf1',
                 'mac1', '192.168.1.1', '', '', 'Ethernet1/51', '', 'serial1')
@@ -341,24 +355,18 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
         add_call_args = session.add.call_args_list
 
         # Check if the expected NxosHostLink was added
-        added_host_link = nc_ml2_db.NxosHostLink(
-            host_name='host1',
-            interface_name='intf1',
-            serial_number='serial1',
-            switch_ip='192.168.1.1',
-            switch_mac='mac1',
-            switch_port='Port-Channel10'
-        )
-
-        # Compare attributes instead of object identity
+        expected_host_link_attrs = {
+            'host_name': 'host1',
+            'interface_name': 'intf1',
+            'serial_number': 'serial1',
+            'switch_ip': '192.168.1.1',
+            'switch_mac': 'mac1',
+            'switch_port': 'Port-Channel10'
+        }
         found_match = any(
-            (call_args[0][0].host_name == added_host_link.host_name and
-             call_args[0][0].interface_name ==
-             added_host_link.interface_name and
-             call_args[0][0].serial_number == added_host_link.serial_number and
-             call_args[0][0].switch_ip == added_host_link.switch_ip and
-             call_args[0][0].switch_mac == added_host_link.switch_mac and
-             call_args[0][0].switch_port == added_host_link.switch_port)
+            isinstance(call_args[0][0], nc_ml2_db.NxosHostLink) and
+            all(getattr(call_args[0][0], attr) == value for attr,
+                value in expected_host_link_attrs.items())
             for call_args in add_call_args
         )
 
