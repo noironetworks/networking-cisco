@@ -316,6 +316,15 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
             nc_ml2_db.NxosTors: mock_tor_query,
         }.get(model)
 
+        self.ndfc_mech.switch_map = {
+            '192.168.1.1': {
+                'serial': 'sn1',
+                'role': 'tor',
+                'tor_leaf_nodes': {'leaf1': 'sn1_leaf'}
+            }
+        }
+        self.ndfc_mech.ndfc.ndfc_obj.get_po = mock.Mock(return_value="")
+
         self.ndfc_mech.update_link(self.context, 'host1', 'intf1',
             'mac1', '192.168.1.1', 'module1', 'pod1', 'port1',
             'desc1', 'serial1')
@@ -326,7 +335,7 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
         # Check if the expected NxosTors was added by comparing attributes
         found_match = any(
             (call_args[0][0].tor_serial_number == 'serial1' and
-             call_args[0][0].leaf_serial_number == 'sn1' and
+             call_args[0][0].leaf_serial_number == 'sn1_leaf' and
              call_args[0][0].tor_name == 'module1')
             for call_args in add_call_args
         )
@@ -343,18 +352,25 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
         mock_tor_query = mock.Mock()
         mock_tor_query.filter.return_value.filter.return_value \
             .one_or_none.return_value = None
+        mock_tor_query.filter_by.return_value.all.return_value = []
         session.query.side_effect = lambda model: {
             nc_ml2_db.NxosHostLink: mock_hlink_query,
             nc_ml2_db.NxosTors: mock_tor_query,
         }.get(model)
 
+        self.ndfc_mech.switch_map = {
+            '192.168.1.1': {
+                'serial': 'sn1',
+                'role': 'leaf'
+            }
+        }
+        self.ndfc_mech.ndfc.ndfc_obj.get_po = mock.Mock(return_value="10")
+
         self.ndfc_mech.update_link(self.context, 'host1', 'intf1',
                 'mac1', '192.168.1.1', '', '', 'Ethernet1/51', '', 'serial1')
 
-        # Capture the call arguments for session.add
         add_call_args = session.add.call_args_list
 
-        # Check if the expected NxosHostLink was added
         expected_host_link_attrs = {
             'host_name': 'host1',
             'interface_name': 'intf1',
@@ -385,6 +401,14 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
         session.query.return_value.filter.return_value.filter.return_value \
             .one_or_none.return_value = mock_hlink
 
+        self.ndfc_mech.switch_map = {
+            '192.168.1.1': {
+                'serial': 'sn1',
+                'role': 'leaf'
+            }
+        }
+        self.ndfc_mech.ndfc.ndfc_obj.get_po = mock.Mock(return_value="10")
+
         self.ndfc_mech.update_link(self.context, 'host1', 'intf1',
                 'mac1', '192.168.1.1', '', '', 'port1', '', 'serial1')
 
@@ -408,3 +432,90 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
         topology = self.ndfc_mech.get_topology(self.context,
                 fake_network_context.current, 'host1', detach=True)
         self.assertEqual(topology, {'host': 'host1'})
+
+    @mock.patch(
+        'networking_cisco.ml2_drivers.ndfc.mech_ndfc.'
+        'loopingcall.FixedIntervalLoopingCall'
+    )
+    @mock.patch('random.uniform', return_value=5)
+    @mock.patch('time.time')
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver, '_cleanup_stale_tors')
+    def test_initialize_starts_periodic_sync(
+        self, mock_cleanup, mock_time, mock_random, mock_looping_call_cls):
+        mock_time.return_value = 1000
+        mock_looping_call = mock.Mock()
+        mock_looping_call_cls.return_value = mock_looping_call
+
+        self.ndfc_mech = mech_ndfc.NDFCMechanismDriver()
+        self.ndfc_mech.ndfc = mock.Mock()
+        self.ndfc_mech.ndfc.ndfc_obj.get_switches.return_value = {}
+        self.ndfc_mech.switch_sync_interval = 1800
+
+        self.ndfc_mech.initialize()
+
+        mock_looping_call_cls.assert_called_once()
+        mock_looping_call.start.assert_called_once_with(
+            interval=1800, initial_delay=5, stop_on_exception=False)
+        self.assertEqual(self.ndfc_mech.switch_map, {})
+
+    @mock.patch('time.time')
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver, '_cleanup_stale_tors')
+    def test_switches_property_returns_cached_data(
+            self, mock_cleanup, mock_time):
+        self.ndfc_mech.switch_map = {
+                '192.168.1.1': {'serial': 'sn1', 'role': 'leaf'}}
+        self.ndfc_mech._last_switch_sync = 1000
+
+        mock_time.return_value = 1500
+        switches = self.ndfc_mech.switches
+
+        self.assertEqual(switches,
+                {'192.168.1.1': {'serial': 'sn1', 'role': 'leaf'}})
+        mock_cleanup.assert_not_called()
+
+    @mock.patch('time.time')
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver, '_cleanup_stale_tors')
+    def test_periodic_refresh_switch_list_updates_switch_map(
+            self, mock_cleanup, mock_time):
+        self.ndfc_mech.ndfc = mock.Mock()
+        initial_switch_data = {
+            '192.168.1.1': {
+                'serial': 'sn1', 'role': 'tor',
+                'tor_leaf_nodes': {'leaf1': 'lsn1'}
+            }
+        }
+        updated_switch_data = {
+            '192.168.1.1': {'serial': 'sn1', 'role': 'leaf'}
+        }
+        self.ndfc_mech.switch_map = initial_switch_data
+        self.ndfc_mech.fabric_name = 'fabric1'
+
+        self.ndfc_mech.ndfc.ndfc_obj.get_switches.return_value = \
+            updated_switch_data
+        self.ndfc_mech._refresh_switch_list()
+
+        self.assertEqual(self.ndfc_mech.switch_map, updated_switch_data)
+        mock_cleanup.assert_called_once_with(['sn1'])
+
+    @mock.patch('neutron_lib.db.api.CONTEXT_WRITER.using')
+    def test_cleanup_stale_tors_no_stale_sns(self, mock_db_writer):
+        self.ndfc_mech._cleanup_stale_tors([])
+
+        mock_db_writer.assert_not_called()
+
+    @mock.patch('neutron_lib.db.api.CONTEXT_WRITER.using')
+    def test_cleanup_stale_tors_matching_entries(self, mock_db_writer):
+        session = mock_db_writer.return_value.__enter__.return_value
+
+        mock_query = mock.Mock()
+        session.query.return_value = mock_query
+        mock_query.filter.return_value.delete.return_value = 2
+
+        stale_sns = ['stale_sn1', 'stale_sn2']
+        self.ndfc_mech._cleanup_stale_tors(stale_sns)
+
+        mock_db_writer.assert_called_once()
+        session.query.assert_called_once_with(nc_ml2_db.NxosTors)
+        mock_query.filter.assert_called_once()
+        mock_query.filter.return_value.delete.assert_called_once_with(
+            synchronize_session='fetch')

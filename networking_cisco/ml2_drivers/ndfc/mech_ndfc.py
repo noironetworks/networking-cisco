@@ -17,6 +17,8 @@
 import ipaddress
 import json
 import os
+import random
+import time
 
 from networking_cisco.ml2_drivers.ndfc import cache
 from networking_cisco.ml2_drivers.ndfc import config
@@ -35,6 +37,7 @@ from neutron_lib import rpc as n_rpc
 from oslo_config import cfg
 from oslo_log import log
 import oslo_messaging
+from oslo_service import loopingcall
 from oslo_utils import fileutils
 import sqlalchemy as sa
 from sqlalchemy.ext import baked
@@ -79,6 +82,9 @@ class NDFCMechanismDriver(api.MechanismDriver,
         topo_rpc_handler.TopologyRpcHandlerMixin):
     def __init__(self):
         super(NDFCMechanismDriver, self).__init__()
+        self._last_switch_sync = 0
+        self.switch_map = {}
+        self._switch_sync_loop = None
 
     def initialize(self):
         config.register_opts()
@@ -93,20 +99,73 @@ class NDFCMechanismDriver(api.MechanismDriver,
         self.user = (cfg.CONF.ndfc.user)
         self.pwd = (cfg.CONF.ndfc.pwd)
         self.fabric_name = (cfg.CONF.ndfc.fabric_name)
+        self.switch_sync_interval = (cfg.CONF.ndfc.switch_sync_interval)
         self.ndfc = Ndfc(self.ndfc_ip, self.user, self.pwd, self.fabric_name)
         self._core_plugin = None
         self.project_details_cache = cache.ProjectDetailsCache()
         self.tenants_file = 'tenants.json'
         self.load_tenants()
         self.start_rpc_listeners()
-        self.switch_map = {}
+        self._start_switch_sync_loop()
+
+    def _start_switch_sync_loop(self):
+        if self._switch_sync_loop is None:
+            # Add jitter up to 10% of interval as initial delay
+            interval = self.switch_sync_interval
+            jitter = random.uniform(0, interval * 0.1)
+            self._switch_sync_loop = loopingcall.FixedIntervalLoopingCall(
+                self._refresh_switch_list)
+            self._switch_sync_loop.start(interval=interval,
+                                         initial_delay=jitter,
+                                         stop_on_exception=False)
+            LOG.debug(
+                "Started periodic switch sync loop with interval %.2f seconds "
+                "and initial delay %.2f seconds", interval, jitter)
+
+    def _refresh_switch_list(self):
+        LOG.debug("Refreshing switch list from NDFC...")
+        try:
+            previous_switch_map = self.switch_map
+            latest_switch_map = self.ndfc.ndfc_obj.get_switches(
+                    self.fabric_name)
+            stale_tor_sns = []
+            for switch_ip, switch_info in previous_switch_map.items():
+                if switch_info and switch_info.get('role') == 'tor':
+                    sn = switch_info.get('serial')
+                    latest_info = latest_switch_map.get(switch_ip)
+                    if not latest_info or latest_info.get('role') != 'tor':
+                        stale_tor_sns.append(sn)
+                        LOG.debug("Identified stale ToR serial number: %s", sn)
+            # Update the in-memory switch map to the latest data
+            self.switch_map = latest_switch_map
+            self._last_switch_sync = time.time()
+            LOG.debug("Switch list refreshed successfully.")
+            # Clean up stale NxosTors entries identified
+            if stale_tor_sns:
+                self._cleanup_stale_tors(stale_tor_sns)
+        except Exception as e:
+            LOG.error("Failed to refresh switch list from NDFC: %s", e)
 
     @property
     def switches(self):
-        # TODO(sanaval): add synchronization with NDFC for the switches
-        if not self.switch_map:
-            self.switch_map = self.ndfc.ndfc_obj.get_switches(self.fabric_name)
         return self.switch_map
+
+    def _cleanup_stale_tors(self, stale_tor_serial_numbers):
+        if not stale_tor_serial_numbers:
+            LOG.debug("No stale ToR serial numbers provided for cleanup.")
+            return
+
+        try:
+            admin_context = n_context.get_admin_context()
+            with db_api.CONTEXT_WRITER.using(admin_context) as session:
+                session.query(nc_ml2_db.NxosTors).filter(
+                    nc_ml2_db.NxosTors.tor_serial_number.in_(
+                        stale_tor_serial_numbers)
+                ).delete(synchronize_session='fetch')
+            LOG.debug("Stale NxosTors entries cleanup complete.")
+
+        except Exception as e:
+            LOG.error("An error occurred during stale NxosTors cleanup: %s", e)
 
     def start_rpc_listeners(self):
         LOG.debug("NDFC MD starting RPC listeners")
@@ -482,8 +541,10 @@ class NDFCMechanismDriver(api.MechanismDriver,
                 # There was neither a change nor a refresh required.
                 return
 
-            po = self.ndfc.ndfc_obj.get_po(
-                switch_info.get('serial'), switch_interface)
+            po = ""
+            if switch_info:
+                po = self.ndfc.ndfc_obj.get_po(
+                    switch_info.get('serial'), switch_interface)
             if po != "":
                 switch_interface = "Port-Channel" + po
 
