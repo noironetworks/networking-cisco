@@ -47,6 +47,10 @@ ndfc_opts = [
     cfg.StrOpt('fabric_name',
                default="",
                help=("Fabric name")),
+    cfg.IntOpt('switch_sync_interval',
+               default=1800,  # Default to 1800 seconds (30 minutes)
+               help="Interval in seconds to synchronize "
+                    "the switch list from NDFC.")
 ]
 
 
