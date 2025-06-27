@@ -93,9 +93,6 @@ class NDFCMechanismDriver(api.MechanismDriver,
         self.user = (cfg.CONF.ndfc.user)
         self.pwd = (cfg.CONF.ndfc.pwd)
         self.fabric_name = (cfg.CONF.ndfc.fabric_name)
-        LOG.debug("NDFC config details: ndfc_ip: %s user: %s "
-                  "pwd: %s fabric_name %s",
-                  self.ndfc_ip, self.user, self.pwd, self.fabric_name)
         self.ndfc = Ndfc(self.ndfc_ip, self.user, self.pwd, self.fabric_name)
         self._core_plugin = None
         self.project_details_cache = cache.ProjectDetailsCache()
