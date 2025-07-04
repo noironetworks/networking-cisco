@@ -127,7 +127,7 @@ class NDFCMechanismDriver(api.MechanismDriver,
         try:
             previous_switch_map = self.switch_map
             latest_switch_map = self.ndfc.ndfc_obj.get_switches(
-                    self.fabric_name)
+                    self.fabric_name, previous_switch_map)
             stale_tor_sns = []
             for switch_ip, switch_info in previous_switch_map.items():
                 if switch_info and switch_info.get('role') == 'tor':

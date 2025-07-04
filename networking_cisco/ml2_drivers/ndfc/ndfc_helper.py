@@ -638,7 +638,7 @@ class NdfcHelper:
         LOG.debug("get_switches returned %s", switches_map)
         return switches_map
 
-    def get_switches(self, fabric):
+    def get_switches(self, fabric, previous_switch_map=None):
         '''
         Top level function for retrieving the switches.
         '''
@@ -650,6 +650,10 @@ class NdfcHelper:
                 self.logout()
         except Exception as exc:
             LOG.error("Exception in get_switches, %(exc)s", {'exc': exc})
+        #If sw_info is empty and previous_switch_map is provided, use that
+        if not sw_info and previous_switch_map is not None:
+            LOG.debug("setting previous switch map, as sw_info was empty")
+            sw_info = previous_switch_map
         return sw_info
 
     @http_exc_handler

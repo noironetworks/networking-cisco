@@ -384,6 +384,30 @@ class TestNDFCHelper(TestNDFCHelperBase, test_plugin.Ml2PluginV2TestCase):
         }
         self.assertEqual(result, expected_result)
 
+    @mock.patch('requests.get')
+    @mock.patch('requests.post')
+    def test_get_switches_previous_swlist(self, mock_post, mock_get):
+        mock_get_response = mock.MagicMock()
+        mock_get_response.status_code = 200
+        mock_get_response.json.return_value = []
+        mock_get.return_value = mock_get_response
+
+        fabric = 'test_fabric'
+        previous_switch_list = [
+            {
+                'serialNumber': 'SN999',
+                'ipAddress': '10.0.0.1',
+                'switchRole': 'spine',
+                'logicalName': 'OldSwitch'
+            }
+        ]
+
+        # Call get_switches with previous_switch_list
+        result = self.helper.get_switches(fabric, previous_switch_list)
+
+        # Result should be the previous_switch_list since _get_switches failed
+        self.assertEqual(result, previous_switch_list)
+
     @mock.patch.object(ndfc_helper.NdfcHelper, 'login', return_value=True)
     @mock.patch.object(ndfc_helper.NdfcHelper, 'logout')
     @mock.patch('requests.get')
