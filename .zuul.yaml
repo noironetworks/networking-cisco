@@ -1,3 +1,10 @@
+- job:
+    name: networking-cisco-ndfc-tests
+    parent: openstack-tox-py39
+    description: "Runs only the NDFC driver unit tests as a voting gate."
+    vars:
+      tox_envlist: ndfc
+
 - project:
     name: x/networking-cisco
     templates:
@@ -9,22 +16,11 @@
             required-projects:
               - name: openstack/requirements
                 override-checkout: stable/2024.1
-        - openstack-tox-py38:
+        - networking-cisco-ndfc-tests:
             required-projects:
               - name: openstack/requirements
                 override-checkout: stable/2024.1
-            voting: false
-        - openstack-tox-py39:
-            required-projects:
-              - name: openstack/requirements
-                override-checkout: stable/2024.1
-            voting: false
         - openstack-tox-py310:
-            required-projects:
-              - name: openstack/requirements
-                override-checkout: stable/2024.1
-            voting: false
-        - openstack-tox-py311:
             required-projects:
               - name: openstack/requirements
                 override-checkout: stable/2024.1
@@ -41,22 +37,11 @@
             required-projects:
               - name: openstack/requirements
                 override-checkout: stable/2024.1
-        - openstack-tox-py38:
+        - networking-cisco-ndfc-tests:
             required-projects:
               - name: openstack/requirements
                 override-checkout: stable/2024.1
-            voting: false
-        - openstack-tox-py39:
-            required-projects:
-              - name: openstack/requirements
-                override-checkout: stable/2024.1
-            voting: false
         - openstack-tox-py310:
-            required-projects:
-              - name: openstack/requirements
-                override-checkout: stable/2024.1
-            voting: false
-        - openstack-tox-py311:
             required-projects:
               - name: openstack/requirements
                 override-checkout: stable/2024.1
