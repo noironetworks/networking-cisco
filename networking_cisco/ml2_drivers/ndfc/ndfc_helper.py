@@ -32,10 +32,25 @@ NOOP = "NOOP"
 LOG = log.getLogger(__name__)
 
 
+def _find_fail_recursively(data):
+    '''
+    Recursively searches for 'fail' (case-insensitive) in any string
+    value within a nested Python object (dictionary or list).
+    '''
+    if isinstance(data, dict):
+        return any(_find_fail_recursively(value) for value in data.values())
+    if isinstance(data, list):
+        return any(_find_fail_recursively(item) for item in data)
+    if isinstance(data, str):
+        return 'fail' in data.lower()
+    return False
+
+
 class NdfcHelper:
     '''
     NDFC helper class.
     '''
+
     def __init__(self, **kwargs):
         '''
         Init routine that initializes the URL's, user, pws etc.
@@ -79,6 +94,30 @@ class NdfcHelper:
         Appends the base URL with the passing URL.
         '''
         return self._protocol_host_url + remaining_url
+
+    def _response_body_indicates_failure(self, res, func_name, payload=None):
+        '''
+        Checks a successful (200 OK) response body for "fail" keywords.
+        Returns True if a failure message is found, False otherwise.
+        '''
+        try:
+            data = res.json()
+            if _find_fail_recursively(data):
+                LOG.error("API call '%(func)s' succeeded with status %(code)s "
+                    "but the response body indicates a failure."
+                    "Payload: %(payload)s, Response: %(res)s",
+                    {
+                        'func': func_name,
+                        'code': res.status_code,
+                        'payload': payload,
+                        'res': data
+                    }
+                )
+                return True
+        except ValueError:
+            LOG.debug("Response for '%s' was not JSON, cannot check for "
+                      "failure keywords.", func_name)
+        return False
 
     def http_exc_handler(http_func):
         '''
@@ -212,12 +251,16 @@ class NdfcHelper:
         res = requests.get(url, headers=self._req_headers,
                            timeout=self._timeout_resp, verify=False)
         LOG.debug("Get attachments URL %s", url)
-        if res and res.status_code in self._resp_ok:
-            data = res.json()
-            return data
-        LOG.error("invalid result for _get_attachments for fabric %s nwk %s",
-                  fabric, network)
-        return None
+        if not res or res.status_code not in self._resp_ok:
+            LOG.error("Invalid res for _get_attachments for fabric %s nwk %s",
+                   fabric, network)
+            return None
+
+        if self._response_body_indicates_failure(res, '_get_attachments'):
+            return None
+
+        data = res.json()
+        return data
 
     def get_network_switch_map(self, fabric, network):
         '''
@@ -268,12 +311,16 @@ class NdfcHelper:
                            timeout=self._timeout_resp, verify=False)
 
         LOG.debug("Get network url is %s", url)
-        if res and res.status_code in self._resp_ok:
-            data = res.json()
-            return data
-        LOG.error("invalid result for _get_network_info for fabric %s nwk %s",
-                  fabric, nwk)
-        return None
+        if not res or res.status_code not in self._resp_ok:
+            LOG.error("Invalid res for _get_network_info for fabric %s nwk %s",
+                      fabric, nwk)
+            return None
+
+        if self._response_body_indicates_failure(res, '_get_network_info'):
+            return None
+
+        data = res.json()
+        return data
 
     def get_network_info(self, fabric, nwk):
         '''
@@ -300,15 +347,19 @@ class NdfcHelper:
         res = requests.post(url, headers=self._req_headers,
                             data=json.dumps(payload),
                             timeout=self._timeout_resp, verify=False)
-        if res and res.status_code in self._resp_ok:
-            LOG.debug("create network successful")
-            return True
-        LOG.error(
-            "create network failed with status code: %s, "
-            "reason: %s, response body: %s, payload: %s",
-            res.status_code, res.reason, res.text, json.dumps(payload)
-        )
-        return False
+        if not res or res.status_code not in self._resp_ok:
+            LOG.error(
+                "create network failed with status code: %s, "
+                "reason: %s, response body: %s, payload: %s",
+                res.status_code, res.reason, res.text, json.dumps(payload)
+            )
+            return False
+        if self._response_body_indicates_failure(
+            res, '_create_network', payload=json.dumps(payload)):
+            return False
+
+        LOG.debug("create network successful")
+        return True
 
     def create_network(self, fabric, payload):
         '''
@@ -339,15 +390,19 @@ class NdfcHelper:
         res = requests.put(url, headers=self._req_headers,
                            data=json.dumps(payload),
                            timeout=self._timeout_resp, verify=False)
-        if res and res.status_code in self._resp_ok:
-            LOG.debug("update network successful")
-            return True
-        LOG.error(
-            "update network failed with status code: %s, "
-            "reason: %s, response body: %s, payload: %s",
-            res.status_code, res.reason, res.text, json.dumps(payload)
-        )
-        return False
+        if not res or res.status_code not in self._resp_ok:
+            LOG.error(
+                "update network failed with status code: %s, "
+                "reason: %s, response body: %s, payload: %s",
+                res.status_code, res.reason, res.text, json.dumps(payload)
+            )
+            return False
+        if self._response_body_indicates_failure(
+            res, '_update_network', payload=json.dumps(payload)):
+            return False
+
+        LOG.debug("update network successful")
+        return True
 
     def update_network(self, fabric, network_name, payload):
         '''
@@ -402,16 +457,22 @@ class NdfcHelper:
                 data=json.dumps(payload), timeout=self._timeout_resp,
                 verify=False)
         LOG.debug("attach/detach network url %s payload %s", url,
-                json.dumps(payload))
-        if res and res.status_code in self._resp_ok:
-            LOG.debug("attach/detach network successful")
-            return True
-        LOG.error(
-            "attach/detach network failed with status code: %s, "
-            "reason: %s, response body: %s, payload: %s",
-            res.status_code, res.reason, res.text, json.dumps(payload)
-        )
-        return False
+            json.dumps(payload))
+
+        if not res or res.status_code not in self._resp_ok:
+            LOG.error(
+                "attach/detach network failed with status code: %s, "
+                "reason: %s, response body: %s, payload: %s",
+                res.status_code, res.reason, res.text, json.dumps(payload)
+            )
+            return False
+
+        if self._response_body_indicates_failure(
+            res, '_attach_network', payload=json.dumps(payload)):
+            return False
+
+        LOG.debug("attach/detach network successful")
+        return True
 
     def attach_deploy_network(self, fabric, payload, deploy_payload):
         '''
@@ -448,15 +509,19 @@ class NdfcHelper:
                 "/bulk-delete/networks?network-names=" + network)
         res = requests.delete(url, headers=self._req_headers,
                 timeout=self._timeout_resp, verify=False)
-        if res and res.status_code in self._resp_ok:
-            LOG.debug("delete network successful")
-            return True
-        LOG.error(
-            "delete network failed with status code: %s, "
-            "reason: %s, response body: %s",
-            res.status_code, res.reason, res.text
-        )
-        return False
+        if not res or res.status_code not in self._resp_ok:
+            LOG.error(
+                "delete network failed with status code: %s, "
+                "reason: %s, response body: %s",
+                res.status_code, res.reason, res.text
+            )
+            return False
+        if self._response_body_indicates_failure(
+            res, '_delete_network'):
+            return False
+
+        LOG.debug("delete network successful")
+        return True
 
     def delete_network(self, fabric, network):
         '''
@@ -495,15 +560,19 @@ class NdfcHelper:
             res = requests.post(url, headers=self._req_headers,
                     data=json.dumps(deploy_payload),
                     timeout=self._timeout_resp, verify=False)
-        if res and res.status_code in self._resp_ok:
-            LOG.debug("deploy save successful")
-            return True
-        LOG.error(
-            "deploy save failed with status code: %s, "
-            "reason: %s, response body: %s",
-            res.status_code, res.reason, res.text
-        )
-        return False
+        if not res or res.status_code not in self._resp_ok:
+            LOG.error(
+                "deploy save failed with status code: %s, "
+                "reason: %s, response body: %s",
+                res.status_code, res.reason, res.text
+            )
+            return False
+        if self._response_body_indicates_failure(
+            res, '_config_deploy_save', payload=json.dumps(deploy_payload)):
+            return False
+
+        LOG.debug("deploy save successful")
+        return True
 
     @http_exc_handler
     def _create_vrf(self, fabric, payload):
@@ -514,15 +583,19 @@ class NdfcHelper:
         res = requests.post(url, headers=self._req_headers,
                 data=json.dumps(payload), timeout=self._timeout_resp,
                 verify=False)
-        if res and res.status_code in self._resp_ok:
-            LOG.debug("create vrf successful")
-            return True
-        LOG.error(
-            "create vrf failed with status code: %s, "
-            "reason: %s, response body: %s, payload: %s",
-            res.status_code, res.reason, res.text, json.dumps(payload)
-        )
-        return False
+        if not res or res.status_code not in self._resp_ok:
+            LOG.error(
+                "create vrf failed with status code: %s, "
+                "reason: %s, response body: %s, payload: %s",
+                res.status_code, res.reason, res.text, json.dumps(payload)
+            )
+            return False
+        if self._response_body_indicates_failure(
+            res, '_create_vrf', payload=json.dumps(payload)):
+            return False
+
+        LOG.debug("create vrf successful")
+        return True
 
     def create_vrf(self, fabric, payload):
         '''
@@ -552,16 +625,18 @@ class NdfcHelper:
                 "/bulk-delete/vrfs?vrf-names=" + vrf)
         res = requests.delete(url, headers=self._req_headers,
                               timeout=self._timeout_resp, verify=False)
-        if res and res.status_code in self._resp_ok:
-            LOG.debug("delete vrf successful")
-            return True
-        else:
+        if not res or res.status_code not in self._resp_ok:
             LOG.error(
                 "delete vrf failed with status code: %s, "
                 "reason: %s, response body: %s",
                 res.status_code, res.reason, res.text
             )
             return False
+        if self._response_body_indicates_failure(res, '_delete_vrf'):
+            return False
+
+        LOG.debug("delete vrf successful")
+        return True
 
     def delete_vrf(self, fabric, vrf):
         '''
@@ -592,6 +667,13 @@ class NdfcHelper:
         url = self._build_url(self._inventory_url) + fabric + "/inventory/"
         res = requests.get(url, headers=self._req_headers,
                 timeout=self._timeout_resp, verify=False)
+        if not res or res.status_code not in self._resp_ok:
+            LOG.error("invalid result for get_switches status %(status)s",
+                      {'status': res.status_code})
+            return switches_map
+        if self._response_body_indicates_failure(res, '_get_switches'):
+            return switches_map
+
         if res and res.status_code in self._resp_ok:
             data = res.json()
             for sw_info in data:
@@ -632,9 +714,6 @@ class NdfcHelper:
                     sw_dct['tor_leaf_nodes'] = neighbor_leaf_map
                     sw_dct['tor_leaf_intf'] = tor_leaf_intf_map
                 switches_map[ip] = sw_dct
-        else:
-            LOG.error("invalid result for get_switches status %(status)s",
-                      {'status': res.status_code})
         LOG.debug("get_switches returned %s", switches_map)
         return switches_map
 
@@ -663,20 +742,22 @@ class NdfcHelper:
         res = requests.get(url, headers=self._req_headers,
                            timeout=self._timeout_resp, verify=False)
         LOG.debug("URL for get po is %s, res %s", url, res)
-        if res and res.status_code in self._resp_ok:
-            data = res.json()
-            for intf in data:
-                # This needs to be fixed to only check for type port-channel
-                if intf.get('ifName') == ifname and intf.get('ifType') == (
-                        "INTERFACE_ETHERNET"):
-                    po = intf.get('channelIdStr')
-                    if po is None:
-                        return ""
-                    return po
-        else:
+        if not res or res.status_code not in self._resp_ok:
             LOG.error("invalid result for get_po status %(status)s",
                       {'status': res.status_code})
-        return ""
+            return ""
+        if self._response_body_indicates_failure(res, '_get_po'):
+            return ""
+
+        data = res.json()
+        for intf in data:
+            # This needs to be fixed to only check for type port-channel
+            if intf.get('ifName') == ifname and intf.get('ifType') == (
+                    "INTERFACE_ETHERNET"):
+                po = intf.get('channelIdStr')
+                if po is None:
+                    return ""
+                return po
 
     def get_po(self, snum, ifname):
         '''
