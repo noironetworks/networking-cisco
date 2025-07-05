@@ -482,3 +482,24 @@ class TestNDFCHelper(TestNDFCHelperBase, test_plugin.Ml2PluginV2TestCase):
 
         expected_result = 'Port-channel10'
         self.assertEqual(result, expected_result)
+
+    @mock.patch('requests.post')
+    def test_attach_network_fail_on_200_with_fail_message_in_body(self,
+                                                                  mock_post):
+        """
+        Test that _attach_network returns False if status is 200 OK but
+        the response body contains a 'fail' keyword.
+        """
+        mock_response = mock.MagicMock()
+        mock_response.status_code = 200
+        mock_response.reason = 'OK'
+        mock_response.json.return_value = {
+            'status': 'Operation Failed: Invalid parameters provided.'
+        }
+
+        mock_post.return_value = mock_response
+
+        result = self.helper._attach_network('fabric-test',
+                                             {'some': 'payload'})
+
+        self.assertFalse(result)
