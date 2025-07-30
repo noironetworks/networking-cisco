@@ -70,6 +70,8 @@ class NxosTopologyHandler(lldp_topology.LldpTopologyHandler):
             port_dict = interfaces[interface].get('port')
             port = port_dict.get('ifname')
             sn = self._get_serial_number(interfaces[interface])
+            if not sn:
+                continue
             peer = (self.host, interface, mac,
                     mgmt_ip, sys_name, port, 0, 0, sn)
             peer_list = peers.setdefault(interface, [])
