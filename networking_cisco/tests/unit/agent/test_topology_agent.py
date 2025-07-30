@@ -106,6 +106,16 @@ class TestAciTopologyHandler(base.BaseTestCase):
              'topology/pod-1/protpaths-101-102/pathep-[sauto_vpc_pg_2021_39]',
              'FDO232716G5'),
             peers['ens10'][0])
+        topo_dict = self.agent._parse_topology_data(
+                tad.BAD_TOPOLOGY_DATA_1_BYTES)
+        peers = self.agent.handlers[0].extract_peers(topo_dict)
+        self.assertEqual(
+            ('host1', 'ens9', mock.ANY, '101', 'vpc-1-39',
+             'sauto_vpc_pg_2021_39', '1',
+             'topology/pod-1/protpaths-101-102/pathep-[sauto_vpc_pg_2021_39]',
+             'FDO232713WL'),
+            peers['ens9'][0])
+        self.assertIsNone(peers.get('ens10'))
 
     @mock.patch('neutron.agent.linux.utils.execute')
     @mock.patch('neutron.agent.linux.ip_lib.IPDevice')
@@ -200,6 +210,14 @@ class TestNxosTopologyHandler(base.BaseTestCase):
             ('host1', 'enp8s0', 'cc:d3:42:d3:fa:4a', '172.28.9.244',
              'padkrish-9-244', 'Ethernet1/34', 0, 0, 'FLM2738011Z'),
             peers['enp8s0'][0])
+        topo_dict = self.agent._parse_topology_data(
+                tad.BAD_TOPOLOGY_DATA_2_BYTES)
+        peers = self.agent.handlers[0].extract_peers(topo_dict)
+        self.assertEqual(
+            ('host1', 'enp7s0', '80:6a:00:73:41:54', '172.28.9.26',
+             'padkrish-9-26', 'Ethernet1/5', 0, 0, 'FLM2616092G'),
+            peers['enp7s0'][0])
+        self.assertIsNone(peers.get('enp8s0'))
 
     @mock.patch('neutron.agent.linux.utils.execute')
     @mock.patch('neutron.agent.linux.ip_lib.IPDevice')
