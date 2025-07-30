@@ -95,6 +95,8 @@ class AciTopologyHandler(lldp_topology.LldpTopologyHandler):
 
         for interface in interfaces:
             sn = self._get_serial_number(interfaces[interface])
+            if not sn:
+                continue
             port_dict = interfaces[interface].get('port')
             if port_dict and port_dict.get('descr'):
                 value = port_dict['descr']
