@@ -240,3 +240,19 @@ class TestNDFC(TestNDFCBase, test_plugin.Ml2PluginV2TestCase):
             }
         }
         self.assertEqual(remaining_attachments, expected_attachments)
+
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'get_vrf_attachments')
+    def test_get_vrf_vlan(self, mock_get_vrf_attachments):
+        vrf_name = 'test_vrf'
+        mock_get_vrf_attachments.return_value = [
+            {
+                "lanAttachList": [
+                    {"vlanId": "100", "someOtherKey": "value1"},
+                    {"vlanId": "101", "someOtherKey": "value2"}
+                ]
+            }
+        ]
+        vlan_id = self.ndfc_instance.get_vrf_vlan(vrf_name)
+        self.assertEqual(vlan_id, "100")
+        mock_get_vrf_attachments.assert_called_with(
+            self.ndfc_instance.fabric, vrf_name)
