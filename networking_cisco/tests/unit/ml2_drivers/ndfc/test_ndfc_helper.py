@@ -310,6 +310,40 @@ class TestNDFCHelper(TestNDFCHelperBase, test_plugin.Ml2PluginV2TestCase):
         self.assertEqual(result, expected_result)
 
     @mock.patch.object(ndfc_helper.NdfcHelper, 'login', return_value=True)
+    @mock.patch.object(ndfc_helper.NdfcHelper, '_get_vrf_attachments')
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'logout')
+    def test_get_vrf_attachments_success(self, mock_logout,
+            mock_get_vrf_attachments, mock_login):
+        mock_get_vrf_attachments.return_value = {'vrf': 'vrf_attachments'}
+        fabric = 'test_fabric'
+        vrf = 'test_vrf'
+
+        result = self.helper.get_vrf_attachments(fabric, vrf)
+
+        expected_result = {'vrf': 'vrf_attachments'}
+        self.assertEqual(result, expected_result)
+        mock_login.assert_called_once()
+        mock_get_vrf_attachments.assert_called_once_with(fabric, vrf)
+        mock_logout.assert_called_once()
+
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'login', return_value=True)
+    @mock.patch.object(ndfc_helper.NdfcHelper, '_get_vrf_attachments')
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'logout')
+    def test_get_vrf_attachments_failure(self, mock_logout,
+            mock_get_vrf_attachments, mock_login):
+        mock_get_vrf_attachments.return_value = None
+
+        fabric = 'test_fabric'
+        vrf = 'test_vrf'
+
+        result = self.helper.get_vrf_attachments(fabric, vrf)
+
+        self.assertIsNone(result)
+        mock_login.assert_called_once()
+        mock_get_vrf_attachments.assert_called_once_with(fabric, vrf)
+        mock_logout.assert_called_once()
+
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'login', return_value=True)
     @mock.patch.object(ndfc_helper.NdfcHelper, '_get_network_info')
     @mock.patch.object(ndfc_helper.NdfcHelper, 'logout')
     def test_get_network_info_success(self, mock_logout,

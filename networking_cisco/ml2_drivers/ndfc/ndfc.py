@@ -327,6 +327,16 @@ class Ndfc:
                                                         tor_intf)
         return exist_attach_copy
 
+    def get_vrf_vlan(self, vrf_name):
+        fabric = self.fabric
+        vrf_attachments = self.ndfc_obj.get_vrf_attachments(fabric, vrf_name)
+        vlan_id = None
+        if vrf_attachments and "lanAttachList" in vrf_attachments[0]:
+            for item in vrf_attachments[0]["lanAttachList"]:
+                if item.get("vlanId") is not None:
+                    return item["vlanId"]
+        return vlan_id
+
     def attach_network(self, vrf_name, network_name, vlan, leaf_attachments):
         # leaf_attachments is a map of snums
         # map[leaf_snums] -> {leaf_name, interface, map[tors]}
