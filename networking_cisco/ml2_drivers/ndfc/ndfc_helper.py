@@ -60,6 +60,9 @@ class NdfcHelper:
             "rest/top-down/fabrics/%s/networks/attachments?network-names=%s")
         self._vrf_url = "appcenter/cisco/ndfc/api/v1/lan-fabric/rest/" + (
             "top-down/v2/fabrics/")
+        self._get_vrf_attachments_url = "appcenter/cisco/ndfc/api/v1/" + (
+            "lan-fabric/rest/top-down/fabrics/%s/vrfs/") + (
+            "attachments?vrf-names=%s")
         self._network_url = "appcenter/cisco/ndfc/api/v1/lan-fabric/rest/" + (
             "top-down/v2/fabrics/")
         self._get_network_url = "appcenter/cisco/ndfc/api/v1/lan-fabric/" + (
@@ -573,6 +576,45 @@ class NdfcHelper:
 
         LOG.debug("deploy save successful")
         return True
+
+    @http_exc_handler
+    def _get_vrf_attachments(self, fabric, vrf):
+        vrf_url = self._get_vrf_attachments_url % (fabric, vrf)
+        url = self._build_url(vrf_url)
+        res = requests.get(url, headers=self._req_headers,
+                           timeout=self._timeout_resp,
+                           verify=False)
+
+        if not res or res.status_code not in self._resp_ok:
+            LOG.error(
+                "get vrf attachments failed with status code: %s, "
+                "reason: %s, response body: %s",
+                res.status_code, res.reason, res.text
+            )
+            return None
+
+        if self._response_body_indicates_failure(res, '_get_vrf_attachments'):
+            return None
+
+        data = res.json()
+        return data
+
+    def get_vrf_attachments(self, fabric, vrf):
+        '''
+        Top level function to get VRF attachments.
+        '''
+        try:
+            ret = self.login()
+            if not ret:
+                LOG.error("Failed to login to NDFC")
+                return False
+            ret = self._get_vrf_attachments(fabric, vrf)
+            self.logout()
+            return ret
+        except Exception as exc:
+            LOG.error("get vrf attachments failed with exception %(exc)s",
+                      {'exc': exc})
+            return None
 
     @http_exc_handler
     def _create_vrf(self, fabric, payload):
