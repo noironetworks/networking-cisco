@@ -20,6 +20,8 @@ from unittest import mock
 
 from keystoneclient.v3 import client as ksc_client
 from neutron.tests.unit.db import test_db_base_plugin_v2 as test_pluginV2
+from neutron_lib.api.definitions import segment
+from neutron_lib import constants
 from neutron_lib.plugins import directory
 
 from networking_cisco.ml2_drivers.ndfc.cache import ProjectDetailsCache
@@ -244,6 +246,7 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
     @mock.patch.object(mech_ndfc.NDFCMechanismDriver, 'get_topology')
     @mock.patch.object(ndfc.Ndfc, 'attach_network')
     @mock.patch.object(ndfc.Ndfc, 'detach_network')
+    @mock.patch.object(ndfc.Ndfc, 'get_vrf_vlan')
     def test_port_postcommit(self, *args):
         # Test update and delete port postcommit methods
         self.mock_get_topology = TEST_LEAF_ATTACHMENTS
@@ -432,6 +435,46 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
         topology = self.ndfc_mech.get_topology(self.context,
                 fake_network_context.current, 'host1', detach=True)
         self.assertEqual(topology, {'host': 'host1'})
+
+    @mock.patch.object(ndfc.Ndfc, 'get_vrf_vlan')
+    @mock.patch(
+        'networking_cisco.ml2_drivers.ndfc.mech_ndfc.plugin_utils.'
+        'parse_network_vlan_ranges')
+    def test_allocate_vrf_segment(
+            self, mock_parse_vlan_ranges, mock_get_vrf_vlan):
+        vrf_name = 'test_vrf'
+        expected_vlan_id = "150"
+        mock_allocated_segment = {
+                'id': 'segment-id-123', 'segmentation_id': expected_vlan_id}
+        mock_ml2_plugin = mock.MagicMock()
+        mock_type_manager = mock.MagicMock()
+        mock_vlan_driver_obj = mock.MagicMock()
+        mock_ml2_plugin.type_manager = mock_type_manager
+        mock_type_manager.drivers.get.return_value.obj = mock_vlan_driver_obj
+        mock_vlan_driver_obj.allocate_fully_specified_segment.\
+            return_value = mock_allocated_segment
+        self.context._plugin = mock_ml2_plugin
+        self.context._plugin_context = mock.MagicMock()
+        ndfc_conf.cfg.CONF.set_override(
+                'network_vlan_ranges',
+                'physnet1:100:200',
+                group='ml2_type_vlan')
+
+        mock_get_vrf_vlan.return_value = expected_vlan_id
+        mock_parse_vlan_ranges.return_value = {'physnet1': [(100, 200)]}
+
+        self.ndfc_mech.allocate_vrf_segment(self.context, vrf_name)
+
+        mock_get_vrf_vlan.assert_called_once_with(vrf_name)
+        mock_parse_vlan_ranges.assert_called_once_with(
+            ndfc_conf.cfg.CONF.ml2_type_vlan.network_vlan_ranges)
+        mock_type_manager.drivers.get.assert_called_once_with(
+                constants.TYPE_VLAN)
+        mock_vlan_driver_obj.allocate_fully_specified_segment.\
+            assert_called_once_with(
+                self.context._plugin_context,
+                **{segment.PHYSICAL_NETWORK: 'physnet1',
+                    'vlan_id': expected_vlan_id})
 
     @mock.patch(
         'networking_cisco.ml2_drivers.ndfc.mech_ndfc.'
