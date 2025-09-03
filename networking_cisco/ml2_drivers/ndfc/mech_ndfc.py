@@ -476,12 +476,15 @@ class NDFCMechanismDriver(api.MechanismDriver,
                     vlan_id, gateway, physical_network)
 
     def update_port_postcommit(self, context):
+        old_port = context.original
         port = context.current
 
         if context.original_host and context.original_host != context.host:
             self.detach_network(context, context.original_host)
 
-        if self._is_port_bound(port):
+        if (old_port.get(
+            portbindings.VIF_TYPE) == portbindings.VIF_TYPE_UNBOUND and
+                self._is_port_bound(port)):
             self.attach_network(context, context.host)
 
     def delete_port_postcommit(self, context):
