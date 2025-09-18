@@ -76,6 +76,9 @@ class NdfcHelper:
             "rest/interface/detail/filter?serialNumber=")
         self._topology_url = "appcenter/cisco/ndfc/api/v1/lan-fabric/" + (
             "rest/topology/topologydataforvmm?serialNumbers=")
+        self._smart_license_status_new = "api/v1/infra" + (
+            "/license/smartLicenseStatus")
+        self.nd_new_version = False
 
         self._ip = kwargs['ip']
         # TODO(sanaval): add support for other auth types
@@ -88,6 +91,7 @@ class NdfcHelper:
                          requests.codes.accepted)
         self._expiration_time = 100000
         self._protocol_host_url = "https://" + self._ip + "/"
+        self.determine_nd_api_version()
 
     def _build_url(self, remaining_url):
         '''
@@ -170,6 +174,36 @@ class NdfcHelper:
         logout_url = self._build_url('rest/logout')
         requests.post(logout_url, headers=self._req_headers,
                       timeout=self._timeout_resp, verify=False)
+
+    @http_exc_handler
+    def _determine_nd_api_version(self):
+        '''
+        Function to determine if we have support for new APIs
+        '''
+        url = self._build_url(self._smart_license_status_new)
+        res = requests.get(url, headers=self._req_headers,
+                           timeout=self._timeout_resp, verify=False)
+        if res and (res.status_code in self._resp_ok):
+            self.nd_new_version = True
+        else:
+            self.nd_new_version = False
+
+    def determine_nd_api_version(self):
+        '''
+        Function to determine new API support
+        '''
+        try:
+            ret = self.login()
+            if not ret:
+                LOG.error("Failed to login to NDFC")
+                return
+            ret = self._determine_nd_api_version()
+            LOG.debug("Determined access to new APIs to be %s"
+                      % (self.nd_new_version))
+            self.logout()
+        except Exception as exc:
+            LOG.error("determine nd api version failed with "
+                      "exception %(exc)s", {'exc': exc})
 
     def _get_leaf_switch_map(self, ret):
         dct = {}
