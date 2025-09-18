@@ -537,3 +537,38 @@ class TestNDFCHelper(TestNDFCHelperBase, test_plugin.Ml2PluginV2TestCase):
                                              {'some': 'payload'})
 
         self.assertFalse(result)
+
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'login', return_value=True)
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'logout')
+    @mock.patch('requests.get')
+    def test_determine_nd_api_version_new(self, mock_get, mock_logout,
+                                          mock_login):
+        mock_get_response = mock.MagicMock()
+        mock_get_response.status_code = 200
+        mock_get.return_value = mock_get_response
+
+        self.helper.determine_nd_api_version()
+
+        self.assertTrue(self.helper.nd_new_version)
+
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'login', return_value=True)
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'logout')
+    @mock.patch('requests.get')
+    def test_determine_nd_api_version_old(self, mock_get, mock_logout,
+                                          mock_login):
+        mock_get_response = mock.MagicMock()
+        mock_get_response.status_code = 501
+        mock_get.return_value = mock_get_response
+
+        self.helper.determine_nd_api_version()
+
+        self.assertFalse(self.helper.nd_new_version)
+
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'login', return_value=False)
+    @mock.patch('requests.get')
+    def test_determine_nd_api_version_failure(self, mock_get, mock_login):
+        mock_get.return_value = None
+
+        self.helper.determine_nd_api_version()
+
+        self.assertFalse(self.helper.nd_new_version)
