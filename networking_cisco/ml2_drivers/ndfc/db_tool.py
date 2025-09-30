@@ -131,7 +131,7 @@ def main():
         parser.print_help()
         sys.exit(1)
 
-    sys.argv = [sys.argv[0], f"--config-file={args.config_file}"]
+    sys.argv = [sys.argv[0], "--config-file=%s" % args.config_file]
 
     setup()
 
