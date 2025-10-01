@@ -33,6 +33,7 @@ from neutron_lib import context as n_context
 from neutron_lib.db import api as db_api
 from neutron_lib.plugins import directory
 from neutron_lib.plugins.ml2 import api
+from neutron_lib.plugins import utils as plugin_utils
 from neutron_lib import rpc as n_rpc
 from oslo_config import cfg
 from oslo_log import log
@@ -254,6 +255,33 @@ class NDFCMechanismDriver(api.MechanismDriver,
                 return
             return self._get_topology(session, host)
 
+    def allocate_vrf_segment(self, context, vrf_name):
+        vrf_vlan_id = self.ndfc.get_vrf_vlan(vrf_name)
+        if not vrf_vlan_id:
+            LOG.warning("No vlan id found for vrf %s", vrf_name)
+        else:
+            LOG.debug("Vlan id for vrf %s is %s", vrf_name, vrf_vlan_id)
+            network_vlan_ranges = plugin_utils.parse_network_vlan_ranges(
+                cfg.CONF.ml2_type_vlan.network_vlan_ranges)
+            LOG.debug("Network VLAN ranges: %s", network_vlan_ranges)
+            physical_networks = list(network_vlan_ranges.keys())
+            LOG.debug("physical networks: %s", physical_networks)
+            for physical_network in physical_networks:
+                seg_args = {
+                    api.PHYSICAL_NETWORK: physical_network,
+                    'vlan_id': vrf_vlan_id
+                }
+                LOG.debug("Segment args %s", seg_args)
+                ml2_plugin = context._plugin
+                type_manager = ml2_plugin.type_manager
+                vlan_obj = type_manager.drivers.get(
+                    constants.TYPE_VLAN).obj
+                allocated_segment = vlan_obj.allocate_fully_specified_segment(
+                    context._plugin_context, **seg_args)
+                if allocated_segment:
+                    LOG.debug("Dynamic segment %s allocated successfully",
+                        allocated_segment)
+
     def _is_port_bound(self, port):
         return port.get(portbindings.VIF_TYPE) not in [
             portbindings.VIF_TYPE_UNBOUND,
@@ -338,6 +366,7 @@ class NDFCMechanismDriver(api.MechanismDriver,
                 res = self.ndfc.attach_network(vrf_name, network['name'],
                     vlan_id, topology_result)
                 if res:
+                    self.allocate_vrf_segment(context, vrf_name)
                     LOG.info("NDFC Network %s attached successfully",
                         network['name'])
                 else:
