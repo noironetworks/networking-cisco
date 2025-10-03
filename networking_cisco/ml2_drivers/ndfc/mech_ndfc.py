@@ -213,6 +213,10 @@ class NDFCMechanismDriver(api.MechanismDriver,
         leaf_table = query(session).params(
             host=host).all()
 
+        if not leaf_table:
+            LOG.error("No matching host name found for host %s "
+                    "Please check nxos_host_links table", host)
+
         for host_link, tor in leaf_table:
             interface_name = host_link.switch_port
             if tor:
@@ -234,6 +238,7 @@ class NDFCMechanismDriver(api.MechanismDriver,
         return topology
 
     def get_topology(self, context, network, host, detach=False):
+        LOG.debug("Get topology for network %s, host %s", network, host)
         with db_api.CONTEXT_READER.using(
             context._plugin_context) as session:
             query = BAKERY(lambda s: s.query(
@@ -250,8 +255,12 @@ class NDFCMechanismDriver(api.MechanismDriver,
                 host=host).scalar() or 0
 
             if not detach and count > 1:
+                LOG.debug("More hosts attached to network %s, "
+                        "no network detach required", network)
                 return
             if detach and count > 0:
+                LOG.debug("Some host already attached to network %s, "
+                        "No attach network required", network)
                 return
             return self._get_topology(session, host)
 
