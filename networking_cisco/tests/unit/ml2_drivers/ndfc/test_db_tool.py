@@ -15,6 +15,8 @@
 #
 
 import abc
+import io
+import sqlalchemy as sa
 from unittest import mock
 
 from networking_cisco.ml2_drivers.ndfc.db import NxosHostLink
@@ -23,6 +25,9 @@ from networking_cisco.ml2_drivers.ndfc import db_tool
 from neutron.common import config
 from neutron.tests.unit.plugins.ml2 import test_plugin
 from oslo_config import cfg
+from oslo_log import log
+
+LOG = log.getLogger('networking_cisco.ml2_drivers.ndfc.db_tool')
 
 
 class TestDBToolBase(abc.ABC):
@@ -59,65 +64,134 @@ class TestDBTool(TestDBToolBase, test_plugin.Ml2PluginV2TestCase):
     @mock.patch('networking_cisco.ml2_drivers.ndfc.db_tool.setup')
     @mock.patch('sys.argv', ['db_tool.py',
         '--config-file', '/etc/neutron/neutron.conf', 'list-nxos-links'])
-    def test_list_nxos_links(self, mock_setup, mock_get_session):
+    @mock.patch('sys.exit')
+    @mock.patch('sys.stdout', new_callable=io.StringIO)
+    @mock.patch('networking_cisco.ml2_drivers.ndfc.db_tool.BAKERY')
+    def test_list_nxos_links(self, mock_bakery, mock_stdout, mock_exit,
+            mock_setup, mock_get_session):
         """Test the 'list-nxos-links' command."""
         mock_session = mock.MagicMock()
         mock_get_session.return_value.__enter__.return_value = mock_session
+        mock_get_session.return_value.__exit__.return_value = None
 
-        list_table = 'networking_cisco.ml2_drivers.ndfc.db_tool.list_table'
+        mock_link1 = mock.Mock(spec=NxosHostLink)
+        mock_link1.__str__ = mock.MagicMock(
+                return_value="MockHostLink(host1, eth0)")
+        mock_link2 = mock.Mock(spec=NxosHostLink)
+        mock_link2.__str__ = mock.MagicMock(
+                return_value="MockHostLink(host2, eth1)")
 
-        with mock.patch(list_table) as mock_list_table:
-            db_tool.main()
-            mock_list_table.assert_called_once_with(
-                    mock_session, NxosHostLink)
+        mock_baked_query_result_obj = mock.MagicMock()
+        mock_baked_query_result_obj.all.return_value = [
+                mock_link1, mock_link2]
+        mock_bakery.return_value = mock.MagicMock(
+                return_value=mock_baked_query_result_obj)
+
+        db_tool.main()
+
+        mock_bakery.assert_called_once()
+        mock_bakery.return_value.assert_called_once_with(mock_session)
+        mock_baked_query_result_obj.all.assert_called_once()
+        self.assertEqual(mock_stdout.getvalue(),
+            "MockHostLink(host1, eth0)\nMockHostLink(host2, eth1)\n")
+        mock_exit.assert_not_called()
 
     @mock.patch('networking_cisco.ml2_drivers.ndfc.db_tool.get_session')
     @mock.patch('networking_cisco.ml2_drivers.ndfc.db_tool.setup')
     @mock.patch('sys.argv', ['db_tool.py',
         '--config-file', '/etc/neutron/neutron.conf', 'delete-nxos-links',
         '--condition', "hostname='compute01.maas'"])
-    def test_delete_nxos_links(self, mock_setup, mock_get_session):
+    @mock.patch('sys.exit')
+    @mock.patch.object(LOG, 'debug')
+    def test_delete_nxos_links(self, mock_log_debug, mock_exit,
+            mock_setup, mock_get_session):
         """Test the 'delete-nxos-links' command."""
         mock_session = mock.MagicMock()
         mock_get_session.return_value.__enter__.return_value = mock_session
+        mock_get_session.return_value.__exit__.return_value = None
 
-        delete_table = 'networking_cisco.ml2_drivers.ndfc.db_tool.delete_table'
+        mock_query_obj = mock.MagicMock()
+        mock_session.query.return_value = mock_query_obj
+        mock_query_obj.filter.return_value = mock_query_obj
+        mock_query_obj.delete.return_value = 5
 
-        with mock.patch(delete_table) as mock_delete_table:
-            db_tool.main()
-            mock_delete_table.assert_called_once_with(
-                    mock_session, NxosHostLink,
-                    condition="hostname='compute01.maas'")
+        db_tool.main()
+
+        mock_session.query.assert_called_once_with(NxosHostLink)
+        mock_query_obj.filter.assert_called_once()
+        filter_arg = mock_query_obj.filter.call_args[0][0]
+        self.assertIsInstance(filter_arg, sa.sql.elements.TextClause)
+        self.assertEqual(str(filter_arg), "hostname='compute01.maas'")
+        mock_query_obj.delete.assert_called_once_with(
+                synchronize_session=False)
+        mock_log_debug.assert_called_once_with(
+            "Successfully deleted %d rows from table: %s",
+            5, "nxos_host_links")
+        mock_exit.assert_not_called()
 
     @mock.patch('networking_cisco.ml2_drivers.ndfc.db_tool.get_session')
     @mock.patch('networking_cisco.ml2_drivers.ndfc.db_tool.setup')
     @mock.patch('sys.argv', ['db_tool.py',
         '--config-file', '/etc/neutron/neutron.conf', 'list-nxos-tors'])
-    def test_list_nxos_tors(self, mock_setup, mock_get_session):
+    @mock.patch('sys.exit')
+    @mock.patch('sys.stdout', new_callable=io.StringIO)
+    @mock.patch('networking_cisco.ml2_drivers.ndfc.db_tool.BAKERY')
+    def test_list_nxos_tors(self, mock_bakery, mock_stdout, mock_exit,
+                            mock_setup, mock_get_session):
         """Test the 'list-nxos-tors' command."""
         mock_session = mock.MagicMock()
         mock_get_session.return_value.__enter__.return_value = mock_session
+        mock_get_session.return_value.__exit__.return_value = None
 
-        list_table = 'networking_cisco.ml2_drivers.ndfc.db_tool.list_table'
+        mock_tor1 = mock.Mock(spec=NxosTors)
+        mock_tor1.__str__ = mock.MagicMock(
+                return_value="MockNxosTors(torA, SN1)")
+        mock_tor2 = mock.Mock(spec=NxosTors)
+        mock_tor2.__str__ = mock.MagicMock(
+                return_value="MockNxosTors(torB, SN2)")
 
-        with mock.patch(list_table) as mock_list_table:
-            db_tool.main()
-            mock_list_table.assert_called_once_with(
-                    mock_session, NxosTors)
+        mock_baked_query_result_obj = mock.MagicMock()
+        mock_baked_query_result_obj.all.return_value = [mock_tor1, mock_tor2]
+        mock_bakery.return_value = mock.MagicMock(
+                return_value=mock_baked_query_result_obj)
+
+        db_tool.main()
+
+        mock_bakery.assert_called_once()
+        mock_bakery.return_value.assert_called_once_with(mock_session)
+        mock_baked_query_result_obj.all.assert_called_once()
+        self.assertEqual(mock_stdout.getvalue(),
+            "MockNxosTors(torA, SN1)\nMockNxosTors(torB, SN2)\n")
+        mock_exit.assert_not_called()
 
     @mock.patch('networking_cisco.ml2_drivers.ndfc.db_tool.get_session')
     @mock.patch('networking_cisco.ml2_drivers.ndfc.db_tool.setup')
     @mock.patch('sys.argv', ['db_tool.py',
         '--config-file', '/etc/neutron/neutron.conf', 'delete-nxos-tors',
         '--condition', "tor_id=1"])
-    def test_delete_nxos_tors(self, mock_setup, mock_get_session):
+    @mock.patch('sys.exit')
+    @mock.patch.object(LOG, 'debug')
+    def test_delete_nxos_tors(self, mock_log_debug, mock_exit,
+            mock_setup, mock_get_session):
         """Test the 'delete-nxos-tors' command."""
         mock_session = mock.MagicMock()
         mock_get_session.return_value.__enter__.return_value = mock_session
+        mock_get_session.return_value.__exit__.return_value = None
 
-        delete_table = 'networking_cisco.ml2_drivers.ndfc.db_tool.delete_table'
+        mock_query_obj = mock.MagicMock()
+        mock_session.query.return_value = mock_query_obj
+        mock_query_obj.filter.return_value = mock_query_obj
+        mock_query_obj.delete.return_value = 1
 
-        with mock.patch(delete_table) as mock_delete_table:
-            db_tool.main()
-            mock_delete_table.assert_called_once_with(
-                    mock_session, NxosTors, condition='tor_id=1')
+        db_tool.main()
+
+        mock_session.query.assert_called_once_with(NxosTors)
+        mock_query_obj.filter.assert_called_once()
+        filter_arg = mock_query_obj.filter.call_args[0][0]
+        self.assertIsInstance(filter_arg, sa.sql.elements.TextClause)
+        self.assertEqual(str(filter_arg), "tor_id=1")
+        mock_query_obj.delete.assert_called_once_with(
+                synchronize_session=False)
+        mock_log_debug.assert_called_once_with(
+            "Successfully deleted %d rows from table: %s", 1, "nxos_tors")
+        mock_exit.assert_not_called()
