@@ -22,6 +22,7 @@ from networking_cisco.ml2_drivers.ndfc import ndfc_helper
 from networking_cisco.tests.unit.ml2_drivers.ndfc import test_ndfc_mech
 from neutron.common import config
 from neutron.tests.unit.plugins.ml2 import test_plugin
+from oslo_serialization import jsonutils
 
 
 class TestNDFCBase(abc.ABC):
@@ -32,6 +33,25 @@ class TestNDFCBase(abc.ABC):
 
 class TestNDFC(TestNDFCBase, test_plugin.Ml2PluginV2TestCase):
     def setUp(self):
+        self.mock_ndfc_helper_login = mock.patch.object(
+            ndfc_helper.NdfcHelper, 'login').start()
+        self.mock_ndfc_helper_logout = mock.patch.object(
+            ndfc_helper.NdfcHelper, 'logout').start()
+
+        self.mock_requests_get = mock.patch('requests.get').start()
+        self.mock_requests_post = mock.patch('requests.post').start()
+        self.mock_requests_delete = mock.patch('requests.delete').start()
+        self.mock_requests_put = mock.patch('requests.put').start()
+
+        self.mock_ndfc_helper_login.return_value = (True, "fake_jwt_token")
+        self.mock_ndfc_helper_logout.return_value = None
+        self.mock_requests_get.return_value = mock.MagicMock(status_code=404)
+        self.mock_requests_post.return_value = mock.MagicMock(
+            status_code=200, jsonutils=lambda: {'jwttoken': 'fake_jwt_token'})
+        self.mock_requests_delete.return_value = mock.MagicMock(
+                status_code=200)
+        self.mock_requests_put.return_value = mock.MagicMock(status_code=200)
+
         self.ndfc_instance = ndfc.Ndfc(ndfc_ip='192.168.1.1', user='admin',
                 pwd='password', fabric='fabric_name',
                 force_old_api=False)
@@ -39,6 +59,10 @@ class TestNDFC(TestNDFCBase, test_plugin.Ml2PluginV2TestCase):
             ndfc_helper.NdfcHelper, 'get_network_switch_interface_map',
             return_value=None).start()
         super(TestNDFC, self).setUp()
+
+    def tearDown(self):
+        mock.patch.stopall()
+        super(TestNDFC, self).tearDown()
 
     @mock.patch.object(ndfc_helper.NdfcHelper, 'create_vrf')
     @mock.patch.object(ndfc_helper.NdfcHelper, 'delete_vrf')
@@ -50,18 +74,62 @@ class TestNDFC(TestNDFCBase, test_plugin.Ml2PluginV2TestCase):
         ret = self.ndfc_instance.delete_vrf(vrf_name)
         self.assertTrue(ret)
 
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'create_vrf')
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'delete_vrf')
+    def test_vrf_v2(self, *args):
+        vrf_name = 'test_vrf'
+        self.ndfc_instance.ndfc_obj.nd_new_version = True
+        ret = self.ndfc_instance.create_vrf(vrf_name)
+        self.assertTrue(ret)
+
+        ret = self.ndfc_instance.delete_vrf(vrf_name)
+        self.assertTrue(ret)
+
     @mock.patch.object(ndfc_helper.NdfcHelper, 'create_network')
     @mock.patch.object(ndfc_helper.NdfcHelper, 'update_network')
     @mock.patch.object(ndfc_helper.NdfcHelper, 'delete_network')
-    def test_network(self, *args):
+    @mock.patch.object(ndfc_helper.NdfcHelper, '_get_network_info')
+    def test_network(self, mock_get_network_info, mock_delete_network,
+            mock_update_network, mock_create_network):
         vrf_name = 'test_vrf'
         network_name = 'test_network'
         vlan = '100'
         physnet = 'physnet1'
+        payload = {'netName': 'test_network',
+                'networkTemplateConfig': jsonutils.dumps(
+                    {'gatewayIpAddress': ''})}
+        mock_get_network_info.return_value = payload
         ret = self.ndfc_instance.create_network(vrf_name, network_name,
                 vlan, physnet)
         self.assertTrue(ret)
 
+        gw = '10.10.10.0/24'
+        ret = self.ndfc_instance.update_network(vrf_name, network_name,
+                vlan, gw, physnet)
+        self.assertTrue(ret)
+
+        ret = self.ndfc_instance.delete_network(network_name,
+                vlan, physnet)
+        self.assertTrue(ret)
+
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'create_network')
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'update_network')
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'delete_network')
+    @mock.patch.object(ndfc_helper.NdfcHelper, '_get_network_info')
+    def test_network_v2(self, mock_get_network_info, mock_delete_network,
+            mock_update_network, mock_create_network):
+        vrf_name = 'test_vrf'
+        network_name = 'test_network'
+        vlan = '100'
+        physnet = 'physnet1'
+        self.ndfc_instance.ndfc_obj.nd_new_version = True
+        ret = self.ndfc_instance.create_network(vrf_name, network_name,
+                vlan, physnet)
+        self.assertTrue(ret)
+
+        payload = {'networkName': 'test_net',
+                'l3Data': {}}
+        mock_get_network_info.return_value = payload
         gw = '10.10.10.0/24'
         ret = self.ndfc_instance.update_network(vrf_name, network_name,
                 vlan, gw, physnet)
@@ -79,6 +147,24 @@ class TestNDFC(TestNDFCBase, test_plugin.Ml2PluginV2TestCase):
         network_name = 'test_network'
         vlan = '100'
         leaf_attachments = test_ndfc_mech.TEST_LEAF_ATTACHMENTS
+
+        ret = self.ndfc_instance.attach_network(vrf_name, network_name,
+                vlan, leaf_attachments)
+        self.assertTrue(ret)
+
+        ret = self.ndfc_instance.detach_network(vrf_name, network_name,
+                vlan, leaf_attachments)
+        self.assertTrue(ret)
+
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'attach_deploy_network')
+    @mock.patch.object(ndfc_helper.NdfcHelper,
+            'get_network_switch_interface_map')
+    def test_network_attach_detach_v2(self, *args):
+        vrf_name = 'test_vrf'
+        network_name = 'test_network'
+        vlan = '100'
+        leaf_attachments = test_ndfc_mech.TEST_LEAF_ATTACHMENTS
+        self.ndfc_instance.ndfc_obj.nd_new_version = True
 
         ret = self.ndfc_instance.attach_network(vrf_name, network_name,
                 vlan, leaf_attachments)
@@ -253,6 +339,21 @@ class TestNDFC(TestNDFCBase, test_plugin.Ml2PluginV2TestCase):
                 ]
             }
         ]
+        vlan_id = self.ndfc_instance.get_vrf_vlan(vrf_name)
+        self.assertEqual(vlan_id, "100")
+        mock_get_vrf_attachments.assert_called_with(
+            self.ndfc_instance.fabric, vrf_name)
+
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'get_vrf_attachments')
+    def test_get_vrf_vlan_v2(self, mock_get_vrf_attachments):
+        vrf_name = 'test_vrf'
+        mock_get_vrf_attachments.return_value = {
+                "attachments": [
+                    {"vlanId": "100", "someOtherKey": "value1"},
+                    {"vlanId": "101", "someOtherKey": "value2"}
+                ]
+        }
+        self.ndfc_instance.ndfc_obj.nd_new_version = True
         vlan_id = self.ndfc_instance.get_vrf_vlan(vrf_name)
         self.assertEqual(vlan_id, "100")
         mock_get_vrf_attachments.assert_called_with(

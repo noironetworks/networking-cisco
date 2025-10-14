@@ -14,10 +14,10 @@
 #    under the License.
 #
 
-import json
 from networking_cisco.ml2_drivers.ndfc import constants
 from networking_cisco.ml2_drivers.ndfc.ndfc_helper import NdfcHelper
 from oslo_log import log
+from oslo_serialization import jsonutils
 
 LOG = log.getLogger(__name__)
 
@@ -40,7 +40,7 @@ class Ndfc:
         self.ndfc_obj = NdfcHelper(ip=self.ip, user=self.user, pwd=self.pwd,
                                    force_old_api=force_old_api)
 
-    def create_vrf(self, vrf_name):
+    def _get_create_vrf_payload(self, vrf_name):
         fabric = self.fabric
         tag = constants.TAG
         template_config_vrf = {'routeTarget': 'auto', 'vrfName': vrf_name,
@@ -57,8 +57,39 @@ class Ndfc:
                "vrfTemplateConfig": template_config_vrf,
                "vrfTemplateParams": "{}",
                "vrfExtensionTemplate": "Default_VRF_Extension_Universal"}
-        ret = self.ndfc_obj.create_vrf(fabric, dct)
-        LOG.info("For fabric %s, vrf %s, create vrf returned %s", fabric,
+        return dct
+
+    def _get_create_vrf_payload_v2(self, vrf_name):
+        fabric = self.fabric
+        tag = constants.TAG
+        vrf_config = {
+            "fabricName": fabric,
+            "vrfName": vrf_name,
+            "vrfType": "vxlan"
+        }
+        additional_data = {}
+        additional_data['trmEnabled'] = False
+        additional_data['advertiseHostRoute'] = False
+        additional_data['advertiseDefaultRoute'] = True
+        additional_data['configureStaticDefaultRoute'] = True
+        additional_data['tag'] = int(tag)
+        additional_data['maxBgpPaths'] = 1
+        additional_data['maxIbgpPaths'] = 2
+        additional_data['vrfRouteMap'] = 'FABRIC-RMAP-REDIST-SUBNET'
+        additional_data['rtAuto'] = True
+        if additional_data:
+            vrf_config['additionalData'] = additional_data
+        final_payload = {"vrfs": [vrf_config]}
+        return final_payload
+
+    def create_vrf(self, vrf_name):
+        if self.ndfc_obj.nd_new_version:
+            payload = self._get_create_vrf_payload_v2(vrf_name)
+        else:
+            payload = self._get_create_vrf_payload(vrf_name)
+        ret = self.ndfc_obj.create_vrf(self.fabric, payload)
+        LOG.debug("create vrf payload is %s", payload)
+        LOG.info("For fabric %s, vrf %s, create vrf returned %s", self.fabric,
                 vrf_name, ret)
         return ret
 
@@ -71,6 +102,14 @@ class Ndfc:
         for snum in leaf_attachments:
             dct[snum] = network
         return dct
+
+    def _get_deploy_payload_attach_v2(self, leaf_attachments, network):
+        switch_ids_list = list(leaf_attachments.keys())
+        deploy_payload = {
+            "networkNames": [network],
+            "switchIds": switch_ids_list
+        }
+        return deploy_payload
 
     def _get_create_network_payload(self, vrf_name, network_name, vlan):
         gw = ""
@@ -93,11 +132,52 @@ class Ndfc:
                'networkTemplate': template_type}
         return dct
 
+    def _get_create_network_payload_v2(self, vrf_name, network_name, vlan):
+        gw = ""
+        tag = constants.TAG
+        mtu = constants.MTU
+        template_type = constants.TEMPLATE_TYPE
+        network_id = vlan * 10
+        network_config = {
+            "displayName": network_name,
+            "fabricName": self.fabric,
+            "networkName": network_name,
+            "vlanId": vlan,
+            "vrfName": vrf_name,
+            "networkId": network_id,
+        }
+        network_config['networkType'] = 'vxlan'
+        l2_data = {}
+        l2_data['vlanName'] = ""
+        l2_data['rtAuto'] = False
+        network_config['l2Data'] = l2_data
+        l3_data = {}
+        l3_data['gatewayIp'] = gw
+        l3_data['vlanInterfaceDescription'] = ""
+        l3_data['arp'] = True
+        if mtu is not None:
+            l3_data['mtu'] = {'protocol': {'layer2': mtu}}
+        l3_data['ipv4Trm'] = False
+        l3_data['ipv6Trm'] = False
+        l3_data['gatewayOnBorder'] = False
+        if tag is not None:
+            l3_data['tag'] = int(tag)
+        l3_data['netflow'] = False
+        l3_data['igmpVersion'] = 2
+        network_config['l3Data'] = l3_data
+        if template_type:
+            network_config['networkTemplateName'] = template_type
+        return {"networks": [network_config]}
+
     def create_network(self, vrf_name, network_name, vlan, physnet):
         LOG.debug("Create network called for vrf %s network %s vlan %s and "
             "physnet %s", vrf_name, network_name, vlan, physnet)
-        payload = self._get_create_network_payload(vrf_name, network_name,
-                vlan)
+        if self.ndfc_obj.nd_new_version:
+            payload = self._get_create_network_payload_v2(
+                    vrf_name, network_name, vlan)
+        else:
+            payload = self._get_create_network_payload(
+                    vrf_name, network_name, vlan)
         LOG.debug("create network payload is %s", payload)
         ret = self.ndfc_obj.create_network(self.fabric, payload)
         LOG.info("For %s:%s Create Network returned %s", vrf_name,
@@ -109,10 +189,14 @@ class Ndfc:
         # TODO(padkrish) do return check for None
         LOG.debug("Get network object %s wih GW %s", payload, gw)
         if payload is not None:
-            template_data = payload.get("networkTemplateConfig")
-            template_data_json = json.loads(template_data)
-            template_data_json["gatewayIpAddress"] = gw
-            payload["networkTemplateConfig"] = template_data_json
+            if self.ndfc_obj.nd_new_version:
+                template_data = payload.get("l3Data")
+                template_data["gatewayIpv4Address"] = gw
+            else:
+                template_data = payload.get("networkTemplateConfig")
+                template_data_json = jsonutils.loads(template_data)
+                template_data_json["gatewayIpAddress"] = gw
+                payload["networkTemplateConfig"] = template_data_json
             return payload
 
     def update_network(self, vrf_name, network_name, vlan, gw, physnet):
@@ -120,7 +204,7 @@ class Ndfc:
                 vrf_name, network_name, vlan, gw)
         fabric = self.fabric
         payload = self._get_update_network_payload(fabric, network_name, gw)
-        LOG.debug("new payload for update network is %s", payload)
+        LOG.debug("Payload for update network is %s", payload)
         deploy_payload = self._get_deploy_payload(network_name)
         LOG.debug("Deploy payload is %s", deploy_payload)
         if len(deploy_payload) == 0:
@@ -171,6 +255,24 @@ class Ndfc:
             return None
         return attach_snum
 
+    def _get_common_attach_payload_v2(self, fabric, network_name,
+            vlan, leaf_snum, leaf_info):
+        interfaces = []
+        if leaf_info.get('tor_sw_intf_map'):
+            for tor_snum, tor_info in leaf_info['tor_sw_intf_map'].items():
+                tor_interfaces = tor_info.get('tor_interfaces', [])
+                for intf_name in tor_interfaces:
+                    interfaces.append({
+                        "interfaceRange": intf_name,
+                    })
+
+        if 'interfaces' in leaf_info:
+            for intf_name in leaf_info['interfaces']:
+                interfaces.append({
+                    "interfaceRange": intf_name,
+                })
+        return interfaces
+
     def _create_attach_payload(self, collated_attach, vrf_name, network_name,
                                vlan):
         fabric = self.fabric
@@ -192,6 +294,29 @@ class Ndfc:
         attach_dct = [{"networkName": network_name,
             "lanAttachList": attach_list}]
         return attach_dct
+
+    def _create_attach_payload_v2(self, collated_attach,
+            vrf_name, network_name, vlan):
+        attach_list = []
+        for leaf_snum, leaf_info in collated_attach.items():
+            interfaces = self._get_common_attach_payload_v2(
+                self.fabric, network_name, vlan, leaf_snum, leaf_info
+            )
+            LOG.debug("Attach interfaces: %s", interfaces)
+            if not interfaces:
+                LOG.error(
+                    "Leaf %s has no regular or ToR interfaces to attach.",
+                    leaf_snum)
+                continue
+            attachment_entry = {
+                "attach": True,
+                "interfaces": interfaces,
+                "networkName": network_name,
+                "switchId": leaf_snum,
+                "vlanId": vlan
+            }
+            attach_list.append(attachment_entry)
+        return {"attachments": attach_list}
 
     def _create_detach_payload(self, leaf_attachments, collated_attach,
                                vrf_name, network_name, vlan):
@@ -215,6 +340,28 @@ class Ndfc:
         attach_dct = [{"networkName": network_name,
             "lanAttachList": attach_list}]
         return attach_dct
+
+    def _create_detach_payload_v2(self, leaf_attachments, collated_attach,
+                                  vrf_name, network_name, vlan):
+        attach_list = []
+        for leaf_snum, leaf_info_to_detach in leaf_attachments.items():
+            interfaces_to_detach = self._get_common_attach_payload_v2(
+                self.fabric, network_name, vlan, leaf_snum, leaf_info_to_detach
+            )
+            if interfaces_to_detach:
+                attachment_entry = {
+                    "attach": False,
+                    "interfaces": interfaces_to_detach,
+                    "networkName": network_name,
+                    "switchId": leaf_snum,
+                    "vlanId": vlan
+                }
+                attach_list.append(attachment_entry)
+            else:
+                LOG.warning(
+                    "Leaf %s has no interfaces specified for detachment. "
+                    "Skipping.", leaf_snum)
+        return {"attachments": attach_list}
 
     def _get_exist_attach_copy(self, exist_attach, new_attach):
         exist_attach_copy = {}
@@ -332,10 +479,17 @@ class Ndfc:
         fabric = self.fabric
         vrf_attachments = self.ndfc_obj.get_vrf_attachments(fabric, vrf_name)
         vlan_id = None
-        if vrf_attachments and "lanAttachList" in vrf_attachments[0]:
-            for item in vrf_attachments[0]["lanAttachList"]:
-                if item.get("vlanId") is not None:
-                    return item["vlanId"]
+        if self.ndfc_obj.nd_new_version:
+            if vrf_attachments and "attachments" in vrf_attachments:
+                attachments = vrf_attachments.get("attachments", [])
+                for item in attachments:
+                    if item.get("vlanId") is not None:
+                        return item["vlanId"]
+        else:
+            if vrf_attachments and "lanAttachList" in vrf_attachments[0]:
+                for item in vrf_attachments[0]["lanAttachList"]:
+                    if item.get("vlanId") is not None:
+                        return item["vlanId"]
         return vlan_id
 
     def attach_network(self, vrf_name, network_name, vlan, leaf_attachments):
@@ -351,11 +505,17 @@ class Ndfc:
         collated_attach = self._merge_attachments(
             exist_attach, leaf_attachments)
         LOG.debug("collated attachments %s", collated_attach)
-        attach_payload = self._create_attach_payload(
-            collated_attach, vrf_name, network_name, vlan)
+        if self.ndfc_obj.nd_new_version:
+            attach_payload = self._create_attach_payload_v2(
+                collated_attach, vrf_name, network_name, vlan)
+            deploy_payload = self._get_deploy_payload_attach_v2(
+                leaf_attachments, network_name)
+        else:
+            attach_payload = self._create_attach_payload(
+                collated_attach, vrf_name, network_name, vlan)
+            deploy_payload = self._get_deploy_payload_attach(
+                leaf_attachments, network_name)
         LOG.debug("attach payload is %s", attach_payload)
-        deploy_payload = self._get_deploy_payload_attach(
-            leaf_attachments, network_name)
         LOG.debug("deploy payload %s", deploy_payload)
         ret = self.ndfc_obj.attach_deploy_network(
             self.fabric, attach_payload, deploy_payload)
@@ -379,14 +539,20 @@ class Ndfc:
         removed_attach = self._remove_attachments(
             exist_attach, leaf_attachments)
         LOG.debug("removed attachments %s", removed_attach)
-        attach_payload = self._create_detach_payload(
-            leaf_attachments, removed_attach, vrf_name, network_name, vlan)
-        deploy_payload = self._get_deploy_payload_attach(
-            leaf_attachments, network_name)
-        LOG.debug("detach payload is %s", attach_payload)
+        if self.ndfc_obj.nd_new_version:
+            detach_payload = self._create_detach_payload_v2(
+                leaf_attachments, removed_attach, vrf_name, network_name, vlan)
+            deploy_payload = self._get_deploy_payload_attach_v2(
+                leaf_attachments, network_name)
+        else:
+            detach_payload = self._create_detach_payload(
+                leaf_attachments, removed_attach, vrf_name, network_name, vlan)
+            deploy_payload = self._get_deploy_payload_attach(
+                leaf_attachments, network_name)
+        LOG.debug("detach payload is %s", detach_payload)
         LOG.debug("deploy payload %s", deploy_payload)
         ret = self.ndfc_obj.attach_deploy_network(
-            self.fabric, attach_payload, deploy_payload)
+            self.fabric, detach_payload, deploy_payload)
         if not ret:
             LOG.error("Detach network failed for fabric %s, vrf %s "
                       "network %s", self.fabric, vrf_name, network_name)
