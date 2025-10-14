@@ -612,7 +612,7 @@ class NDFCMechanismDriver(api.MechanismDriver,
 
             po = ""
             if switch_info:
-                po = self.ndfc.ndfc_obj.get_po(
+                po = self.ndfc.ndfc_obj.get_po(self.fabric_name,
                     switch_info.get('serial'), switch_interface)
             if po != "":
                 switch_interface = "Port-Channel" + po
