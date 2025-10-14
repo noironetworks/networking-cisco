@@ -58,28 +58,44 @@ class NdfcHelper:
         self._base_url = "appcenter/cisco/ndfc/api/v1/security/fabrics/"
         self._get_attach_url = "appcenter/cisco/ndfc/api/v1/lan-fabric/" + (
             "rest/top-down/fabrics/%s/networks/attachments?network-names=%s")
+        self._get_attach_url_v2 = "api/v1/manage/fabrics/%s/" + (
+                "networkAttachments/query")
         self._vrf_url = "appcenter/cisco/ndfc/api/v1/lan-fabric/rest/" + (
             "top-down/v2/fabrics/")
+        self._vrf_url_v2 = "api/v1/manage/fabrics/"
         self._get_vrf_attachments_url = "appcenter/cisco/ndfc/api/v1/" + (
             "lan-fabric/rest/top-down/fabrics/%s/vrfs/") + (
             "attachments?vrf-names=%s")
+        self._get_vrf_attachments_url_v2 = "api/v1/manage/fabrics/%s" + (
+            "/vrfAttachments/query")
         self._network_url = "appcenter/cisco/ndfc/api/v1/lan-fabric/rest/" + (
             "top-down/v2/fabrics/")
+        self._network_url_v2 = "api/v1/manage/fabrics/"
         self._get_network_url = "appcenter/cisco/ndfc/api/v1/lan-fabric/" + (
             "rest/top-down/fabrics/%s/networks/%s")
+        self._get_network_url_v2 = "api/v1/manage/fabrics/%s/networks/%s"
         self._config_save_url = "appcenter/cisco/ndfc/api/v1/lan-fabric/" + (
             "rest/control/fabrics/")
         self._deploy_save_url = "appcenter/cisco/ndfc/api/v1/lan-fabric/" + (
             "rest/control/fabrics/")
+        self._deploy_save_url_v2 = "api/v1/manage/fabrics/%s/" + (
+                "actions/configDeploy")
         self._network_deploy_url = "appcenter/cisco/ndfc/api/v1/" + (
             "lan-fabric/rest/top-down/v2/networks/deploy/")
+        self._network_deploy_url_v2 = "api/v1/manage/fabrics/%s/" + (
+                "networkActions/deploy")
         self._inventory_url = "appcenter/cisco/ndfc/api/v1/lan-fabric/" + (
             "rest/control/fabrics/")
+        self._inventory_url_v2 = "api/v1/manage/fabrics/%s/switches"
         self._interface_url = "appcenter/cisco/ndfc/api/v1/lan-fabric/" + (
             "rest/interface/detail/filter?serialNumber=")
+        self._interface_url_v2 = "api/v1/manage/fabrics/%s/" + (
+            "interfacesSummary?switchId=%s&interfaceName=%s")
         self._topology_url = "appcenter/cisco/ndfc/api/v1/lan-fabric/" + (
             "rest/topology/topologydataforvmm?serialNumbers=")
-        self._smart_license_status_new = "api/v1/infra" + (
+        self._topology_url_v2 = "/appcenter/cisco/ndfc/api/v1/lan-fabric/" + (
+            "rest/ngtopology/topologydataforvmm?serialNumbers=")
+        self._smart_license_status = "api/v1/infra" + (
             "/license/smartLicenseStatus")
         self.nd_new_version = False
         self.force_old_api = False
@@ -94,7 +110,8 @@ class NdfcHelper:
         self._req_headers = {'Accept': 'application/json',
                              'Content-Type': 'application/json; charset=UTF-8'}
         self._resp_ok = (requests.codes.ok, requests.codes.created,
-                         requests.codes.accepted)
+                         requests.codes.accepted, requests.codes.no_content,
+                         requests.codes.multi_status)
         self._expiration_time = 100000
         self._protocol_host_url = "https://" + self._ip + "/"
         self.determine_nd_api_version()
@@ -186,7 +203,7 @@ class NdfcHelper:
         '''
         Function to determine if we have support for new APIs
         '''
-        url = self._build_url(self._smart_license_status_new)
+        url = self._build_url(self._smart_license_status)
         res = requests.get(url, headers=self._req_headers,
                            timeout=self._timeout_resp, verify=False)
         if res and (res.status_code in self._resp_ok):
@@ -229,6 +246,23 @@ class NdfcHelper:
                     if lan_attach.get('peerSerialNo') != '':
                         dct[lan_attach.get('peerSerialNo')] = lan_attach.get(
                                 'networkName')
+        return dct
+
+    def _get_leaf_switch_map_v2(self, ret):
+        dct = {}
+        if ret is None:
+            return dct
+        attachments_list = ret.get('attachments', [])
+        for lan_attach in attachments_list:
+            if lan_attach.get('attached') and (
+                    lan_attach.get('switchRole') == 'leaf'):
+                snum = lan_attach.get('switchId')
+                network_name = lan_attach.get('networkName')
+                if snum:
+                    dct[snum] = network_name
+                peer_snum = lan_attach.get('peerSwitchId')
+                if peer_snum:
+                    dct[peer_snum] = network_name
         return dct
 
     def _get_new_intf_name(self, tor_intf):
@@ -286,15 +320,63 @@ class NdfcHelper:
                             'switchName')
         return switch_map
 
+    def _get_switch_interface_map_v2(self, ret):
+        switch_map = {}
+        attachments_list = ret.get('attachments', [])
+        for lan_attach in attachments_list:
+            if lan_attach.get('attach') and (
+                    lan_attach.get('switchRole') == 'leaf'):
+                snum = lan_attach.get('switchId')
+                switch_name = lan_attach.get('switchName')
+                if snum not in switch_map:
+                    switch_map[snum] = {
+                        "switch_name": switch_name,
+                        "interfaces": []
+                    }
+                interfaces_data = lan_attach.get('interfaces', [])
+                standard_interfaces_for_switch = []
+                tor_style_interface_strings_for_switch = []
+                for interface_dict in interfaces_data:
+                    interface_name = interface_dict.get('interfaceRange')
+                    if interface_name:
+                        if "(" in interface_name:
+                            tor_style_interface_strings_for_switch.append(
+                                    interface_name)
+                        else:
+                            for intf_part in interface_name.split(","):
+                                new_intf = self._get_new_intf_name(
+                                        intf_part.strip())
+                                standard_interfaces_for_switch.append(new_intf)
+                if tor_style_interface_strings_for_switch:
+                    combined_tor_string = " ".join(
+                            tor_style_interface_strings_for_switch)
+                    tor_sw_intf_map = self._parse_tor_interface_map(
+                            combined_tor_string)
+                    switch_map[snum]["tor_sw_intf_map"] = tor_sw_intf_map
+                if standard_interfaces_for_switch:
+                    switch_map[snum]["interfaces"].extend(
+                            standard_interfaces_for_switch)
+
+        LOG.debug("switch interface map %s", switch_map)
+        return switch_map
+
     @http_exc_handler
     def _get_attachments(self, fabric, network):
         '''
         Retrieve the network attachment given the fabric and network.
         '''
-        attach_url = self._get_attach_url % (fabric, network)
-        url = self._build_url(attach_url)
-        res = requests.get(url, headers=self._req_headers,
-                           timeout=self._timeout_resp, verify=False)
+        if self.nd_new_version:
+            url = self._build_url(self._get_attach_url_v2 % fabric)
+            payload = {"networkNames": [network]}
+            res = requests.post(url, headers=self._req_headers,
+                                data=jsonutils.dumps(payload),
+                                timeout=self._timeout_resp, verify=False)
+            LOG.debug("Get attachments res %s", res.json())
+        else:
+            attach_url = self._get_attach_url % (fabric, network)
+            url = self._build_url(attach_url)
+            res = requests.get(url, headers=self._req_headers,
+                               timeout=self._timeout_resp, verify=False)
         LOG.debug("Get attachments URL %s", url)
         if not res or res.status_code not in self._resp_ok:
             LOG.error("Invalid res for _get_attachments for fabric %s nwk %s",
@@ -319,7 +401,10 @@ class NdfcHelper:
                 return dct
             ret = self._get_attachments(fabric, network)
             LOG.debug("Get attachments returned %s", ret)
-            dct = self._get_leaf_switch_map(ret)
+            if self.nd_new_version:
+                dct = self._get_leaf_switch_map_v2(ret)
+            else:
+                dct = self._get_leaf_switch_map(ret)
             self.logout()
             return dct
         except Exception as exc:
@@ -336,7 +421,10 @@ class NdfcHelper:
                 LOG.error("Failed to login to NDFC")
                 return False
             sw_attachments = self._get_attachments(fabric, network)
-            dct = self._get_switch_interface_map(sw_attachments)
+            if self.nd_new_version:
+                dct = self._get_switch_interface_map_v2(sw_attachments)
+            else:
+                dct = self._get_switch_interface_map(sw_attachments)
             self.logout()
             return dct
         except Exception as exc:
@@ -350,7 +438,10 @@ class NdfcHelper:
         Function that returns if the network for the fabric exists
         in NDFC.
         '''
-        network_url = self._get_network_url % (fabric, nwk)
+        if self.nd_new_version:
+            network_url = self._get_network_url_v2 % (fabric, nwk)
+        else:
+            network_url = self._get_network_url % (fabric, nwk)
         url = self._build_url(network_url)
         res = requests.get(url, headers=self._req_headers,
                            timeout=self._timeout_resp, verify=False)
@@ -388,7 +479,11 @@ class NdfcHelper:
         '''
         Function to create the Network in NDFC.
         '''
-        url = self._build_url(self._network_url) + fabric + "/networks"
+        if self.nd_new_version:
+            url = self._build_url(self._network_url_v2) + fabric + "/networks"
+        else:
+            url = self._build_url(self._network_url) + fabric + "/networks"
+        LOG.debug("Create network url is %s", url)
         res = requests.post(url, headers=self._req_headers,
                             data=jsonutils.dumps(payload),
                             timeout=self._timeout_resp, verify=False)
@@ -430,7 +525,11 @@ class NdfcHelper:
         '''
         Function to update the Network in NDFC.
         '''
-        url = self._build_url(self._network_url) + fabric + (
+        if self.nd_new_version:
+            url = self._build_url(self._network_url_v2) + fabric + (
+                "/networks/" + network_name)
+        else:
+            url = self._build_url(self._network_url) + fabric + (
                 "/networks/" + network_name)
         res = requests.put(url, headers=self._req_headers,
                            data=jsonutils.dumps(payload),
@@ -496,7 +595,11 @@ class NdfcHelper:
         '''
         Function to attach the network in NDFC.
         '''
-        url = self._build_url(self._network_url) + fabric + (
+        if self.nd_new_version:
+            url = self._build_url(self._network_url_v2) + fabric + (
+                "/networkAttachments")
+        else:
+            url = self._build_url(self._network_url) + fabric + (
                 "/networks/attachments")
         res = requests.post(url, headers=self._req_headers,
                 data=jsonutils.dumps(payload), timeout=self._timeout_resp,
@@ -550,7 +653,11 @@ class NdfcHelper:
         '''
         Function to create the Network in NDFC.
         '''
-        url = self._build_url(self._network_url) + fabric + (
+        if self.nd_new_version:
+            url = self._build_url(self._network_url_v2) + fabric + (
+                    "/networks/" + network)
+        else:
+            url = self._build_url(self._network_url) + fabric + (
                 "/bulk-delete/networks?network-names=" + network)
         res = requests.delete(url, headers=self._req_headers,
                 timeout=self._timeout_resp, verify=False)
@@ -593,18 +700,24 @@ class NdfcHelper:
         Function to create the VRF in NDFC.
         '''
         if len(deploy_payload) == 0:
-            url = self._build_url(self._deploy_save_url) + fabric + (
+            if self.nd_new_version:
+                url = self._build_url(self._deploy_save_url_v2 % fabric)
+            else:
+                url = self._build_url(self._deploy_save_url) + fabric + (
                     "/config-deploy?forceShowRun=false")
             LOG.debug("Deploy called with url %s", url)
             res = requests.post(url, headers=self._req_headers,
                                 timeout=self._timeout_resp, verify=False)
         else:
-            url = self._build_url(self._network_deploy_url)
+            if self.nd_new_version:
+                url = self._build_url(self._network_deploy_url_v2 % fabric)
+            else:
+                url = self._build_url(self._network_deploy_url)
             LOG.debug("Deploy called with url %s and payload %s", url,
                     deploy_payload)
             res = requests.post(url, headers=self._req_headers,
-                    data=jsonutils.dumps(deploy_payload),
-                    timeout=self._timeout_resp, verify=False)
+                                data=jsonutils.dumps(deploy_payload),
+                                timeout=self._timeout_resp, verify=False)
         if not res or res.status_code not in self._resp_ok:
             LOG.error(
                 "deploy save failed with status code: %s, "
@@ -622,11 +735,20 @@ class NdfcHelper:
 
     @http_exc_handler
     def _get_vrf_attachments(self, fabric, vrf):
-        vrf_url = self._get_vrf_attachments_url % (fabric, vrf)
-        url = self._build_url(vrf_url)
-        res = requests.get(url, headers=self._req_headers,
-                           timeout=self._timeout_resp,
-                           verify=False)
+        if self.nd_new_version:
+            vrf_url = self._get_vrf_attachments_url_v2 % fabric
+            url = self._build_url(vrf_url)
+            payload = {"vrfNames": [vrf]}
+            LOG.debug("get vrf attachments payload: %s", payload)
+            res = requests.post(url, headers=self._req_headers,
+                                data=jsonutils.dumps(payload),
+                                timeout=self._timeout_resp, verify=False)
+        else:
+            vrf_url = self._get_vrf_attachments_url % (fabric, vrf)
+            url = self._build_url(vrf_url)
+            res = requests.get(url, headers=self._req_headers,
+                               timeout=self._timeout_resp,
+                               verify=False)
 
         if not res or res.status_code not in self._resp_ok:
             LOG.error(
@@ -664,7 +786,10 @@ class NdfcHelper:
         '''
         Function to create the VRF in NDFC.
         '''
-        url = self._build_url(self._vrf_url) + fabric + "/vrfs"
+        if self.nd_new_version:
+            url = self._build_url(self._vrf_url_v2) + fabric + "/vrfs"
+        else:
+            url = self._build_url(self._vrf_url) + fabric + "/vrfs"
         res = requests.post(url, headers=self._req_headers,
                 data=jsonutils.dumps(payload), timeout=self._timeout_resp,
                 verify=False)
@@ -706,7 +831,11 @@ class NdfcHelper:
         '''
         Function to create the Vrf in NDFC.
         '''
-        url = self._build_url(self._vrf_url) + fabric + (
+        if self.nd_new_version:
+            url = self._build_url(self._vrf_url_v2) + fabric + (
+                    "/vrfs/" + vrf)
+        else:
+            url = self._build_url(self._vrf_url) + fabric + (
                 "/bulk-delete/vrfs?vrf-names=" + vrf)
         res = requests.delete(url, headers=self._req_headers,
                               timeout=self._timeout_resp, verify=False)
@@ -749,7 +878,10 @@ class NdfcHelper:
         Function for retrieving the switch list from NDFC, given the fabric.
         '''
         switches_map = {}
-        url = self._build_url(self._inventory_url) + fabric + "/inventory/"
+        if self.nd_new_version:
+            url = self._build_url(self._inventory_url_v2 % fabric)
+        else:
+            url = self._build_url(self._inventory_url) + fabric + "/inventory/"
         res = requests.get(url, headers=self._req_headers,
                 timeout=self._timeout_resp, verify=False)
         if not res or res.status_code not in self._resp_ok:
@@ -761,15 +893,26 @@ class NdfcHelper:
 
         if res and res.status_code in self._resp_ok:
             data = res.json()
+            if self.nd_new_version:
+                data = data.get("switches")
             for sw_info in data:
                 snum = sw_info.get("serialNumber")
-                ip = sw_info.get("ipAddress")
+                if self.nd_new_version:
+                    ip = sw_info.get("fabricManagementIp")
+                    name = sw_info.get("hostname")
+                else:
+                    ip = sw_info.get("ipAddress")
+                    name = sw_info.get("logicalName")
                 role = sw_info.get("switchRole")
-                name = sw_info.get("logicalName")
                 sw_dct = {'serial': snum, 'ip': ip, 'role': role, 'name': name}
+                LOG.debug("switch dct: %s", sw_dct)
                 # TODO(padkrish) Optimization to cache this info??
                 if role == "tor":
-                    topo_url = self._build_url(self._topology_url) + snum
+                    if self.nd_new_version:
+                        topo_url = self._build_url(
+                                self._topology_url_v2) + snum
+                    else:
+                        topo_url = self._build_url(self._topology_url) + snum
                     res_topo = requests.get(topo_url,
                             headers=self._req_headers,
                             timeout=self._timeout_resp, verify=False)
@@ -821,8 +964,12 @@ class NdfcHelper:
         return sw_info
 
     @http_exc_handler
-    def _get_po(self, snum, ifname):
-        url = self._build_url(self._interface_url) + snum + "&ifName=" + (
+    def _get_po(self, fabric, snum, ifname):
+        if self.nd_new_version:
+            url = self._build_url(self._interface_url_v2) % (
+                    fabric, snum, ifname)
+        else:
+            url = self._build_url(self._interface_url) + snum + "&ifName=" + (
                 ifname + "&ifTypes=INTERFACE_ETHERNET,INTERFACE_PORT_CHANNEL")
         res = requests.get(url, headers=self._req_headers,
                            timeout=self._timeout_resp, verify=False)
@@ -835,6 +982,17 @@ class NdfcHelper:
             return ""
 
         data = res.json()
+        if self.nd_new_version:
+            for intf in data.get('interfaces'):
+                if (intf.get('interfaceName') == ifname and
+                        intf.get('interfaceType')) == (
+                    "ethernet"):
+                    LOG.debug("Intf: %s", intf)
+                    po = intf.get('channelId')
+                    if po == -1:
+                        return ""
+                    return po
+
         for intf in data:
             # This needs to be fixed to only check for type port-channel
             if intf.get('ifName') == ifname and intf.get('ifType') == (
@@ -844,7 +1002,7 @@ class NdfcHelper:
                     return ""
                 return po
 
-    def get_po(self, snum, ifname):
+    def get_po(self, fabric, snum, ifname):
         '''
         Top level function for retrieving PO.
         '''
@@ -852,7 +1010,7 @@ class NdfcHelper:
         try:
             ret = self.login()
             if ret:
-                po = self._get_po(snum, ifname)
+                po = self._get_po(fabric, snum, ifname)
                 self.logout()
         except Exception as exc:
             LOG.error("Exception in get_po, %(exc)s", {'exc': exc})
