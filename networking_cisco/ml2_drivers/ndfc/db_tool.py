@@ -147,6 +147,7 @@ def main():
             model, func = command_map[args.command]
             if 'delete' in args.command:
                 func(session, model, condition=args.condition)
+                session.commit()
             else:
                 func(session, model)
     else:
