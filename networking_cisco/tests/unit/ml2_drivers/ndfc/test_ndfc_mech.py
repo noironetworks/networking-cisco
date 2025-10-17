@@ -575,3 +575,29 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
         mock_query.filter.assert_called_once()
         mock_query.filter.return_value.delete.assert_called_once_with(
             synchronize_session='fetch')
+
+    @mock.patch('neutron_lib.db.api.CONTEXT_WRITER.using')
+    def test_cleanup_stale_leaf_nodes(self, mock_db_writer):
+        session_mock = mock.Mock()
+        mock_db_writer.return_value.__enter__.return_value = session_mock
+        mock_query_leaf_sn = mock.Mock()
+        mock_query_leaf_sn.filter.return_value.all.return_value = [
+                ('leaf_sn_stale',), ('leaf_sn_active',)]
+        mock_query_delete = mock.Mock()
+
+        session_mock.query.side_effect = lambda model: {
+            nc_ml2_db.NxosTors.leaf_serial_number: mock_query_leaf_sn,
+            nc_ml2_db.NxosTors: mock_query_delete,
+        }.get(model)
+
+        cleanup_list = [
+            ('tor_sn_1', {'leaf_sn_active'})
+        ]
+
+        self.ndfc_mech._cleanup_stale_leaf_nodes(cleanup_list)
+
+        mock_query_leaf_sn.filter.assert_called_once()
+        mock_query_delete.filter.assert_called_once()
+        mock_query_delete.filter.return_value.delete.assert_called_once_with(
+            synchronize_session='fetch'
+        )
