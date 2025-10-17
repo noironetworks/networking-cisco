@@ -144,6 +144,18 @@ class NDFCMechanismDriver(api.MechanismDriver,
             # Clean up stale NxosTors entries identified
             if stale_tor_sns:
                 self._cleanup_stale_tors(stale_tor_sns)
+
+            # Identify and delete stale leaf entries
+            cleanup_list = []
+            for switch_ip, switch_info in self.switch_map.items():
+                if switch_info and switch_info.get('role') == 'tor':
+                    tor_serial_number = switch_info.get('serial')
+                    current_leaf_sns = set(switch_info.get(
+                        'tor_leaf_nodes', {}).values())
+                    cleanup_list.append((tor_serial_number, current_leaf_sns))
+            if cleanup_list:
+                self._cleanup_stale_leaf_nodes(cleanup_list)
+
         except Exception as e:
             LOG.error("Failed to refresh switch list from NDFC: %s", e)
 
@@ -167,6 +179,33 @@ class NDFCMechanismDriver(api.MechanismDriver,
 
         except Exception as e:
             LOG.error("An error occurred during stale NxosTors cleanup: %s", e)
+
+    def _cleanup_stale_leaf_nodes(self, cleanup_list):
+        try:
+            admin_context = n_context.get_admin_context()
+            with db_api.CONTEXT_WRITER.using(admin_context) as session:
+                for tor_sn, current_leaf_sns in cleanup_list:
+                    existing_leaf_sns = {
+                        row[0] for row in session.query(
+                            nc_ml2_db.NxosTors.leaf_serial_number).filter(
+                                nc_ml2_db.NxosTors.tor_serial_number == tor_sn
+                        ).all()
+                    }
+
+                    stale_leaf_sns = existing_leaf_sns - current_leaf_sns
+                    if stale_leaf_sns:
+                        session.query(nc_ml2_db.NxosTors).filter(
+                            nc_ml2_db.NxosTors.tor_serial_number == tor_sn,
+                            nc_ml2_db.NxosTors.leaf_serial_number.in_(
+                                stale_leaf_sns)
+                        ).delete(synchronize_session='fetch')
+                        LOG.debug("Deleted stale leaf entries for ToR %s "
+                                  "(Leaf SNs: %s)", tor_sn,
+                                  ', '.join(stale_leaf_sns))
+
+        except Exception as e:
+            LOG.error("An error occurred during stale NxosTors leaf cleanup: "
+                      "%s", e)
 
     def start_rpc_listeners(self):
         LOG.debug("NDFC MD starting RPC listeners")
