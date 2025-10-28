@@ -20,6 +20,7 @@ from unittest import mock
 
 from keystoneclient.v3 import client as ksc_client
 from neutron.tests.unit.db import test_db_base_plugin_v2 as test_pluginV2
+from neutron_lib.api.definitions import portbindings
 from neutron_lib.api.definitions import segment
 from neutron_lib import constants
 from neutron_lib.plugins import directory
@@ -247,19 +248,31 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
     @mock.patch.object(ndfc.Ndfc, 'attach_network')
     @mock.patch.object(ndfc.Ndfc, 'detach_network')
     @mock.patch.object(ndfc.Ndfc, 'get_vrf_vlan')
-    def test_port_postcommit(self, *args):
+    def test_port_postcommit(self, mock_get_vrf_vlan, mock_detach_network,
+            mock_attach_network, mock_get_topology):
         # Test update and delete port postcommit methods
         self.mock_get_topology = TEST_LEAF_ATTACHMENTS
+        mock_attach_network.return_value = True
+        mock_detach_network.return_value = True
+        mock_get_vrf_vlan.return_value = '100'
+
         fake_network_context = self._create_fake_network_context('vlan',
                 'physnet1', '10')
-        fake_port = fakes.FakePort.create_one_port(
-            attrs={'binding:vnic_type': 'virtio-forwarder'}).info()
-        fake_port_context = mock.Mock(current=fake_port, original=fake_port)
+        original_port = fakes.FakePort.create_one_port(
+            attrs={'binding:vif_type': portbindings.VIF_TYPE_UNBOUND}).info()
+        current_port = fakes.FakePort.create_one_port(
+            attrs={'binding:vif_type': portbindings.VIF_TYPE_OVS}).info()
+        fake_port_context = mock.Mock(current=current_port,
+                original=original_port)
         fake_port_context.network = fake_network_context
         fake_port_context.host = 'current-host'
         fake_port_context.original_host = 'original-host'
+
         self.ndfc_mech.update_port_postcommit(fake_port_context)
+        mock_attach_network.assert_called_once()
+        mock_detach_network.reset_mock()
         self.ndfc_mech.delete_port_postcommit(fake_port_context)
+        mock_detach_network.assert_called_once()
 
     @mock.patch.object(ndfc.Ndfc, 'create_vrf')
     @mock.patch.object(ndfc.Ndfc, 'delete_vrf')
