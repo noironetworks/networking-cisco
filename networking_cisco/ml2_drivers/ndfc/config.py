@@ -50,7 +50,10 @@ ndfc_opts = [
     cfg.IntOpt('switch_sync_interval',
                default=1800,  # Default to 1800 seconds (30 minutes)
                help="Interval in seconds to synchronize "
-                    "the switch list from NDFC.")
+                    "the switch list from NDFC."),
+    cfg.BoolOpt('force_old_api',
+                default=False,
+                help=("Force usage of old ND API."))
 ]
 
 

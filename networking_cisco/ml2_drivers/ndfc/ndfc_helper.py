@@ -82,6 +82,9 @@ class NdfcHelper:
         self._smart_license_status_new = "api/v1/infra" + (
             "/license/smartLicenseStatus")
         self.nd_new_version = False
+        self.force_old_api = False
+        if 'force_old_api' in kwargs:
+            self.force_old_api = kwargs['force_old_api']
 
         self._ip = kwargs['ip']
         # TODO(sanaval): add support for other auth types
@@ -196,6 +199,11 @@ class NdfcHelper:
         Function to determine new API support
         '''
         try:
+            if self.force_old_api is True:
+                self.nd_new_version = False
+                LOG.debug("Forced nd new API usage to %s",
+                          self.nd_new_version)
+                return
             ret = self.login()
             if not ret:
                 LOG.error("Failed to login to NDFC")
