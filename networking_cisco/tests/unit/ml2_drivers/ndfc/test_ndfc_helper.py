@@ -564,6 +564,12 @@ class TestNDFCHelper(TestNDFCHelperBase, test_plugin.Ml2PluginV2TestCase):
 
         self.assertFalse(self.helper.nd_new_version)
 
+    def test_determine_nd_api_version_old_forced(self):
+        self.helper.force_old_api = True
+        self.helper.determine_nd_api_version()
+
+        self.assertFalse(self.helper.nd_new_version)
+
     @mock.patch.object(ndfc_helper.NdfcHelper, 'login', return_value=False)
     @mock.patch('requests.get')
     def test_determine_nd_api_version_failure(self, mock_get, mock_login):

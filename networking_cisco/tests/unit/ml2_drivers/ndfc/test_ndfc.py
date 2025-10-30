@@ -33,7 +33,8 @@ class TestNDFCBase(abc.ABC):
 class TestNDFC(TestNDFCBase, test_plugin.Ml2PluginV2TestCase):
     def setUp(self):
         self.ndfc_instance = ndfc.Ndfc(ndfc_ip='192.168.1.1', user='admin',
-                pwd='password', fabric='fabric_name')
+                pwd='password', fabric='fabric_name',
+                force_old_api=False)
         self.mock_exist_attach = mock.patch.object(
             ndfc_helper.NdfcHelper, 'get_network_switch_interface_map',
             return_value=None).start()
