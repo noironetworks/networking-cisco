@@ -28,7 +28,7 @@ class Ndfc:
     '''
     NDFC class.
     '''
-    def __init__(self, ndfc_ip, user, pwd, fabric):
+    def __init__(self, ndfc_ip, user, pwd, fabric, force_old_api):
         '''
         Init routine.
         '''
@@ -37,7 +37,8 @@ class Ndfc:
         self.user = user
         self.pwd = pwd
         self.fabric = fabric
-        self.ndfc_obj = NdfcHelper(ip=self.ip, user=self.user, pwd=self.pwd)
+        self.ndfc_obj = NdfcHelper(ip=self.ip, user=self.user, pwd=self.pwd,
+                                   force_old_api=force_old_api)
 
     def create_vrf(self, vrf_name):
         fabric = self.fabric
