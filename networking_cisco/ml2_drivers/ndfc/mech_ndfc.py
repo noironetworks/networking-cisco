@@ -610,6 +610,13 @@ class NDFCMechanismDriver(api.MechanismDriver,
                 for tor_entry in stale_tors_to_delete:
                     session.delete(tor_entry)
 
+            po = ""
+            if switch_info:
+                po = self.ndfc.ndfc_obj.get_po(
+                    switch_info.get('serial'), switch_interface)
+            if po != "":
+                switch_interface = "Port-Channel" + po
+
             hlink = session.query(
                 nc_ml2_db.NxosHostLink).filter(
                     nc_ml2_db.NxosHostLink.host_name == host).filter(
@@ -619,16 +626,9 @@ class NDFCMechanismDriver(api.MechanismDriver,
                 hlink['serial_number'] == serial_number and
                 hlink['switch_ip'] == switch and
                 hlink['switch_mac'] == mac and
-                hlink['switch_port'] == port):
+                hlink['switch_port'] == switch_interface):
                 # There was neither a change nor a refresh required.
                 return
-
-            po = ""
-            if switch_info:
-                po = self.ndfc.ndfc_obj.get_po(
-                    switch_info.get('serial'), switch_interface)
-            if po != "":
-                switch_interface = "Port-Channel" + po
 
             if hlink:
                 hlink['serial_number'] = serial_number
