@@ -19,7 +19,7 @@ import os
 from unittest import mock
 
 from keystoneclient.v3 import client as ksc_client
-from neutron.tests.unit.db import test_db_base_plugin_v2 as test_pluginV2
+from neutron.tests.common import test_db_base_plugin_v2 as test_pluginV2
 from neutron_lib.api.definitions import portbindings
 from neutron_lib.api.definitions import segment
 from neutron_lib import constants

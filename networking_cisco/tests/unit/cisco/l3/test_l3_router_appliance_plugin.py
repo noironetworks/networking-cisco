@@ -19,7 +19,7 @@ import os
 from neutron.db import agents_db
 from neutron.db import dns_db
 from neutron.extensions import providernet as pnet
-from neutron.tests.unit.db import test_db_base_plugin_v2
+from neutron.tests.common import test_db_base_plugin_v2
 from neutron.tests.unit.extensions import test_extraroute
 from neutron.tests.unit.extensions import test_l3
 from neutron_lib.db import api as db_api

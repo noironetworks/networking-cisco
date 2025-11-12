@@ -1,6 +1,6 @@
 - job:
     name: networking-cisco-ndfc-tests
-    parent: openstack-tox-py39
+    parent: openstack-tox-py310
     description: "Runs only the NDFC driver unit tests as a voting gate."
     vars:
       tox_envlist: ndfc
@@ -15,25 +15,25 @@
             nodeset: ubuntu-jammy
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2024.2
+                override-checkout: stable/2025.1
         - networking-cisco-ndfc-tests:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2024.2
+                override-checkout: stable/2025.1
         - openstack-tox-py310:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2024.2
+                override-checkout: stable/2025.1
             voting: false
         - openstack-tox-py312:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2024.2
+                override-checkout: stable/2025.1
             voting: false
         - openstack-tox-py313:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2024.2
+                override-checkout: stable/2025.1
             voting: false
     gate:
       jobs:
@@ -41,23 +41,23 @@
             nodeset: ubuntu-jammy
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2024.2
+                override-checkout: stable/2025.1
         - networking-cisco-ndfc-tests:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2024.2
+                override-checkout: stable/2025.1
         - openstack-tox-py310:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2024.2
+                override-checkout: stable/2025.1
             voting: false
         - openstack-tox-py312:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2024.2
+                override-checkout: stable/2025.1
             voting: false
         - openstack-tox-py313:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2024.2
+                override-checkout: stable/2025.1
             voting: false

@@ -28,7 +28,7 @@ from networking_cisco.tests import test_compatibility as tc
 EXTERNAL_TABLES = set(external.TABLES) - set(external.REPO_CISCO_TABLES)
 
 
-class _TestModelsMigrationsCisco(test_migrations._TestModelsMigrations):
+class _TestModelsMigrationsCisco(test_migrations.TestModelsMigrations):
 
     def db_sync(self, engine):
         cfg.CONF.set_override('connection', engine.url, group='database')

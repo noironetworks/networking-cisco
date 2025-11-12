@@ -21,7 +21,7 @@ from oslo_log import log as logging
 import six
 import webob.exc
 
-from neutron.tests.unit.db import test_db_base_plugin_v2
+from neutron.tests.common import test_db_base_plugin_v2
 from neutron_lib import exceptions as n_exc
 
 import networking_cisco

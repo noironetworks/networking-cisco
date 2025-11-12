@@ -19,7 +19,7 @@ import mock
 
 from neutron.api import extensions as api_ext
 from neutron.common import config
-from neutron.tests.unit.db import test_db_base_plugin_v2
+from neutron.tests.common import test_db_base_plugin_v2
 from oslo_config import cfg
 from oslo_utils import importutils
 import six

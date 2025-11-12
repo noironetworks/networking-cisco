@@ -67,7 +67,7 @@ class KeystoneNotificationEndpoint(object):
         LOG.debug("Keystone notification %(event_type)s received for "
                  "tenant %(tenant_id)s",
                  {'event_type': event_type,
-                  'project name': tenant_id})
+                  'tenant_id': tenant_id})
 
         if event_type == 'identity.project.created':
             self._driver.create_vrf(tenant_id)

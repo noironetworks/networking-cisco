@@ -15,8 +15,8 @@
 import os
 
 import mock
+from neutron.tests.common import test_db_base_plugin_v2
 from neutron.tests.unit.db import test_agentschedulers_db
-from neutron.tests.unit.db import test_db_base_plugin_v2
 from neutron_lib.tests.unit import fake_notifier
 from oslo_config import cfg
 import six
