@@ -15,7 +15,6 @@
 #
 
 import ipaddress
-import json
 import os
 import random
 import time
@@ -38,6 +37,7 @@ from neutron_lib import rpc as n_rpc
 from oslo_config import cfg
 from oslo_log import log
 import oslo_messaging
+from oslo_serialization import jsonutils
 from oslo_service import loopingcall
 from oslo_utils import fileutils
 import sqlalchemy as sa
@@ -223,15 +223,15 @@ class NDFCMechanismDriver(api.MechanismDriver,
     def load_tenants(self):
         if not os.path.exists(self.tenants_file):
             temp_path = fileutils.write_to_tempfile(
-                    json.dumps({}).encode('utf-8'),
+                    jsonutils.dumps({}).encode('utf-8'),
                     suffix='.json', prefix='tenants_')
             os.rename(temp_path, self.tenants_file)
-        with open(self.tenants_file, 'r') as file:
-            self.tenants = json.load(file)
+        with open(self.tenants_file, 'rb') as file:
+            self.tenants = jsonutils.load(file)
 
     def update_tenants(self):
         temp_path = fileutils.write_to_tempfile(
-                json.dumps(self.tenants).encode('utf-8'),
+                jsonutils.dumps(self.tenants).encode('utf-8'),
                 suffix='.json', prefix='tenants_')
         os.rename(temp_path, self.tenants_file)
 

@@ -20,8 +20,8 @@ NDFC helper module. This module interacts with NDFC.
 '''
 
 from functools import wraps
-import json
 from oslo_log import log
+from oslo_serialization import jsonutils
 import requests
 from requests.exceptions import HTTPError
 
@@ -152,7 +152,7 @@ class NdfcHelper:
         payload = {'userName': self._user, 'userPasswd': self._pwd,
                    'domain': 'DefaultAuth',
                    'expirationTime': self._expiration_time}
-        res = requests.post(login_url, data=json.dumps(payload),
+        res = requests.post(login_url, data=jsonutils.dumps(payload),
                             headers=self._req_headers,
                             #auth=(self._user, self._pwd),
                             timeout=self._timeout_resp, verify=False)
@@ -390,17 +390,17 @@ class NdfcHelper:
         '''
         url = self._build_url(self._network_url) + fabric + "/networks"
         res = requests.post(url, headers=self._req_headers,
-                            data=json.dumps(payload),
+                            data=jsonutils.dumps(payload),
                             timeout=self._timeout_resp, verify=False)
         if not res or res.status_code not in self._resp_ok:
             LOG.error(
                 "create network failed with status code: %s, "
                 "reason: %s, response body: %s, payload: %s",
-                res.status_code, res.reason, res.text, json.dumps(payload)
+                res.status_code, res.reason, res.text, jsonutils.dumps(payload)
             )
             return False
         if self._response_body_indicates_failure(
-            res, '_create_network', payload=json.dumps(payload)):
+            res, '_create_network', payload=jsonutils.dumps(payload)):
             return False
 
         LOG.debug("create network successful")
@@ -433,17 +433,17 @@ class NdfcHelper:
         url = self._build_url(self._network_url) + fabric + (
                 "/networks/" + network_name)
         res = requests.put(url, headers=self._req_headers,
-                           data=json.dumps(payload),
+                           data=jsonutils.dumps(payload),
                            timeout=self._timeout_resp, verify=False)
         if not res or res.status_code not in self._resp_ok:
             LOG.error(
                 "update network failed with status code: %s, "
                 "reason: %s, response body: %s, payload: %s",
-                res.status_code, res.reason, res.text, json.dumps(payload)
+                res.status_code, res.reason, res.text, jsonutils.dumps(payload)
             )
             return False
         if self._response_body_indicates_failure(
-            res, '_update_network', payload=json.dumps(payload)):
+            res, '_update_network', payload=jsonutils.dumps(payload)):
             return False
 
         LOG.debug("update network successful")
@@ -499,21 +499,21 @@ class NdfcHelper:
         url = self._build_url(self._network_url) + fabric + (
                 "/networks/attachments")
         res = requests.post(url, headers=self._req_headers,
-                data=json.dumps(payload), timeout=self._timeout_resp,
+                data=jsonutils.dumps(payload), timeout=self._timeout_resp,
                 verify=False)
         LOG.debug("attach/detach network url %s payload %s", url,
-            json.dumps(payload))
+            jsonutils.dumps(payload))
 
         if not res or res.status_code not in self._resp_ok:
             LOG.error(
                 "attach/detach network failed with status code: %s, "
                 "reason: %s, response body: %s, payload: %s",
-                res.status_code, res.reason, res.text, json.dumps(payload)
+                res.status_code, res.reason, res.text, jsonutils.dumps(payload)
             )
             return False
 
         if self._response_body_indicates_failure(
-            res, '_attach_network', payload=json.dumps(payload)):
+            res, '_attach_network', payload=jsonutils.dumps(payload)):
             return False
 
         LOG.debug("attach/detach network successful")
@@ -603,7 +603,7 @@ class NdfcHelper:
             LOG.debug("Deploy called with url %s and payload %s", url,
                     deploy_payload)
             res = requests.post(url, headers=self._req_headers,
-                    data=json.dumps(deploy_payload),
+                    data=jsonutils.dumps(deploy_payload),
                     timeout=self._timeout_resp, verify=False)
         if not res or res.status_code not in self._resp_ok:
             LOG.error(
@@ -613,7 +613,8 @@ class NdfcHelper:
             )
             return False
         if self._response_body_indicates_failure(
-            res, '_config_deploy_save', payload=json.dumps(deploy_payload)):
+            res, '_config_deploy_save',
+            payload=jsonutils.dumps(deploy_payload)):
             return False
 
         LOG.debug("deploy save successful")
@@ -665,17 +666,17 @@ class NdfcHelper:
         '''
         url = self._build_url(self._vrf_url) + fabric + "/vrfs"
         res = requests.post(url, headers=self._req_headers,
-                data=json.dumps(payload), timeout=self._timeout_resp,
+                data=jsonutils.dumps(payload), timeout=self._timeout_resp,
                 verify=False)
         if not res or res.status_code not in self._resp_ok:
             LOG.error(
                 "create vrf failed with status code: %s, "
                 "reason: %s, response body: %s, payload: %s",
-                res.status_code, res.reason, res.text, json.dumps(payload)
+                res.status_code, res.reason, res.text, jsonutils.dumps(payload)
             )
             return False
         if self._response_body_indicates_failure(
-            res, '_create_vrf', payload=json.dumps(payload)):
+            res, '_create_vrf', payload=jsonutils.dumps(payload)):
             return False
 
         LOG.debug("create vrf successful")

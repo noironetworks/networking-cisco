@@ -14,10 +14,10 @@
 #    under the License.
 #
 
-import json
 from networking_cisco.ml2_drivers.ndfc import constants
 from networking_cisco.ml2_drivers.ndfc.ndfc_helper import NdfcHelper
 from oslo_log import log
+from oslo_serialization import jsonutils
 
 LOG = log.getLogger(__name__)
 
@@ -110,7 +110,7 @@ class Ndfc:
         LOG.debug("Get network object %s wih GW %s", payload, gw)
         if payload is not None:
             template_data = payload.get("networkTemplateConfig")
-            template_data_json = json.loads(template_data)
+            template_data_json = jsonutils.loads(template_data)
             template_data_json["gatewayIpAddress"] = gw
             payload["networkTemplateConfig"] = template_data_json
             return payload
