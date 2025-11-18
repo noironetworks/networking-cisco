@@ -20,7 +20,17 @@
             required-projects:
               - name: openstack/requirements
                 override-checkout: stable/2024.2
+        - openstack-tox-py39:
+            required-projects:
+              - name: openstack/requirements
+                override-checkout: stable/2024.2
+            voting: false
         - openstack-tox-py310:
+            required-projects:
+              - name: openstack/requirements
+                override-checkout: stable/2024.2
+            voting: false
+        - openstack-tox-py311:
             required-projects:
               - name: openstack/requirements
                 override-checkout: stable/2024.2
@@ -46,7 +56,17 @@
             required-projects:
               - name: openstack/requirements
                 override-checkout: stable/2024.2
+        - openstack-tox-py39:
+            required-projects:
+              - name: openstack/requirements
+                override-checkout: stable/2024.2
+            voting: false
         - openstack-tox-py310:
+            required-projects:
+              - name: openstack/requirements
+                override-checkout: stable/2024.2
+            voting: false
+        - openstack-tox-py311:
             required-projects:
               - name: openstack/requirements
                 override-checkout: stable/2024.2
