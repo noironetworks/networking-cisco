@@ -15,26 +15,30 @@
             nodeset: ubuntu-jammy
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2025.2
+                override-checkout: stable/2025.1
         - networking-cisco-ndfc-tests:
-            nodeset: ubuntu-jammy
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2025.2
+                override-checkout: stable/2025.1
+        - openstack-tox-py39:
+            required-projects:
+              - name: openstack/requirements
+                override-checkout: stable/2025.1
+            voting: false
         - openstack-tox-py310:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2025.2
+                override-checkout: stable/2025.1
             voting: false
         - openstack-tox-py312:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2025.2
+                override-checkout: stable/2025.1
             voting: false
         - openstack-tox-py313:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2025.2
+                override-checkout: stable/2025.1
             voting: false
     gate:
       jobs:
@@ -42,24 +46,28 @@
             nodeset: ubuntu-jammy
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2025.2
+                override-checkout: stable/2025.1
         - networking-cisco-ndfc-tests:
-            nodeset: ubuntu-jammy
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2025.2
+                override-checkout: stable/2025.1
+        - openstack-tox-py39:
+            required-projects:
+              - name: openstack/requirements
+                override-checkout: stable/2025.1
+            voting: false
         - openstack-tox-py310:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2025.2
+                override-checkout: stable/2025.1
             voting: false
         - openstack-tox-py312:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2025.2
+                override-checkout: stable/2025.1
             voting: false
         - openstack-tox-py313:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2025.2
+                override-checkout: stable/2025.1
             voting: false
