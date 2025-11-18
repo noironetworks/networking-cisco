@@ -15,9 +15,9 @@
 import abc
 
 from neutron.api import extensions
+from neutron.api.v2 import base as neutron_base
 from neutron.api.v2 import resource
 from neutron import policy
-from neutron import wsgi
 from neutron_lib.api import converters as conv
 from neutron_lib import exceptions as n_exc
 from neutron_lib import rpc as n_rpc
@@ -73,7 +73,7 @@ AUTO_SCHEDULE_ATTR = ROUTERTYPE_AWARE_SCHEDULER_ALIAS + ':auto_schedule'
 SHARE_HOST_ATTR = ROUTERTYPE_AWARE_SCHEDULER_ALIAS + ':share_hosting_device'
 
 
-class RouterHostingDeviceSchedulerController(wsgi.Controller):
+class RouterHostingDeviceSchedulerController(neutron_base.Controller):
     def get_plugin(self):
         plugin = bc.get_plugin(bc.constants.L3)
         if not plugin:
@@ -112,7 +112,7 @@ class RouterHostingDeviceSchedulerController(wsgi.Controller):
         return result
 
 
-class HostingDevicesHostingRouterController(wsgi.Controller):
+class HostingDevicesHostingRouterController(neutron_base.Controller):
     def get_plugin(self):
         plugin = bc.get_plugin(bc.constants.L3)
         if not plugin:

@@ -153,7 +153,6 @@ class RemoteServerDriver(dhcp.DhcpBase):
     @classmethod
     def existing_dhcp_networks(cls, conf):
         """Return a list of existing networks ids that we have configs for."""
-        global _devices
         return _devices.keys()
 
     @classmethod
@@ -167,7 +166,6 @@ class RemoteServerDriver(dhcp.DhcpBase):
         if "_devices" in globals():
             return
 
-        global _devices
         confs_dir = os.path.abspath(os.path.normpath(cfg.CONF.dhcp_confs))
         for netid in os.listdir(confs_dir):
             conf_dir = os.path.join(confs_dir, netid)
@@ -190,7 +188,6 @@ class RemoteServerDriver(dhcp.DhcpBase):
                           self.network.id)
 
     def _unsafe_update_device(self, disabled=False):
-        global _devices
         if self.network.id not in _devices:
             if disabled:
                 return
@@ -215,7 +212,6 @@ class RemoteServerDriver(dhcp.DhcpBase):
                 self._unsafe_update_device()
 
     def _write_intf_file(self):
-        global _devices
         confs_dir = os.path.abspath(os.path.normpath(self.conf.dhcp_confs))
         conf_dir = os.path.join(confs_dir, self.network.id)
         if not os.path.isdir(conf_dir):
@@ -275,7 +271,6 @@ class SimpleCpnrDriver(RemoteServerDriver):
     @classmethod
     def existing_dhcp_networks(cls, conf):
         """Return a list of existing networks ids that we have configs for."""
-        global _networks
         sup = super(SimpleCpnrDriver, cls)
         superkeys = sup.existing_dhcp_networks(conf)
         return set(_networks.keys()) & set(superkeys)
@@ -382,7 +377,6 @@ class CpnrDriver(SimpleCpnrDriver):
 
     @classmethod
     def _synchronize_cpnr(cls):
-        global last_activity
         while True:
             eventlet.sleep(cfg.CONF.cisco_pnr.sync_interval)
             if ((time.time() - last_activity) <

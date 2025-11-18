@@ -18,9 +18,9 @@ from oslo_log import log as logging
 import webob.exc
 
 from neutron.api import extensions
+from neutron.api.v2 import base as neutron_base
 from neutron.api.v2 import resource
 from neutron import policy
-from neutron import wsgi
 from neutron_lib import exceptions
 from neutron_lib import rpc as n_rpc
 
@@ -63,7 +63,7 @@ HOSTING_DEVICE_CFG_AGENT = 'hosting-device-cfg-agent'
 HOSTING_DEVICE_CFG_AGENTS = HOSTING_DEVICE_CFG_AGENT + 's'
 
 
-class HostingDeviceSchedulerController(wsgi.Controller):
+class HostingDeviceSchedulerController(neutron_base.Controller):
     def get_plugin(self):
         plugin = bc.get_plugin(cisco_constants.DEVICE_MANAGER)
         if not plugin:
@@ -105,7 +105,7 @@ class HostingDeviceSchedulerController(wsgi.Controller):
         return result
 
 
-class CfgAgentsHandlingHostingDeviceController(wsgi.Controller):
+class CfgAgentsHandlingHostingDeviceController(neutron_base.Controller):
     def get_plugin(self):
         plugin = bc.get_plugin(cisco_constants.DEVICE_MANAGER)
         if not plugin:

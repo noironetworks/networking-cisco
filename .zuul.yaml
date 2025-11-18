@@ -5,7 +5,7 @@
     check:
       jobs:
         - openstack-tox-pep8:
-            nodeset: ubuntu-focal
+            nodeset: ubuntu-jammy
             required-projects:
               - name: openstack/requirements
                 override-checkout: stable/2024.1
@@ -37,7 +37,7 @@
     gate:
       jobs:
         - openstack-tox-pep8:
-            nodeset: ubuntu-focal
+            nodeset: ubuntu-jammy
             required-projects:
               - name: openstack/requirements
                 override-checkout: stable/2024.1
