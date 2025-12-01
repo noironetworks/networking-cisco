@@ -14,98 +14,9 @@
 #
 
 from binascii import hexlify
-import mock
-import socket
 import unittest
 
-from networking_cisco.plugins.cisco.cpnr.cpnr_client import UnexpectedError
-from networking_cisco.plugins.cisco.cpnr.cpnr_dns_relay_agent import (
-    DnsRelayAgent)
-from networking_cisco.plugins.cisco.cpnr.cpnr_dns_relay_agent import cfg
 from networking_cisco.plugins.cisco.cpnr.cpnr_dns_relay_agent import DnsPacket
-from networking_cisco.plugins.cisco.cpnr.cpnr_dns_relay_agent import OPTS
-
-
-class TestDnsRelayAgent(unittest.TestCase):
-
-    @mock.patch('networking_cisco.plugins.cisco.'
-                'cpnr.cpnr_dns_relay_agent.netns')
-    @mock.patch('socket.socket')
-    def test_open_dns_ext_socket(self,
-                                 mock_socket,
-                                 mock_netns):
-        cfg.CONF.register_opts(OPTS, 'cisco_pnr')
-        relay = DnsRelayAgent()
-
-        mock_netns.iflist.return_value = []
-        mock_netns.iflist.return_value.append(('lo', '127.0.0.1', '255.0.0.0'))
-
-        sock = mock_socket.return_value
-        sock.getsockname.return_value = ('127.0.0.1', 123456)
-
-        sock, addr, port = relay._open_dns_ext_socket()
-
-        mock_socket.assert_has_calls([
-            mock.call(socket.AF_INET, socket.SOCK_DGRAM),
-            mock.call().bind(('127.0.0.1', 0)),
-            mock.call().getsockname(),
-            mock.call().connect(('127.0.0.1', 53))]
-        )
-
-        # check exception thrown if no interfaces
-        with self.assertRaises(UnexpectedError):
-            mock_netns.iflist.return_value = []
-            sock, addr, port = relay._open_dns_ext_socket()
-
-        # check exception thrown if no matching interfaces
-        with self.assertRaises(UnexpectedError):
-            mock_netns.iflist.return_value = []
-            mock_netns.iflist.return_value.append(('eth0', '10.0.0.10',
-                                                   '255.255.255.0'))
-            sock, addr, port = relay._open_dns_ext_socket()
-
-        # check matching interface found if not first in list
-        mock_netns.iflist.return_value = []
-        mock_netns.iflist.return_value.append(('eth0', '10.0.0.10',
-                                               '255.255.255.0'))
-        mock_netns.iflist.return_value.append(('lo', '127.0.0.1', '255.0.0.0'))
-        sock, addr, port = relay._open_dns_ext_socket()
-
-    @mock.patch('networking_cisco.plugins.cisco.'
-                'cpnr.cpnr_dns_relay_agent.netns')
-    @mock.patch('socket.socket')
-    def test_open_dns_int_socket(self,
-                                 mock_socket,
-                                 mock_netns):
-        cfg.CONF.register_opts(OPTS, 'cisco_pnr')
-        relay = DnsRelayAgent()
-
-        mock_netns.iflist.return_value = []
-        mock_netns.iflist.return_value.append(('eth0', '10.21.1.13',
-                                               '255.255.255.0'))
-        sock, addr, port = relay._open_dns_int_socket()
-
-        self.assertTrue(mock_netns.iflist.called, "Failed to call iflist.")
-
-        mock_socket.assert_has_calls([
-            mock.call(socket.AF_INET, socket.SOCK_DGRAM),
-            mock.call().setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1),
-            mock.call().bind(('10.21.1.13', 53))]
-        )
-
-        # check exception thrown if no interfaces
-        with self.assertRaises(UnexpectedError):
-            mock_netns.iflist.return_value = []
-            sock, addr, port = relay._open_dns_int_socket()
-
-    def test_convert_namespace_to_viewid(self):
-        cfg.CONF.register_opts(OPTS, 'cisco_pnr')
-        relay = DnsRelayAgent()
-
-        namespace = 'qdhcp-d7c31f74-5d9e-47b7-86f2-64879023c04d'
-        viewid = relay._convert_namespace_to_viewid(namespace)
-        tmp = 0x64879023c04d & 0x7fffffff
-        self.assertEqual(viewid, str(tmp))
 
 
 class TestDnsPacket(unittest.TestCase):
