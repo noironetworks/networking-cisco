@@ -22,9 +22,6 @@ UPLINK_NAME = 1002
 
 DID_LEN = 36
 
-# RPC queue name on agent side.
-DFA_AGENT_QUEUE = 'dfa_agent'
-
 # RPC queue name on server side.
 DFA_SERVER_QUEUE = 'dfa_server_q'
 DFA_EXCHANGE = 'dfa'
