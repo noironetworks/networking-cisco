@@ -25,17 +25,14 @@
             required-projects:
               - name: openstack/requirements
                 override-checkout: stable/2025.2
-            voting: false
         - openstack-tox-py312:
             required-projects:
               - name: openstack/requirements
                 override-checkout: stable/2025.2
-            voting: false
         - openstack-tox-py313:
             required-projects:
               - name: openstack/requirements
                 override-checkout: stable/2025.2
-            voting: false
     gate:
       jobs:
         - openstack-tox-pep8:
@@ -52,14 +49,11 @@
             required-projects:
               - name: openstack/requirements
                 override-checkout: stable/2025.2
-            voting: false
         - openstack-tox-py312:
             required-projects:
               - name: openstack/requirements
                 override-checkout: stable/2025.2
-            voting: false
         - openstack-tox-py313:
             required-projects:
               - name: openstack/requirements
                 override-checkout: stable/2025.2
-            voting: false

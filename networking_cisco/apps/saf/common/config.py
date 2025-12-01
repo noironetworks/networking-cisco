@@ -44,13 +44,6 @@ ks_loading.register_auth_conf_options(cfg.CONF, NOVA_CONF_SECTION)
 ks_loading.register_session_conf_options(cfg.CONF, NOVA_CONF_SECTION)
 
 
-dfa_agent_opts = [
-    cfg.StrOpt('intergration_bridge', default='br-int'),
-    cfg.StrOpt('external_dfa_brdige', default='br-ethd')
-]
-cfg.CONF.register_opts(dfa_agent_opts, 'dfa_agent')
-
-
 vdp_opts = [
     cfg.StrOpt('mgrid2', default=vdp_const.VDP_MGRID),
     cfg.StrOpt('typeid', default=vdp_const.VDP_TYPEID),

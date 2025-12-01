@@ -12,11 +12,9 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from datetime import datetime
 import eventlet
 eventlet.monkey_patch()  # noqa
 
-import pprint
 import sys
 import time
 
@@ -29,7 +27,6 @@ from oslo_service import periodic_task
 from oslo_service import service
 from oslo_utils import importutils
 
-from neutron.agent import rpc as agent_rpc
 from neutron.common import config as common_config
 from neutron import manager
 from neutron import service as neutron_service
@@ -38,7 +35,6 @@ from networking_cisco._i18n import _
 from networking_cisco import backwards_compatibility as bc
 from networking_cisco.backwards_compatibility import neutron_agent_conf
 from networking_cisco.backwards_compatibility import rpc as n_rpc
-from networking_cisco.backwards_compatibility import topics
 from networking_cisco.plugins.cisco.cfg_agent import device_status
 from networking_cisco.plugins.cisco.common import (cisco_constants as
                                                    c_constants)
@@ -391,126 +387,6 @@ class CiscoCfgAgent(manager.Manager):
         return
 
 
-class CiscoCfgAgentWithStateReport(CiscoCfgAgent):
-
-    def __init__(self, host, conf=None):
-        self.state_rpc = agent_rpc.PluginReportStateAPI(topics.PLUGIN)
-        self.agent_state = {
-            'binary': 'neutron-cisco-cfg-agent',
-            'host': host,
-            'topic': c_constants.CFG_AGENT,
-            'configurations': {},
-            'start_flag': True,
-            'agent_type': c_constants.AGENT_TYPE_CFG}
-        self.use_call = True
-        self._initialize_rpc(host)
-        self._agent_registration()
-        super(CiscoCfgAgentWithStateReport, self).__init__(host=host,
-                                                           conf=conf)
-
-        self.report_iteration = self.conf.cfg_agent.report_iteration
-        keepalive_interval = self.conf.cfg_agent.keepalive_interval
-        if keepalive_interval:
-            self.heartbeat = loopingcall.FixedIntervalLoopingCall(
-                self._report_state)
-            self.heartbeat.start(interval=keepalive_interval)
-            self.keepalive_iteration = 0
-
-    def _agent_registration(self):
-        """Register this agent with the server.
-
-        This method registers the cfg agent with the neutron server so hosting
-        devices can be assigned to it. In case the server is not ready to
-        accept registration (it sends a False) then we retry registration
-        for `MAX_REGISTRATION_ATTEMPTS` with a delay of
-        `REGISTRATION_RETRY_DELAY`. If there is no server response or a
-        failure to register after the required number of attempts,
-        the agent stops itself.
-        """
-        for attempts in range(MAX_REGISTRATION_ATTEMPTS):
-            context = bc.context.get_admin_context_without_session()
-            self.send_agent_report(self.agent_state, context)
-            try:
-                res = self.devmgr_rpc.register_for_duty(context)
-            except Exception:
-                res = False
-                LOG.warning("[Agent registration] Rpc exception. Neutron "
-                            "may not be available or busy. Retrying "
-                            "in %0.2f seconds ", REGISTRATION_RETRY_DELAY)
-            if res is True:
-                LOG.info("[Agent registration] Agent successfully registered")
-                return
-            elif res is False:
-                LOG.warning("[Agent registration] Neutron server said "
-                            "that device manager was not ready. Retrying "
-                            "in %0.2f seconds ", REGISTRATION_RETRY_DELAY)
-                time.sleep(REGISTRATION_RETRY_DELAY)
-            elif res is None:
-                LOG.error("[Agent registration] Neutron server said that "
-                          "no device manager was found. Cannot continue. "
-                          "Exiting!")
-                raise SystemExit(_("Cfg Agent exiting"))
-        LOG.error("[Agent registration] %d unsuccessful registration "
-                  "attempts. Exiting!", MAX_REGISTRATION_ATTEMPTS)
-        raise SystemExit(_("Cfg Agent exiting"))
-
-    def _report_state(self):
-        """Report state to the plugin.
-
-        This task run every `keepalive_interval` period.
-        Collects, creates and sends a summary of the services currently
-        managed by this agent. Data is collected from the service helper(s).
-        Refer the `configurations` dict for the parameters reported.
-        :return: None
-        """
-        LOG.debug("Report state task started")
-        self.keepalive_iteration += 1
-        if self.keepalive_iteration == self.report_iteration:
-            self._prepare_full_report_data()
-            self.keepalive_iteration = 0
-            LOG.debug("State report: %s", pprint.pformat(self.agent_state))
-        else:
-            self.agent_state.pop('configurations', None)
-            self.agent_state['local_time'] = datetime.now().strftime(
-                ISO8601_TIME_FORMAT)
-            LOG.debug("State report: %s", self.agent_state)
-        self.send_agent_report(self.agent_state, self.context)
-
-    def _prepare_full_report_data(self):
-        configurations = {}
-        service_agents = []
-        self.agent_state['configurations'] = configurations
-        if self.routing_service_helper:
-            service_agents.append(c_constants.AGENT_TYPE_L3_CFG)
-            configurations = self.routing_service_helper.collect_state(
-                self.agent_state['configurations'])
-        non_responding = self._dev_status.get_backlogged_hosting_devices_info()
-        monitored_hosting_devices = (self._dev_status.
-                                     get_monitored_hosting_devices_info())
-        configurations['non_responding_hosting_devices'] = non_responding
-        configurations['monitored_hosting_devices'] = monitored_hosting_devices
-        configurations['service_agents'] = service_agents
-        self.agent_state['configurations'] = configurations
-        self.agent_state['local_time'] = datetime.now().strftime(
-            ISO8601_TIME_FORMAT)
-
-    def send_agent_report(self, report, context):
-        """Send the agent report via RPC."""
-        try:
-            self.state_rpc.report_state(context, report, self.use_call)
-            report.pop('start_flag', None)
-            self.use_call = False
-            LOG.debug("Send agent report successfully completed")
-        except AttributeError:
-            # This means the server does not support report_state
-            LOG.warning("Neutron server does not support state report. "
-                        "State report for this agent will be disabled.")
-            self.heartbeat.stop()
-            return
-        except Exception:
-            LOG.warning("Failed sending agent report!")
-
-
 def _mock_stuff():
     import mock
 
@@ -651,8 +527,7 @@ def mock_ncclient():
     can_connect_patcher.start()
 
 
-def main(manager='networking_cisco.plugins.cisco.cfg_agent.'
-                 'cfg_agent.CiscoCfgAgentWithStateReport'):
+def main(manager='networking_cisco.plugins.cisco.cfg_agent.'):
     # NOTE(bobmel): call _mock_stuff() to run config agent with fake ncclient
     # This mocked mode of running the config agent is useful for end-2-end-like
     # debugging without actual backend hosting devices.
