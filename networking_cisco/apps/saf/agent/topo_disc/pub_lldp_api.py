@@ -17,7 +17,6 @@
 """This file contains the public API's for interacting with LLDPAD. """
 
 from networking_cisco.apps.saf.common import dfa_logger as logging
-from networking_cisco.apps.saf.common import dfa_sys_lib as utils
 
 LOG = logging.getLogger(__name__)
 
@@ -63,16 +62,6 @@ class LldpApi(object):
             LOG.error("Both NCB and NB are not selected to "
                       "query LLDP")
         return reply
-
-    def run_lldptool(self, args):
-        """Function for invoking the lldptool utility. """
-        full_args = ['lldptool'] + args
-        try:
-            return utils.execute(full_args, root_helper=self.root_helper)
-        except Exception as exc:
-            LOG.error("Unable to execute %(cmd)s. "
-                      "Exception: %(exception)s",
-                      {'cmd': full_args, 'exception': str(exc)})
 
     def _check_common_tlv_format(self, tlv_complete_data, tlv_data_pattern,
                                  tlv_string):

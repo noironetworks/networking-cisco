@@ -13,27 +13,22 @@
             required-projects:
               - name: openstack/requirements
                 override-checkout: unmaintained/2024.1
-            voting: false
         - openstack-tox-py39:
             required-projects:
               - name: openstack/requirements
                 override-checkout: unmaintained/2024.1
-            voting: false
         - openstack-tox-py310:
             required-projects:
               - name: openstack/requirements
                 override-checkout: unmaintained/2024.1
-            voting: false
         - openstack-tox-py311:
             required-projects:
               - name: openstack/requirements
                 override-checkout: unmaintained/2024.1
-            voting: false
         - openstack-tox-py312:
             required-projects:
               - name: openstack/requirements
                 override-checkout: unmaintained/2024.1
-            voting: false
     gate:
       jobs:
         - openstack-tox-pep8:
@@ -45,24 +40,19 @@
             required-projects:
               - name: openstack/requirements
                 override-checkout: unmaintained/2024.1
-            voting: false
         - openstack-tox-py39:
             required-projects:
               - name: openstack/requirements
                 override-checkout: unmaintained/2024.1
-            voting: false
         - openstack-tox-py310:
             required-projects:
               - name: openstack/requirements
                 override-checkout: unmaintained/2024.1
-            voting: false
         - openstack-tox-py311:
             required-projects:
               - name: openstack/requirements
                 override-checkout: unmaintained/2024.1
-            voting: false
         - openstack-tox-py312:
             required-projects:
               - name: openstack/requirements
                 override-checkout: unmaintained/2024.1
-            voting: false
