@@ -351,7 +351,7 @@ class Ndfc:
             if interfaces_to_detach:
                 attachment_entry = {
                     "attach": False,
-                    "interfaces": interfaces_to_detach,
+                    "interfaces": [],
                     "networkName": network_name,
                     "switchId": leaf_snum,
                     "vlanId": vlan
