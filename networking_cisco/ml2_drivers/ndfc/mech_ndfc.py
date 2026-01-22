@@ -85,7 +85,6 @@ class NDFCMechanismDriver(api.MechanismDriver,
         super(NDFCMechanismDriver, self).__init__()
         self._last_switch_sync = 0
         self.switch_map = {}
-        self._switch_sync_loop = None
 
     def initialize(self):
         config.register_opts()
@@ -109,21 +108,19 @@ class NDFCMechanismDriver(api.MechanismDriver,
         self.tenants_file = 'tenants.json'
         self.load_tenants()
         self.start_rpc_listeners()
-        self._start_switch_sync_loop()
 
     def _start_switch_sync_loop(self):
-        if self._switch_sync_loop is None:
-            # Add jitter up to 10% of interval as initial delay
-            interval = self.switch_sync_interval
-            jitter = random.uniform(0, interval * 0.1)
-            self._switch_sync_loop = loopingcall.FixedIntervalLoopingCall(
-                self._refresh_switch_list)
-            self._switch_sync_loop.start(interval=interval,
-                                         initial_delay=jitter,
-                                         stop_on_exception=False)
-            LOG.debug(
-                "Started periodic switch sync loop with interval %.2f seconds "
-                "and initial delay %.2f seconds", interval, jitter)
+        # Add jitter up to 10% of interval as initial delay
+        interval = self.switch_sync_interval
+        jitter = random.uniform(0, interval * 0.1)
+        _switch_sync_loop = loopingcall.FixedIntervalLoopingCall(
+            self._refresh_switch_list)
+        _switch_sync_loop.start(interval=interval,
+                                initial_delay=jitter,
+                                stop_on_exception=False)
+        LOG.debug(
+            "Started periodic switch sync loop with interval %.2f seconds "
+            "and initial delay %.2f seconds", interval, jitter)
 
     def _refresh_switch_list(self):
         LOG.debug("Refreshing switch list from NDFC...")
@@ -211,6 +208,7 @@ class NDFCMechanismDriver(api.MechanismDriver,
 
     def start_rpc_listeners(self):
         LOG.debug("NDFC MD starting RPC listeners")
+        self._start_switch_sync_loop()
         return self._start_rpc_listeners()
 
     @property
