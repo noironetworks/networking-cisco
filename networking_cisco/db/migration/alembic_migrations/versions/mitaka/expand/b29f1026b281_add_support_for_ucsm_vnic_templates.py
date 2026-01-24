@@ -12,9 +12,6 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from alembic import op
-import sqlalchemy as sa
-
 
 """Add support for UCSM VNIC Templates
 
@@ -30,11 +27,4 @@ down_revision = '13bd9ebffbf5'
 
 
 def upgrade():
-    op.create_table('ml2_ucsm_vnic_templates',
-        sa.Column('vlan_id', sa.Integer(), nullable=False),
-        sa.Column('vnic_template', sa.String(length=64), nullable=False),
-        sa.Column('device_id', sa.String(length=64), nullable=False),
-        sa.Column('physnet', sa.String(length=32), nullable=False),
-        sa.Column('updated_on_ucs', sa.Boolean(), nullable=False),
-        sa.PrimaryKeyConstraint('vlan_id', 'vnic_template', 'device_id')
-    )
+    pass
