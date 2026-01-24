@@ -12,9 +12,6 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from alembic import op
-import sqlalchemy as sa
-
 
 """Multiple UCS Manager support
 
@@ -30,7 +27,4 @@ down_revision = '1e9e22602685'
 
 
 def upgrade():
-    op.add_column(
-        'ml2_ucsm_port_profiles',
-        sa.Column('device_id', sa.String(length=64), nullable=False)
-    )
+    pass

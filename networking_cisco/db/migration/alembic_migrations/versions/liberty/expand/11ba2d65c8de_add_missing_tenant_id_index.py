@@ -12,8 +12,6 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from alembic import op
-
 
 """Add missing tenant_id index
 
@@ -29,5 +27,4 @@ down_revision = '414ff6eb123a'
 
 
 def upgrade():
-    op.create_index(op.f('ix_cisco_router_ha_groups_tenant_id'),
-                    'cisco_router_ha_groups', ['tenant_id'], unique=False)
+    pass
