@@ -12,8 +12,6 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from alembic import op
-
 
 """Remove the N1kv mechanism driver
 
@@ -29,10 +27,4 @@ down_revision = '53f08de0523f'
 
 
 def upgrade():
-    op.drop_table('cisco_ml2_n1kv_policy_profiles')
-    op.drop_table('cisco_ml2_n1kv_port_bindings')
-    op.drop_table('cisco_ml2_n1kv_network_bindings')
-    op.drop_table('cisco_ml2_n1kv_vlan_allocations')
-    op.drop_table('cisco_ml2_n1kv_vxlan_allocations')
-    op.drop_table('cisco_ml2_n1kv_profile_bindings')
-    op.drop_table('cisco_ml2_n1kv_network_profiles')
+    pass
