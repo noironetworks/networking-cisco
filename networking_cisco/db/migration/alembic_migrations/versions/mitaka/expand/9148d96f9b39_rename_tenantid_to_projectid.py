@@ -118,16 +118,7 @@ def recreate_index(index, table_name):
 
 
 def upgrade():
-    inspector = get_inspector()
-
-    data = get_data()
-    for table, column in data:
-        alter_column(table, column)
-
-        indexes = inspector.get_indexes(table)
-        for index in indexes:
-            if 'tenant_id' in index['name']:
-                recreate_index(index, table)
+    pass
 
 
 def contract_creation_exceptions():

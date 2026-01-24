@@ -12,9 +12,6 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from alembic import op
-import sqlalchemy as sa
-
 
 """Add Port Profile delete table for UCSM plugin
 
@@ -30,8 +27,4 @@ down_revision = 'b29f1026b281'
 
 
 def upgrade():
-    op.create_table('ml2_ucsm_delete_port_profiles',
-        sa.Column('profile_id', sa.String(length=64), nullable=False),
-        sa.Column('device_id', sa.String(length=64), nullable=False),
-        sa.PrimaryKeyConstraint('profile_id', 'device_id')
-    )
+    pass

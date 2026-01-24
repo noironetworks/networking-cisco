@@ -12,9 +12,6 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from alembic import op
-import sqlalchemy as sa
-
 
 """Add support for UCSM Service Profile Templates.
 
@@ -30,10 +27,4 @@ down_revision = '2e89171ea204'
 
 
 def upgrade():
-    op.create_table('ml2_ucsm_sp_templates',
-        sa.Column('vlan_id', sa.Integer(), nullable=False),
-        sa.Column('sp_template', sa.String(length=64), nullable=False),
-        sa.Column('device_id', sa.String(length=64), nullable=False),
-        sa.Column('updated_on_ucs', sa.Boolean(), nullable=False),
-        sa.PrimaryKeyConstraint('vlan_id', 'sp_template', 'device_id')
-    )
+    pass
