@@ -106,7 +106,7 @@ class NDFCMechanismDriver(api.MechanismDriver,
                          self.force_old_api)
         self._core_plugin = None
         self.project_details_cache = cache.ProjectDetailsCache()
-        self.tenants_file = 'tenants.json'
+        self.tenants_file = '/tmp/tenants.json'
         self.load_tenants()
         self.start_rpc_listeners()
         self._start_switch_sync_loop()
