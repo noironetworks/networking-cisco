@@ -12,9 +12,6 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from alembic import op
-import sqlalchemy as sa
-
 
 """Add VPC alloc table
 
@@ -30,11 +27,4 @@ down_revision = '9148d96f9b39'
 
 
 def upgrade():
-    op.create_table('cisco_ml2_nexus_vpc_alloc',
-        sa.Column('switch_ip', sa.String(length=64), nullable=False,
-                  index=True),
-        sa.Column('vpc_id', sa.Integer(), nullable=False),
-        sa.Column('learned', sa.Boolean(), nullable=False),
-        sa.Column('active', sa.Boolean(), nullable=False),
-        sa.PrimaryKeyConstraint('switch_ip', 'vpc_id')
-    )
+    pass

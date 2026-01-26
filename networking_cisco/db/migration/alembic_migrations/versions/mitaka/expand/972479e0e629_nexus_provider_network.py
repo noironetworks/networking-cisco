@@ -12,9 +12,6 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from alembic import op
-import sqlalchemy as sa
-
 
 """nexus_provider_network
 
@@ -30,10 +27,4 @@ down_revision = 'f3765e42de23'
 
 
 def upgrade():
-    op.create_table('cisco_ml2_nexus_provider_networks',
-        sa.Column('network_id', sa.String(length=36), nullable=False),
-        sa.Column('vlan_id', sa.Integer, nullable=False, index=True),
-        sa.PrimaryKeyConstraint('network_id'),
-    )
-
-    op.drop_column('cisco_ml2_nexusport_bindings', 'is_provider_vlan')
+    pass

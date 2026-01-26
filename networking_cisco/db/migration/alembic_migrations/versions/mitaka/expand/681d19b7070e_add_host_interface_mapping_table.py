@@ -12,9 +12,6 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from alembic import op
-import sqlalchemy as sa
-
 
 """Add host/interface mapping table
 
@@ -30,13 +27,4 @@ down_revision = '203b495958cf'
 
 
 def upgrade():
-    op.create_table('cisco_ml2_nexus_host_interface_mapping',
-        sa.Column('host_id', sa.String(length=255), nullable=False,
-                  index=True),
-        sa.Column('switch_ip', sa.String(length=64), nullable=False,
-                  index=True),
-        sa.Column('if_id', sa.String(length=255), nullable=False),
-        sa.Column('ch_grp', sa.Integer(), nullable=False),
-        sa.Column('is_static', sa.Boolean(), nullable=False),
-        sa.PrimaryKeyConstraint('switch_ip', 'if_id')
-    )
+    pass

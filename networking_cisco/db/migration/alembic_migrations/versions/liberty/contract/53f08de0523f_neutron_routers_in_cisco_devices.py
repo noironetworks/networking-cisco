@@ -13,12 +13,6 @@
 #    under the License.
 #
 
-from alembic import op
-import sqlalchemy as sa
-from sqlalchemy.engine import reflection
-
-from neutron.db import migration
-
 
 """Neutron routers in Cisco devices
 
@@ -35,70 +29,4 @@ depends_on = ('2921fe565328')
 
 
 def upgrade():
-    op.create_table('cisco_router_types',
-        sa.Column('tenant_id', sa.String(length=255), nullable=True),
-        sa.Column('id', sa.String(length=36), nullable=False),
-        sa.Column('name', sa.String(length=255), nullable=False),
-        sa.Column('description', sa.String(length=255), nullable=True),
-        sa.Column('template_id', sa.String(length=36), nullable=True),
-        sa.Column('ha_enabled_by_default', sa.Boolean(), nullable=False,
-                  server_default=sa.sql.false()),
-        sa.Column('shared', sa.Boolean(), nullable=False,
-                  server_default=sa.sql.true()),
-        sa.Column('slot_need', sa.Integer(), autoincrement=False,
-                  nullable=True),
-        sa.Column('scheduler', sa.String(length=255), nullable=False),
-        sa.Column('driver', sa.String(length=255), nullable=False),
-        sa.Column('cfg_agent_service_helper', sa.String(length=255),
-                  nullable=False),
-        sa.Column('cfg_agent_driver', sa.String(length=255), nullable=False),
-        sa.ForeignKeyConstraint(['template_id'],
-                                ['cisco_hosting_device_templates.id'],
-                                ondelete='CASCADE'),
-        sa.PrimaryKeyConstraint('id')
-    )
-    if migration.schema_has_table('cisco_router_mappings'):
-        op.add_column('cisco_router_mappings',
-                      sa.Column('role', sa.String(255), nullable=True))
-        op.add_column('cisco_router_mappings',
-                      sa.Column('router_type_id', sa.String(length=36),
-                                nullable=False))
-
-        inspector = reflection.Inspector.from_engine(op.get_bind())
-        foreign_keys = inspector.get_foreign_keys('cisco_router_mappings')
-        migration.remove_foreign_keys('cisco_router_mappings', foreign_keys)
-        primary_key = inspector.get_pk_constraint('cisco_router_mappings')
-        op.drop_constraint(constraint_name=primary_key['name'],
-                           table_name='cisco_router_mappings',
-                           type_='primary')
-
-        op.create_foreign_key('cisco_router_mappings_ibfk_1',
-                              source_table='cisco_router_mappings',
-                              referent_table='cisco_hosting_devices',
-                              local_cols=['hosting_device_id'],
-                              remote_cols=['id'],
-                              ondelete='SET NULL'),
-        op.create_foreign_key('cisco_router_mappings_ibfk_2',
-                              source_table='cisco_router_mappings',
-                              referent_table='routers',
-                              local_cols=['router_id'],
-                              remote_cols=['id'],
-                              ondelete='CASCADE')
-        op.create_foreign_key('cisco_router_mappings_ibfk_3',
-                              source_table='cisco_router_mappings',
-                              referent_table='cisco_router_types',
-                              local_cols=['router_type_id'],
-                              remote_cols=['id'])
-        op.create_primary_key(
-            constraint_name='pk_cisco_router_mappings',
-            table_name='cisco_router_mappings',
-            columns=['router_id', 'router_type_id'])
-        op.add_column('cisco_router_mappings',
-                      sa.Column('inflated_slot_need', sa.Integer(),
-                                autoincrement=False, nullable=True,
-                                server_default='0'))
-        op.add_column('cisco_router_mappings',
-                      sa.Column('share_hosting_device', sa.Boolean(),
-                                nullable=False, server_default=sa.sql.true()))
-        op.create_index(op.f('ix_cisco_router_types_tenant_id'),
-                        'cisco_router_types', ['tenant_id'], unique=False)
+    pass

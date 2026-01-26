@@ -12,9 +12,6 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from alembic import op
-import sqlalchemy as sa
-
 
 """Add baremetal channel-group and is_native
 
@@ -30,8 +27,4 @@ down_revision = '11ba2d65c8de'
 
 
 def upgrade():
-    op.add_column('cisco_ml2_nexusport_bindings',
-        sa.Column('channel_group', sa.Integer(), default=0))
-    op.add_column('cisco_ml2_nexusport_bindings',
-        sa.Column('is_native', sa.Boolean(), nullable=False,
-                  server_default=sa.sql.false()))
+    pass
