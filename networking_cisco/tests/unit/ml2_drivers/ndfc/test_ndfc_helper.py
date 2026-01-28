@@ -499,7 +499,7 @@ class TestNDFCHelper(TestNDFCHelperBase, test_plugin.Ml2PluginV2TestCase):
                 "tor_name": "SN2"
             },
             "SN_SN3": {
-                "tor_interfaces": ["Port-Channel1"],
+                "tor_interfaces": ["Port-channel1"],
                 "tor_name": "SN3"
             }
         }

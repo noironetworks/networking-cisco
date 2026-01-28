@@ -45,35 +45,35 @@ class TestCiscoNxosDb(testlib_api.SqlTestCase):
             session.add(nc_ml2_db.NxosHostLink(host_name='compute01.maas',
                 interface_name='enp8s0', serial_number='FDO24230D5G',
                 switch_ip='10.0.7.65', switch_mac='f8:6b:d9:fe:67:88',
-                switch_port='Port-Channel11'))
+                switch_port='Port-channel11'))
             session.add(nc_ml2_db.NxosHostLink(host_name='compute01.maas',
                 interface_name='enp9s0', serial_number='FDO24230DAX',
                 switch_ip='10.0.7.66', switch_mac='f8:6b:d9:fe:6e:3c',
-                switch_port='Port-Channel11'))
+                switch_port='Port-channel11'))
             session.add(nc_ml2_db.NxosHostLink(host_name='compute02.maas',
                 interface_name='enp8s0', serial_number='FDO2738092V',
                 switch_ip='10.0.7.67', switch_mac='68:79:09:13:52:98',
-                switch_port='Port-Channel11'))
+                switch_port='Port-channel11'))
             session.add(nc_ml2_db.NxosHostLink(host_name='compute02.maas',
                 interface_name='enp9s0', serial_number='FDO2738091G',
                 switch_ip='10.0.7.68', switch_mac='68:79:09:13:59:78',
-                switch_port='Port-Channel11'))
+                switch_port='Port-channel11'))
             session.add(nc_ml2_db.NxosHostLink(host_name='compute03.maas',
                 interface_name='enp10s0', serial_number='FDO234704FQ',
                 switch_ip='10.0.7.69', switch_mac='3c:51:0e:e0:32:b0',
-                switch_port='Port-Channel11'))
+                switch_port='Port-channel11'))
             session.add(nc_ml2_db.NxosHostLink(host_name='compute03.maas',
                 interface_name='enp9s0', serial_number='FDO23470XQ5',
                 switch_ip='10.0.7.70', switch_mac='a0:b4:39:bd:4e:a0',
-                switch_port='Port-Channel11'))
+                switch_port='Port-channel11'))
             session.add(nc_ml2_db.NxosHostLink(host_name='compute04.maas',
                 interface_name='eno5', serial_number='FDO234704FQ',
                 switch_ip='10.0.7.69', switch_mac='3c:51:0e:e0:32:b4',
-                switch_port='Port-Channel12'))
+                switch_port='Port-channel12'))
             session.add(nc_ml2_db.NxosHostLink(host_name='compute04.maas',
                 interface_name='eno6', serial_number='FDO23470XQ5',
                 switch_ip='10.0.7.70', switch_mac='a0:b4:39:bd:4e:a4',
-                switch_port='Port-Channel12'))
+                switch_port='Port-channel12'))
 
             # Add the corresponding ToRs
             session.add(nc_ml2_db.NxosTors(
