@@ -615,7 +615,7 @@ class NDFCMechanismDriver(api.MechanismDriver,
                 po = self.ndfc.ndfc_obj.get_po(self.fabric_name,
                     switch_info.get('serial'), switch_interface)
             if po != "":
-                switch_interface = "Port-Channel" + po
+                switch_interface = "Port-channel" + po
 
             hlink = session.query(
                 nc_ml2_db.NxosHostLink).filter(
