@@ -268,7 +268,7 @@ class NdfcHelper:
     def _get_new_intf_name(self, tor_intf):
         if "Port-channel" in tor_intf:
             val = tor_intf.split("Port-channel")[1]
-            return "Port-Channel" + val
+            return "Port-channel" + val
         return tor_intf
 
     def _parse_tor_interface_map(self, portnames):

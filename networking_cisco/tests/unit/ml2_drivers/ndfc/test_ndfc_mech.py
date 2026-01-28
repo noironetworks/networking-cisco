@@ -64,10 +64,10 @@ TEST_LEAF_ATTACHMENTS = {
         'tor_sw_intf_map':
         {
             'FDO24230D5G': {
-                'tor_interfaces': ['Port-Channel11'],
+                'tor_interfaces': ['Port-channel11'],
                 'tor_name': '65-N9336FX2'},
             'FDO24230DAX': {'tor_interfaces':
-                ['Port-Channel11'], 'tor_name': '66-N9332FX2'}
+                ['Port-channel11'], 'tor_name': '66-N9332FX2'}
         }
     },
     'FDO24170TNU':
@@ -75,10 +75,10 @@ TEST_LEAF_ATTACHMENTS = {
         'tor_sw_intf_map':
         {
             'FDO24230D5G': {
-                'tor_interfaces': ['Port-Channel11'],
+                'tor_interfaces': ['Port-channel11'],
                 'tor_name': '65-N9336FX2'},
             'FDO24230DAX': {
-                'tor_interfaces': ['Port-Channel11'],
+                'tor_interfaces': ['Port-channel11'],
                 'tor_name': '66-N9332FX2'}}
     }
 }
@@ -393,7 +393,7 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
             'serial_number': 'serial1',
             'switch_ip': '192.168.1.1',
             'switch_mac': 'mac1',
-            'switch_port': 'Port-Channel10'
+            'switch_port': 'Port-channel10'
         }
         found_match = any(
             isinstance(call_args[0][0], nc_ml2_db.NxosHostLink) and
@@ -431,7 +431,7 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
         self.assertEqual(mock_hlink['serial_number'], 'serial1')
         self.assertEqual(mock_hlink['switch_ip'], '192.168.1.1')
         self.assertEqual(mock_hlink['switch_mac'], 'mac1')
-        self.assertEqual(mock_hlink['switch_port'], 'Port-Channel10')
+        self.assertEqual(mock_hlink['switch_port'], 'Port-channel10')
 
     def test_get_topology_attach(self):
         fake_network_context = self._create_fake_network_context(
