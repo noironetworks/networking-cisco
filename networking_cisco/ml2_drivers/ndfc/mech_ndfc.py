@@ -86,6 +86,7 @@ class NDFCMechanismDriver(api.MechanismDriver,
         self._last_switch_sync = 0
         self.switch_map = {}
         self._switch_sync_loop = None
+        self.vpc_peer_map = {}
 
     def initialize(self):
         config.register_opts()
@@ -143,6 +144,14 @@ class NDFCMechanismDriver(api.MechanismDriver,
             self.switch_map = latest_switch_map
             self._last_switch_sync = time.time()
             LOG.debug("Switch list refreshed successfully.")
+            try:
+                self.vpc_peer_map = (
+                    self.ndfc.ndfc_obj.build_vpc_peer_map(self.fabric_name))
+                LOG.debug("vPC peer map for fabric %s: %s",
+                          self.fabric_name, self.vpc_peer_map)
+            except Exception as exc:
+                LOG.error("Failed to refresh vPC peer map from NDFC: %s",
+                          exc)
             # Clean up stale NxosTors entries identified
             if stale_tor_sns:
                 self._cleanup_stale_tors(stale_tor_sns)
@@ -242,6 +251,7 @@ class NDFCMechanismDriver(api.MechanismDriver,
 
     def _get_topology(self, session, host):
         topology = {}
+        vpc_peer_map = self.vpc_peer_map or {}
         query = BAKERY(lambda s: s.query(
             nc_ml2_db.NxosHostLink,
             nc_ml2_db.NxosTors))
@@ -266,6 +276,27 @@ class NDFCMechanismDriver(api.MechanismDriver,
                 tor_name = tor.tor_name
                 leaf_map = topology.setdefault(
                         leaf_serial_number, {'tor_sw_intf_map': {}})
+                peer_serial = vpc_peer_map.get(leaf_serial_number)
+                # Fallback: if this worker's vPC peer map is empty or does
+                # not contain this leaf, rebuild the map on-demand so that
+                # peer_serial can be populated even before the periodic
+                # refresh has run in this process.
+                if not peer_serial:
+                    try:
+                        vpc_peer_map = (
+                            self.ndfc.ndfc_obj.build_vpc_peer_map(
+                                self.fabric_name))
+                        self.vpc_peer_map = vpc_peer_map
+                        LOG.debug(
+                            "On-demand vPC peer map refresh for fabric %s: %s",
+                            self.fabric_name, vpc_peer_map)
+                        peer_serial = vpc_peer_map.get(leaf_serial_number)
+                    except Exception as exc:
+                        LOG.error(
+                            "Failed on-demand vPC peer map refresh from "
+                            "NDFC: %s", exc)
+                if peer_serial:
+                    leaf_map['peer_serial'] = peer_serial
                 tor_map = leaf_map['tor_sw_intf_map'].setdefault(
                         tor_serial_number, {'tor_interfaces': [],
                             'tor_name': tor_name})
@@ -274,8 +305,28 @@ class NDFCMechanismDriver(api.MechanismDriver,
             else:
                 leaf_map = topology.setdefault(host_link.serial_number,
                         {'interfaces': []})
+                peer_serial = vpc_peer_map.get(host_link.serial_number)
+                if not peer_serial:
+                    try:
+                        vpc_peer_map = (
+                            self.ndfc.ndfc_obj.build_vpc_peer_map(
+                                self.fabric_name))
+                        self.vpc_peer_map = vpc_peer_map
+                        LOG.debug(
+                            "On-demand vPC peer map refresh for fabric %s: %s",
+                            self.fabric_name, vpc_peer_map)
+                        peer_serial = vpc_peer_map.get(
+                            host_link.serial_number)
+                    except Exception as exc:
+                        LOG.error(
+                            "Failed on-demand vPC peer map refresh from "
+                            "NDFC: %s", exc)
+                if peer_serial:
+                    leaf_map['peer_serial'] = peer_serial
                 if interface_name not in leaf_map['interfaces']:
                     leaf_map['interfaces'].append(interface_name)
+        LOG.debug("Built topology for host %(host)s: %(topo)s",
+                  {'host': host, 'topo': topology})
         return topology
 
     def get_topology(self, context, network, host, detach=False):
