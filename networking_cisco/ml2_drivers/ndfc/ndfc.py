@@ -28,7 +28,8 @@ class Ndfc:
     '''
     NDFC class.
     '''
-    def __init__(self, ndfc_ip, user, pwd, fabric, force_old_api):
+    def __init__(self, ndfc_ip, user, pwd, fabric, force_old_api,
+                 enable_l3_on_border):
         '''
         Init routine.
         '''
@@ -37,6 +38,7 @@ class Ndfc:
         self.user = user
         self.pwd = pwd
         self.fabric = fabric
+        self.enable_l3_on_border = enable_l3_on_border
         self.ndfc_obj = NdfcHelper(ip=self.ip, user=self.user, pwd=self.pwd,
                                    force_old_api=force_old_api)
 
@@ -124,7 +126,8 @@ class Ndfc:
                 'mtu': mtu, 'vrfName': vrf_name, 'networkName': network_name,
                 'isLayer2Only': False, 'nveId': nve_id, 'vlanId': vlan,
                 'vlanName': '', 'secondaryGW1': '', 'secondaryGW2': '',
-                'trmEnabled': '', 'rtBothAuto': '', 'enableL3OnBorder': '',
+                'trmEnabled': '', 'rtBothAuto': '',
+                'enableL3OnBorder': self.enable_l3_on_border,
                 'tag': tag}
         dct = {'fabric': self.fabric, 'vrf': vrf_name,
                'networkName': network_name,
@@ -159,7 +162,9 @@ class Ndfc:
             l3_data['mtu'] = {'protocol': {'layer2': mtu}}
         l3_data['ipv4Trm'] = False
         l3_data['ipv6Trm'] = False
-        l3_data['gatewayOnBorder'] = False
+        fabric_data = {}
+        fabric_data['gatewayOnBorder'] = self.enable_l3_on_border
+        l3_data['fabricData'] = fabric_data
         if tag is not None:
             l3_data['tag'] = int(tag)
         l3_data['netflow'] = False
