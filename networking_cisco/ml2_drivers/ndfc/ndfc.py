@@ -280,9 +280,6 @@ class Ndfc:
         for leaf_snum, leaf_info in collated_attach.items():
             attach_snum = self._get_common_attach_payload(fabric, network_name,
                     vlan, leaf_snum, leaf_info)
-            # TODO(padkrish), This may have an issue for orphaned leaf ports
-            # for VPC case. Even when peer VPC switch has no ports, that needs
-            # to be included.
             LOG.debug("attach snum is %s", attach_snum)
             if attach_snum is None or (attach_snum.get(
                 'switchPorts') is None and attach_snum.get(
@@ -291,6 +288,24 @@ class Ndfc:
                         leaf_snum)
                 continue
             attach_list.append(attach_snum)
+            peer_serial = leaf_info.get('peer_serial')
+            if peer_serial and peer_serial not in collated_attach:
+                LOG.debug("Adding vPC peer attachment for leaf %s peer %s",
+                        leaf_snum, peer_serial)
+                peer_attach = {
+                    'fabric': fabric,
+                    'networkName': network_name,
+                    'serialNumber': peer_serial,
+                    'detachSwitchPorts': '',
+                    'vlan': vlan,
+                    'dot1QVlan': constants.DOT1Q_VLAN,
+                    'untagged': 'false',
+                    'freeformConfig': '',
+                    'deployment': 'true',
+                    'extensionValues': '',
+                    'instanceValues': ''
+                }
+                attach_list.append(peer_attach)
         attach_dct = [{"networkName": network_name,
             "lanAttachList": attach_list}]
         return attach_dct
@@ -316,6 +331,18 @@ class Ndfc:
                 "vlanId": vlan
             }
             attach_list.append(attachment_entry)
+            peer_serial = leaf_info.get('peer_serial')
+            if peer_serial and peer_serial not in collated_attach:
+                LOG.debug("Adding vPC peer attachment for leaf %s peer %s",
+                          leaf_snum, peer_serial)
+                peer_attachment_entry = {
+                    "attach": True,
+                    "interfaces": [],
+                    "networkName": network_name,
+                    "switchId": peer_serial,
+                    "vlanId": vlan
+                }
+                attach_list.append(peer_attachment_entry)
         return {"attachments": attach_list}
 
     def _create_detach_payload(self, leaf_attachments, collated_attach,
@@ -337,6 +364,26 @@ class Ndfc:
                     interfaces = leaf_attachments[leaf_snum].get("interfaces")
                     attach_snum["detachSwitchPorts"] = ','.join(interfaces)
             attach_list.append(attach_snum)
+
+            peer_serial = leaf_info.get('peer_serial')
+            if peer_serial and peer_serial not in collated_attach:
+                LOG.debug(
+                    "Adding vPC peer detach entry for leaf %s peer %s",
+                    leaf_snum, peer_serial)
+                peer_attach = {
+                    'fabric': fabric,
+                    'networkName': network_name,
+                    'serialNumber': peer_serial,
+                    'detachSwitchPorts': '',
+                    'vlan': vlan,
+                    'dot1QVlan': constants.DOT1Q_VLAN,
+                    'untagged': 'false',
+                    'freeformConfig': '',
+                    'deployment': False,
+                    'extensionValues': '',
+                    'instanceValues': ''
+                }
+                attach_list.append(peer_attach)
         attach_dct = [{"networkName": network_name,
             "lanAttachList": attach_list}]
         return attach_dct
@@ -357,6 +404,22 @@ class Ndfc:
                     "vlanId": vlan
                 }
                 attach_list.append(attachment_entry)
+
+                leaf_info_full = collated_attach.get(leaf_snum, {})
+                peer_serial = leaf_info_full.get('peer_serial') or (
+                    leaf_info_to_detach.get('peer_serial'))
+                if peer_serial and peer_serial not in leaf_attachments:
+                    LOG.debug(
+                        "Adding vPC peer detach entry for leaf %s peer %s",
+                        leaf_snum, peer_serial)
+                    peer_attachment_entry = {
+                        "attach": False,
+                        "interfaces": [],
+                        "networkName": network_name,
+                        "switchId": peer_serial,
+                        "vlanId": vlan
+                    }
+                    attach_list.append(peer_attachment_entry)
             else:
                 LOG.warning(
                     "Leaf %s has no interfaces specified for detachment. "
@@ -381,6 +444,11 @@ class Ndfc:
                 exist_attach_copy[leaf_snum] = leaf_info
                 continue
             exist_leaf_info = exist_attach_copy[leaf_snum]
+
+            peer_serial = leaf_info.get('peer_serial')
+            if peer_serial:
+                exist_leaf_info['peer_serial'] = peer_serial
+
             if 'interfaces' in leaf_info:
                 if exist_leaf_info.get('interfaces') is None:
                     exist_attach_copy[leaf_snum]['interfaces'] = leaf_info.get(
@@ -432,6 +500,11 @@ class Ndfc:
                 LOG.error("Leaf %s not in existing attachment", leaf_snum)
                 continue
             exist_leaf_info = exist_attach_copy[leaf_snum]
+
+            peer_serial = leaf_info.get('peer_serial')
+            if peer_serial:
+                exist_leaf_info['peer_serial'] = peer_serial
+
             if exist_leaf_info.get('interfaces') is not None and (
                     leaf_info.get('interfaces') is not None):
                 exist_leaf_intf = exist_leaf_info.get('interfaces')

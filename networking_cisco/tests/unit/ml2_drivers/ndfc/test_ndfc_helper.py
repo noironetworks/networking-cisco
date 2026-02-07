@@ -1009,6 +1009,86 @@ class TestNDFCHelper(TestNDFCHelperBase, test_plugin.Ml2PluginV2TestCase):
 
         self.assertFalse(result)
 
+    @mock.patch.object(ndfc_helper.NdfcHelper, '_get_vpc_pair')
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'login', return_value=True)
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'logout')
+    def test_get_vpc_peer_success(self, mock_logout, mock_login,
+            mock_get_vpc_pair):
+        fabric = 'test_fabric'
+        switch_id = 'SN123'
+        mock_get_vpc_pair.return_value = {'peerSwitchId': 'SN456'}
+
+        peer_serial = self.helper.get_vpc_peer(fabric, switch_id)
+
+        self.assertEqual('SN456', peer_serial)
+        mock_login.assert_called_once()
+        mock_get_vpc_pair.assert_called_once_with(fabric, switch_id)
+        mock_logout.assert_called_once()
+
+    @mock.patch.object(ndfc_helper.NdfcHelper, '_get_vpc_pair')
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'login', return_value=True)
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'logout')
+    def test_get_vpc_peer_no_peer(self, mock_logout, mock_login,
+            mock_get_vpc_pair):
+        fabric = 'test_fabric'
+        switch_id = 'SN123'
+        mock_get_vpc_pair.return_value = None
+
+        peer_serial = self.helper.get_vpc_peer(fabric, switch_id)
+
+        self.assertIsNone(peer_serial)
+        mock_login.assert_called_once()
+        mock_get_vpc_pair.assert_called_once_with(fabric, switch_id)
+        mock_logout.assert_called_once()
+
+    @mock.patch('requests.get')
+    def test_get_vpc_pair_v2_collection(self, mock_get):
+        fabric = 'test_fabric'
+        switch_id = 'FDO23390CUN'
+        self.helper.nd_new_version = True
+
+        mock_response = mock.MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            'vpcPairs': [
+                {
+                    'peer1SwitchId': 'FDO23390CUN',
+                    'peer2SwitchId': 'FDO23390CUU'
+                },
+                {
+                    'peer1SwitchId': 'OTHER1',
+                    'peer2SwitchId': 'OTHER2'
+                }
+            ]
+        }
+        mock_get.return_value = mock_response
+
+        result = self.helper._get_vpc_pair(fabric, switch_id)
+        self.assertEqual({'peerSwitchId': 'FDO23390CUU'}, result)
+
+    @mock.patch('requests.get')
+    def test_get_vpc_pair_collection(self, mock_get):
+        fabric = 'test_fabric'
+        switch_id = 'FDO23390CUN'
+        self.helper.nd_new_version = False
+
+        mock_response = mock.MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = [
+            {
+                'peerOneId': 'FDO28290NZ2',
+                'peerTwoId': 'FDO28290NZE'
+            },
+            {
+                'peerOneId': 'FDO23390CUN',
+                'peerTwoId': 'FDO23390CUU'
+            }
+        ]
+        mock_get.return_value = mock_response
+
+        result = self.helper._get_vpc_pair(fabric, switch_id)
+        self.assertEqual({'peerSwitchId': 'FDO23390CUU'}, result)
+
     @mock.patch.object(ndfc_helper.NdfcHelper, 'login', return_value=True)
     @mock.patch.object(ndfc_helper.NdfcHelper, 'logout')
     @mock.patch('requests.get')
