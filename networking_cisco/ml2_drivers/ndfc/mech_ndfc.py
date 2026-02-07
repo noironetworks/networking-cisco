@@ -102,8 +102,9 @@ class NDFCMechanismDriver(api.MechanismDriver,
         self.fabric_name = (cfg.CONF.ndfc.fabric_name)
         self.switch_sync_interval = (cfg.CONF.ndfc.switch_sync_interval)
         self.force_old_api = (cfg.CONF.ndfc.force_old_api)
+        self.enable_l3_on_border = (cfg.CONF.ndfc.enable_l3_on_border)
         self.ndfc = Ndfc(self.ndfc_ip, self.user, self.pwd, self.fabric_name,
-                         self.force_old_api)
+                         self.force_old_api, self.enable_l3_on_border)
         self._core_plugin = None
         self.project_details_cache = cache.ProjectDetailsCache()
         self.tenants_file = '/tmp/tenants.json'

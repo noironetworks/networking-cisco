@@ -54,7 +54,7 @@ class TestNDFC(TestNDFCBase, test_plugin.Ml2PluginV2TestCase):
 
         self.ndfc_instance = ndfc.Ndfc(ndfc_ip='192.168.1.1', user='admin',
                 pwd='password', fabric='fabric_name',
-                force_old_api=False)
+                force_old_api=False, enable_l3_on_border=False)
         self.mock_exist_attach = mock.patch.object(
             ndfc_helper.NdfcHelper, 'get_network_switch_interface_map',
             return_value=None).start()
@@ -155,6 +155,44 @@ class TestNDFC(TestNDFCBase, test_plugin.Ml2PluginV2TestCase):
         ret = self.ndfc_instance.detach_network(vrf_name, network_name,
                 vlan, leaf_attachments)
         self.assertTrue(ret)
+
+    def test_create_network_payload_enable_l3_on_border(self):
+        vrf_name = 'test_vrf'
+        network_name = 'test_network'
+        vlan = 100
+
+        self.ndfc_instance.enable_l3_on_border = False
+        payload = self.ndfc_instance._get_create_network_payload(
+            vrf_name, network_name, vlan)
+        template_cfg = payload['networkTemplateConfig']
+        self.assertFalse(template_cfg['enableL3OnBorder'])
+
+        self.ndfc_instance.enable_l3_on_border = True
+        payload = self.ndfc_instance._get_create_network_payload(
+            vrf_name, network_name, vlan)
+        template_cfg = payload['networkTemplateConfig']
+        self.assertTrue(template_cfg['enableL3OnBorder'])
+
+    def test_create_network_payload_enable_l3_on_border_v2(self):
+        vrf_name = 'test_vrf'
+        network_name = 'test_network'
+        vlan = 100
+
+        self.ndfc_instance.ndfc_obj.nd_new_version = True
+
+        self.ndfc_instance.enable_l3_on_border = False
+        payload = self.ndfc_instance._get_create_network_payload_v2(
+            vrf_name, network_name, vlan)
+        l3_data = payload['networks'][0]['l3Data']
+        self.assertIn('fabricData', l3_data)
+        self.assertFalse(l3_data['fabricData']['gatewayOnBorder'])
+
+        self.ndfc_instance.enable_l3_on_border = True
+        payload = self.ndfc_instance._get_create_network_payload_v2(
+            vrf_name, network_name, vlan)
+        l3_data = payload['networks'][0]['l3Data']
+        self.assertIn('fabricData', l3_data)
+        self.assertTrue(l3_data['fabricData']['gatewayOnBorder'])
 
     @mock.patch.object(ndfc_helper.NdfcHelper, 'attach_deploy_network')
     @mock.patch.object(ndfc_helper.NdfcHelper,
