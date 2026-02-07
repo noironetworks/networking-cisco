@@ -53,7 +53,10 @@ ndfc_opts = [
                     "the switch list from NDFC."),
     cfg.BoolOpt('force_old_api',
                 default=False,
-                help=("Force usage of old ND API."))
+                help=("Force usage of old ND API.")),
+    cfg.BoolOpt('enable_l3_on_border',
+                default=False,
+                help=("Enable L3 on border."))
 ]
 
 
