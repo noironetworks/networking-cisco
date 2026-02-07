@@ -226,6 +226,117 @@ class TestNDFC(TestNDFCBase, test_plugin.Ml2PluginV2TestCase):
         }]
         self.assertEqual(detach_payload, expected_payload)
 
+    def test_create_attach_payload_with_vpc_peer(self):
+        vrf_name = 'test_vrf'
+        network_name = 'test_network'
+        vlan = '100'
+
+        collated_attach = {
+            'leaf1': {
+                'interfaces': ['eth1'],
+                'peer_serial': 'leaf2'
+            }
+        }
+
+        legacy_payload = self.ndfc_instance._create_attach_payload(
+            collated_attach, vrf_name, network_name, vlan)
+
+        self.assertEqual(len(legacy_payload), 1)
+        self.assertEqual(legacy_payload[0]['networkName'], network_name)
+        lan_list = legacy_payload[0]['lanAttachList']
+        self.assertEqual(len(lan_list), 2)
+        snums = {entry['serialNumber'] for entry in lan_list}
+        self.assertEqual(snums, {'leaf1', 'leaf2'})
+        peer_entries = [e for e in lan_list if e['serialNumber'] == 'leaf2']
+        self.assertEqual(len(peer_entries), 1)
+        peer_entry = peer_entries[0]
+        self.assertIsNone(peer_entry.get('switchPorts'))
+        self.assertIsNone(peer_entry.get('torPorts'))
+
+        self.ndfc_instance.ndfc_obj.nd_new_version = True
+        v2_payload = self.ndfc_instance._create_attach_payload_v2(
+            collated_attach, vrf_name, network_name, vlan)
+
+        attachments = v2_payload['attachments']
+        self.assertEqual(len(attachments), 2)
+        switch_ids = {a['switchId'] for a in attachments}
+        self.assertEqual(switch_ids, {'leaf1', 'leaf2'})
+        peer_attachments = [a for a in attachments if a['switchId'] == 'leaf2']
+        self.assertEqual(len(peer_attachments), 1)
+        self.assertEqual(peer_attachments[0]['interfaces'], [])
+
+    def test_create_detach_payload_with_vpc_peer(self):
+        vrf_name = 'test_vrf'
+        network_name = 'test_network'
+        vlan = '100'
+
+        collated_attach = {
+            'leaf1': {
+                'interfaces': ['eth1'],
+                'peer_serial': 'leaf2'
+            }
+        }
+
+        leaf_attachments = {
+            'leaf1': {
+                'interfaces': ['eth1']
+            }
+        }
+
+        detach_payload = self.ndfc_instance._create_detach_payload(
+            leaf_attachments, collated_attach, vrf_name, network_name, vlan)
+
+        self.assertEqual(len(detach_payload), 1)
+        self.assertEqual(detach_payload[0]['networkName'], network_name)
+        lan_list = detach_payload[0]['lanAttachList']
+
+        self.assertEqual(len(lan_list), 2)
+        snums = {entry['serialNumber'] for entry in lan_list}
+        self.assertEqual(snums, {'leaf1', 'leaf2'})
+
+        leaf1_entries = [e for e in lan_list if e['serialNumber'] == 'leaf1']
+        self.assertEqual(len(leaf1_entries), 1)
+        self.assertEqual(leaf1_entries[0]['detachSwitchPorts'], 'eth1')
+
+        peer_entries = [e for e in lan_list if e['serialNumber'] == 'leaf2']
+        self.assertEqual(len(peer_entries), 1)
+        peer_entry = peer_entries[0]
+        self.assertEqual(peer_entry.get('detachSwitchPorts'), '')
+        self.assertIsNone(peer_entry.get('switchPorts'))
+        self.assertIsNone(peer_entry.get('torPorts'))
+        self.assertFalse(peer_entry['deployment'])
+
+    def test_create_detach_payload_with_vpc_peer_v2(self):
+        vrf_name = 'test_vrf'
+        network_name = 'test_network'
+        vlan = '100'
+
+        collated_attach = {
+            'leaf1': {
+                'interfaces': ['eth1'],
+                'peer_serial': 'leaf2'
+            }
+        }
+
+        leaf_attachments = {
+            'leaf1': {
+                'interfaces': ['eth1']
+            }
+        }
+
+        self.ndfc_instance.ndfc_obj.nd_new_version = True
+        detach_payload_v2 = self.ndfc_instance._create_detach_payload_v2(
+            leaf_attachments, collated_attach, vrf_name, network_name, vlan)
+
+        attachments = detach_payload_v2['attachments']
+        self.assertEqual(len(attachments), 2)
+        switch_ids = {a['switchId'] for a in attachments}
+        self.assertEqual(switch_ids, {'leaf1', 'leaf2'})
+
+        for att in attachments:
+            self.assertFalse(att['attach'])
+            self.assertEqual(att['interfaces'], [])
+
     def test_merge_attachments(self):
         existing_attachments = {
             'leaf1': {

@@ -91,6 +91,10 @@ class NdfcHelper:
             "rest/interface/detail/filter?serialNumber=")
         self._interface_url_v2 = "api/v1/manage/fabrics/%s/" + (
             "interfacesSummary?switchId=%s&interfaceName=%s")
+        self._vpc_pairs_url = (
+            "appcenter/cisco/ndfc/api/v1/lan-fabric/rest/" +
+            "vpcpair?fabricName=%s")
+        self._vpc_pairs_url_v2 = "api/v1/manage/fabrics/%s/vpcPairs"
         self._topology_url = "appcenter/cisco/ndfc/api/v1/lan-fabric/" + (
             "rest/topology/topologydataforvmm?serialNumbers=")
         self._topology_url_v2 = "/appcenter/cisco/ndfc/api/v1/lan-fabric/" + (
@@ -1015,3 +1019,110 @@ class NdfcHelper:
         except Exception as exc:
             LOG.error("Exception in get_po, %(exc)s", {'exc': exc})
         return po
+
+    @http_exc_handler
+    def _get_vpc_pair(self, fabric, switch_id):
+        if self.nd_new_version:
+            vpc_pairs_path = self._vpc_pairs_url_v2 % fabric
+        else:
+            vpc_pairs_path = self._vpc_pairs_url % fabric
+
+        url = self._build_url(vpc_pairs_path)
+        res = requests.get(url, headers=self._req_headers,
+                           timeout=self._timeout_resp, verify=False)
+        LOG.debug("URL for get vpc pair is %s, res %s", url, res)
+        if not res:
+            return None
+        if res.status_code == requests.codes.not_found:
+            LOG.debug("No vPC pair found for switch %s in fabric %s",
+                      switch_id, fabric)
+            return None
+        if res.status_code not in self._resp_ok:
+            LOG.error("invalid result for get_vpc_pair status %(status)s",
+                      {'status': res.status_code})
+            return None
+        if self._response_body_indicates_failure(res, '_get_vpc_pair'):
+            return None
+
+        data = res.json() or {}
+
+        peer_serial = None
+
+        if self.nd_new_version:
+            pairs = data.get('vpcPairs', [])
+            for pair in pairs:
+                p1 = pair.get('peer1SwitchId')
+                p2 = pair.get('peer2SwitchId')
+                if switch_id == p1 and p2:
+                    peer_serial = p2
+                    break
+                if switch_id == p2 and p1:
+                    peer_serial = p1
+                    break
+        else:
+            pairs = data if isinstance(data, list) else []
+            for pair in pairs:
+                p1 = pair.get('peerOneId')
+                p2 = pair.get('peerTwoId')
+                if not p1 or not p2:
+                    details1 = pair.get('peerOneSwitchDetails', {}) or {}
+                    details2 = pair.get('peerTwoSwitchDetails', {}) or {}
+                    p1 = p1 or details1.get('serialNumber')
+                    p2 = p2 or details2.get('serialNumber')
+
+                if switch_id == p1 and p2:
+                    peer_serial = p2
+                    break
+                if switch_id == p2 and p1:
+                    peer_serial = p1
+                    break
+
+        if not peer_serial:
+            LOG.debug("Could not determine vPC peer for switch %s "
+                    "from vpc pairs API in fabric %s", switch_id, fabric)
+            return None
+
+        return {'peerSwitchId': peer_serial}
+
+    def get_vpc_peer(self, fabric, switch_id):
+        '''
+        Top level function for retrieving vPC peer switch ID for a switch.
+        '''
+        peer_serial = None
+        try:
+            ret = self.login()
+            if not ret:
+                LOG.error("Failed to login to NDFC while getting vPC peer")
+                return None
+            data = self._get_vpc_pair(fabric, switch_id)
+            if data is not None:
+                peer_serial = data.get('peerSwitchId')
+            self.logout()
+        except Exception as exc:
+            LOG.error("Exception in get_vpc_peer, %(exc)s", {'exc': exc})
+        return peer_serial
+
+    def build_vpc_peer_map(self, fabric):
+        '''
+        Build a map of switch serial number to its vPC peer serial number.
+        '''
+        peer_map = {}
+        try:
+            switches = self.get_switches(fabric)
+            for sw_ip, sw_info in switches.items():
+                if not sw_info or sw_info.get('role') != 'leaf':
+                    continue
+                leaf_serial = sw_info.get('serial')
+                if not leaf_serial or leaf_serial in peer_map:
+                    continue
+                peer_serial = self.get_vpc_peer(fabric, leaf_serial)
+                if not peer_serial:
+                    continue
+                peer_map[leaf_serial] = peer_serial
+                if peer_serial not in peer_map:
+                    peer_map[peer_serial] = leaf_serial
+        except Exception as exc:
+            LOG.error("Exception while building vPC peer map, %(exc)s",
+                      {'exc': exc})
+        LOG.debug("vPC peer map for fabric %s: %s", fabric, peer_map)
+        return peer_map
