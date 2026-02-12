@@ -993,9 +993,9 @@ class NdfcHelper:
                     "ethernet"):
                     LOG.debug("Intf: %s", intf)
                     po = intf.get('channelId')
-                    if po == -1:
+                    if po is None:
                         return ""
-                    return po
+                    return str(po)
 
         for intf in data:
             # This needs to be fixed to only check for type port-channel
