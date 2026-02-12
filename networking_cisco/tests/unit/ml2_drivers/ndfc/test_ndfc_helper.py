@@ -948,7 +948,7 @@ class TestNDFCHelper(TestNDFCHelperBase, test_plugin.Ml2PluginV2TestCase):
             {
                 'ifName': 'Ethernet1/1',
                 'ifType': 'INTERFACE_ETHERNET',
-                'channelIdStr': 'Port-channel10'
+                'channelIdStr': '10'
             }
         ]
         mock_get.return_value = mock_get_response
@@ -959,7 +959,7 @@ class TestNDFCHelper(TestNDFCHelperBase, test_plugin.Ml2PluginV2TestCase):
 
         result = self.helper.get_po(fabric, snum, ifname)
 
-        expected_result = 'Port-channel10'
+        expected_result = '10'
         self.assertEqual(result, expected_result)
 
     @mock.patch('requests.get')
@@ -985,7 +985,56 @@ class TestNDFCHelper(TestNDFCHelperBase, test_plugin.Ml2PluginV2TestCase):
 
         result = self.helper.get_po(fabric, snum, ifname)
 
-        expected_result = 10
+        expected_result = '10'
+        self.assertEqual(result, expected_result)
+
+    @mock.patch('requests.get')
+    @mock.patch('requests.post')
+    def test_get_po_channelidstr_null(self, mock_post, mock_get):
+        mock_get_response = mock.MagicMock()
+        mock_get_response.status_code = 200
+        mock_get_response.json.return_value = [
+            {
+                'ifName': 'Ethernet1/10',
+                'ifType': 'INTERFACE_ETHERNET',
+                'channelIdStr': None,
+            }
+        ]
+        mock_get.return_value = mock_get_response
+
+        fabric = 'kkf5'
+        snum = 'FDO23390CUU'
+        ifname = 'Ethernet1/10'
+
+        result = self.helper.get_po(fabric, snum, ifname)
+
+        expected_result = ''
+        self.assertEqual(result, expected_result)
+
+    @mock.patch('requests.get')
+    @mock.patch('requests.post')
+    def test_get_po_v2_channelid_absent(self, mock_post, mock_get):
+        mock_get_response = mock.MagicMock()
+        mock_get_response.status_code = 200
+        mock_get_response.json.return_value = {
+            'interfaces': [
+                {
+                    'interfaceName': 'Ethernet1/10',
+                    'interfaceType': 'ethernet',
+                    # intentionally no 'channelId' field
+                }
+            ]
+        }
+        mock_get.return_value = mock_get_response
+
+        fabric = 'kkf5'
+        snum = 'FDO23390CUU'
+        ifname = 'Ethernet1/10'
+        self.helper.nd_new_version = True
+
+        result = self.helper.get_po(fabric, snum, ifname)
+
+        expected_result = ''
         self.assertEqual(result, expected_result)
 
     @mock.patch('requests.post')
