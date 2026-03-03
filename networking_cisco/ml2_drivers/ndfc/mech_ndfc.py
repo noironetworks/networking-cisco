@@ -23,8 +23,10 @@ from networking_cisco.ml2_drivers.ndfc import cache
 from networking_cisco.ml2_drivers.ndfc import config
 from networking_cisco.ml2_drivers.ndfc import db as nc_ml2_db
 from networking_cisco.ml2_drivers.ndfc.ndfc import Ndfc
+from networking_cisco.ml2_drivers.ovn_hpb import mech_ovn_hpb
 from networking_cisco.rpc import topo_rpc_handler
 from neutron.db import models_v2
+from neutron.plugins.ml2.drivers.ovn.mech_driver import mech_driver as ovn_mech
 from neutron.plugins.ml2 import models
 from neutron_lib.api.definitions import portbindings
 from neutron_lib import constants
@@ -46,6 +48,8 @@ from sqlalchemy import func
 
 
 LOG = log.getLogger(__name__)
+
+ovn_mech.OVNMechanismDriver = mech_ovn_hpb.OVNHPBMechanismDriver
 
 BAKERY = baked.bakery(500, _size_alert=lambda c: LOG.warning(
     "sqlalchemy baked query cache size exceeded in %s", __name__))
@@ -530,9 +534,10 @@ class NDFCMechanismDriver(api.MechanismDriver,
         tenant_id = network['tenant_id']
         vlan_id = network['provider:segmentation_id']
         physical_network = network['provider:physical_network']
+        network_type = network['provider:network_type']
         LOG.info("create_network_postcommit: %s", network)
 
-        if physical_network:
+        if physical_network and network_type == constants.TYPE_VLAN:
             self.create_network(tenant_id, network_name,
                     vlan_id, physical_network)
 
@@ -542,9 +547,10 @@ class NDFCMechanismDriver(api.MechanismDriver,
         network_name = network['name']
         vlan_id = network['provider:segmentation_id']
         physical_network = network['provider:physical_network']
+        network_type = network['provider:network_type']
         LOG.debug("delete_network_postcommit: %s", network)
 
-        if physical_network:
+        if physical_network and network_type == constants.TYPE_VLAN:
             self.delete_network(network_name, vlan_id, physical_network)
 
     def create_subnet_postcommit(self, context):
@@ -558,11 +564,12 @@ class NDFCMechanismDriver(api.MechanismDriver,
         network_name = network_db['name']
         vlan_id = network_db['provider:segmentation_id']
         physical_network = network_db['provider:physical_network']
+        network_type = network_db['provider:network_type']
         gateway_ip = subnet['gateway_ip']
         prefix_len = ipaddress.ip_network(subnet['cidr']).prefixlen
         gateway = str(gateway_ip) + "/" + str(prefix_len)
 
-        if physical_network:
+        if physical_network and network_type == constants.TYPE_VLAN:
             self.update_network(tenant_id, network_name,
                     vlan_id, gateway, physical_network)
 
@@ -579,11 +586,12 @@ class NDFCMechanismDriver(api.MechanismDriver,
             network_name = network_db['name']
             vlan_id = network_db['provider:segmentation_id']
             physical_network = network_db['provider:physical_network']
+            network_type = network_db['provider:network_type']
             gateway_ip = subnet['gateway_ip']
             prefix_len = ipaddress.ip_network(subnet['cidr']).prefixlen
             gateway = str(gateway_ip) + "/" + str(prefix_len)
 
-            if physical_network:
+            if physical_network and network_type == constants.TYPE_VLAN:
                 self.update_network(tenant_id, network_name,
                         vlan_id, gateway, physical_network)
 
@@ -598,9 +606,10 @@ class NDFCMechanismDriver(api.MechanismDriver,
         network_name = network_db['name']
         vlan_id = network_db['provider:segmentation_id']
         physical_network = network_db['provider:physical_network']
+        network_type = network_db['provider:network_type']
         gateway = ''
 
-        if physical_network:
+        if physical_network and network_type == constants.TYPE_VLAN:
             self.update_network(tenant_id, network_name,
                     vlan_id, gateway, physical_network)
 
