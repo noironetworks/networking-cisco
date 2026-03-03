@@ -24,3 +24,4 @@ VRF_VLAN_ID = 1234
 MTU = 9216
 TEMPLATE_TYPE = 'Default_Network_Universal'
 DOT1Q_VLAN = 1
+TYPE_ND = 'nd'
