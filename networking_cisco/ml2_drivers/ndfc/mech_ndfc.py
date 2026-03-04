@@ -456,30 +456,25 @@ class NDFCMechanismDriver(api.MechanismDriver,
         else:
             LOG.debug("VRF name for tenant %s not found", tenant_id)
 
-    def attach_network(self, context, host):
-        network = context.network.current
-
+    def attach_network(self, context, host, network):
         topology_result = self.get_topology(context, network, host)
         if topology_result:
             self.project_details_cache.ensure_project(network['tenant_id'])
             prj_details = self.project_details_cache.get_project_details(
                 network['tenant_id'])
             vrf_name = prj_details[0]
-            if network['provider:network_type'] == constants.TYPE_VLAN:
-                vlan_id = network['provider:segmentation_id']
-                res = self.ndfc.attach_network(vrf_name, network['name'],
-                    vlan_id, topology_result)
-                if res:
-                    self.allocate_vrf_segment(context, vrf_name)
-                    LOG.info("NDFC Network %s attached successfully",
-                        network['name'])
-                else:
-                    LOG.error("NDFC Network %s failed to attach",
-                        network['name'])
+            vlan_id = network['provider:segmentation_id']
+            res = self.ndfc.attach_network(vrf_name, network['name'],
+                vlan_id, topology_result)
+            if res:
+                self.allocate_vrf_segment(context, vrf_name)
+                LOG.info("NDFC Network %s attached successfully",
+                    network['name'])
+            else:
+                LOG.error("NDFC Network %s failed to attach",
+                    network['name'])
 
-    def detach_network(self, context, host):
-        network = context.network.current
-
+    def detach_network(self, context, host, network):
         topology_result = self.get_topology(context, network,
                 host, detach=True)
         if topology_result:
@@ -487,16 +482,15 @@ class NDFCMechanismDriver(api.MechanismDriver,
             prj_details = self.project_details_cache.get_project_details(
                 network['tenant_id'])
             vrf_name = prj_details[0]
-            if network['provider:network_type'] == constants.TYPE_VLAN:
-                vlan_id = network['provider:segmentation_id']
-                res = self.ndfc.detach_network(vrf_name, network['name'],
-                    vlan_id, topology_result)
-                if res:
-                    LOG.info("NDFC Network %s detached successfully",
-                        network['name'])
-                else:
-                    LOG.error("NDFC Network %s failed to detach",
-                        network['name'])
+            vlan_id = network['provider:segmentation_id']
+            res = self.ndfc.detach_network(vrf_name, network['name'],
+                vlan_id, topology_result)
+            if res:
+                LOG.info("NDFC Network %s detached successfully",
+                    network['name'])
+            else:
+                LOG.error("NDFC Network %s failed to detach",
+                    network['name'])
 
     def update_network(self, tenant_id, network_name, vlan_id,
             gateway_ip, physical_network):
@@ -537,7 +531,9 @@ class NDFCMechanismDriver(api.MechanismDriver,
         network_type = network['provider:network_type']
         LOG.info("create_network_postcommit: %s", network)
 
-        if physical_network and network_type == constants.TYPE_VLAN:
+        if (physical_network and
+                network_type == constants.TYPE_VLAN and
+                cfg.CONF.ndfc.vlan_hardware_l3):
             self.create_network(tenant_id, network_name,
                     vlan_id, physical_network)
 
@@ -550,7 +546,9 @@ class NDFCMechanismDriver(api.MechanismDriver,
         network_type = network['provider:network_type']
         LOG.debug("delete_network_postcommit: %s", network)
 
-        if physical_network and network_type == constants.TYPE_VLAN:
+        if (physical_network and
+                network_type == constants.TYPE_VLAN and
+                cfg.CONF.ndfc.vlan_hardware_l3):
             self.delete_network(network_name, vlan_id, physical_network)
 
     def create_subnet_postcommit(self, context):
@@ -569,7 +567,9 @@ class NDFCMechanismDriver(api.MechanismDriver,
         prefix_len = ipaddress.ip_network(subnet['cidr']).prefixlen
         gateway = str(gateway_ip) + "/" + str(prefix_len)
 
-        if physical_network and network_type == constants.TYPE_VLAN:
+        if (physical_network and
+                network_type == constants.TYPE_VLAN and
+                cfg.CONF.ndfc.vlan_hardware_l3):
             self.update_network(tenant_id, network_name,
                     vlan_id, gateway, physical_network)
 
@@ -591,7 +591,9 @@ class NDFCMechanismDriver(api.MechanismDriver,
             prefix_len = ipaddress.ip_network(subnet['cidr']).prefixlen
             gateway = str(gateway_ip) + "/" + str(prefix_len)
 
-            if physical_network and network_type == constants.TYPE_VLAN:
+            if (physical_network and
+                    network_type == constants.TYPE_VLAN and
+                    cfg.CONF.ndfc.vlan_hardware_l3):
                 self.update_network(tenant_id, network_name,
                         vlan_id, gateway, physical_network)
 
@@ -609,27 +611,44 @@ class NDFCMechanismDriver(api.MechanismDriver,
         network_type = network_db['provider:network_type']
         gateway = ''
 
-        if physical_network and network_type == constants.TYPE_VLAN:
+        if (physical_network and
+                network_type == constants.TYPE_VLAN and
+                cfg.CONF.ndfc.vlan_hardware_l3):
             self.update_network(tenant_id, network_name,
                     vlan_id, gateway, physical_network)
 
     def update_port_postcommit(self, context):
         old_port = context.original
         port = context.current
+        network = context.network.current
+        physical_network = network['provider:physical_network']
+        network_type = network['provider:network_type']
 
-        if context.original_host and context.original_host != context.host:
-            self.detach_network(context, context.original_host)
+        if (physical_network and
+                network_type == constants.TYPE_VLAN and
+                cfg.CONF.ndfc.vlan_hardware_l3):
 
-        if (old_port.get(
-            portbindings.VIF_TYPE) == portbindings.VIF_TYPE_UNBOUND and
-                self._is_port_bound(port)):
-            self.attach_network(context, context.host)
+            if (context.original_host and
+                    context.original_host != context.host):
+                self.detach_network(context, context.original_host, network)
+
+            if (old_port.get(
+                portbindings.VIF_TYPE) == portbindings.VIF_TYPE_UNBOUND and
+                    self._is_port_bound(port)):
+                self.attach_network(context, context.host, network)
 
     def delete_port_postcommit(self, context):
         port = context.current
+        network = context.network.current
+        physical_network = network['provider:physical_network']
+        network_type = network['provider:network_type']
 
-        if self._is_port_bound(port):
-            self.detach_network(context, context.host)
+        if (physical_network and
+                network_type == constants.TYPE_VLAN and
+                cfg.CONF.ndfc.vlan_hardware_l3):
+
+            if self._is_port_bound(port):
+                self.detach_network(context, context.host, network)
 
     # Topology RPC method handler
     def update_link(self, context, host, interface, mac,
