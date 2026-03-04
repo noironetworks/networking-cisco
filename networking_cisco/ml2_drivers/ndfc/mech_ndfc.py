@@ -21,11 +21,13 @@ import time
 
 from networking_cisco.ml2_drivers.ndfc import cache
 from networking_cisco.ml2_drivers.ndfc import config
+from networking_cisco.ml2_drivers.ndfc import constants as const
 from networking_cisco.ml2_drivers.ndfc import db as nc_ml2_db
 from networking_cisco.ml2_drivers.ndfc.ndfc import Ndfc
 from networking_cisco.ml2_drivers.ovn_hpb import mech_ovn_hpb
 from networking_cisco.rpc import topo_rpc_handler
 from neutron.db import models_v2
+from neutron.db import segments_db
 from neutron.plugins.ml2.drivers.ovn.mech_driver import mech_driver as ovn_mech
 from neutron.plugins.ml2 import models
 from neutron_lib.api.definitions import portbindings
@@ -36,6 +38,7 @@ from neutron_lib.plugins import directory
 from neutron_lib.plugins.ml2 import api
 from neutron_lib.plugins import utils as plugin_utils
 from neutron_lib import rpc as n_rpc
+from neutron_lib.utils import helpers as lib_helpers
 from oslo_config import cfg
 from oslo_log import log
 import oslo_messaging
@@ -252,6 +255,108 @@ class NDFCMechanismDriver(api.MechanismDriver,
                 network_id)
         return network_db
 
+    def _select_physnet_from_bridge_mappings(self, bm_str, requested_physnet,
+                                             host):
+        if not bm_str:
+            LOG.warning("OVN Controller agent on host %s has no "
+                        "bridge_mappings; using requested physnet %s",
+                        host, requested_physnet)
+            return requested_physnet
+
+        try:
+            mapping = lib_helpers.parse_mappings(bm_str.split(','))
+        except ValueError as exc:
+            LOG.warning("Invalid bridge_mappings '%s' for host %s: %s; "
+                        "using requested physnet %s",
+                        bm_str, host, exc, requested_physnet)
+            return requested_physnet
+
+        if not mapping:
+            LOG.warning("OVN Controller agent on host %s has no "
+                        "bridge_mappings; using requested physnet %s",
+                        host, requested_physnet)
+            return requested_physnet
+
+        if requested_physnet and requested_physnet in mapping:
+            return requested_physnet
+
+        chosen = sorted(mapping.keys())[0]
+        LOG.debug("Selected physnet %s for host %s from bridge_mappings %s",
+                  chosen, host, bm_str)
+        return chosen
+
+    def _get_host_physnet_from_context(self, context, requested_physnet=None):
+        agents = context.host_agents('OVN Controller agent') or []
+        if not agents:
+            LOG.warning("No OVN Controller agent found for host %s; "
+                        "using requested physnet %s",
+                        context.host, requested_physnet)
+            return requested_physnet
+
+        for agent in agents:
+            if not agent.get('alive'):
+                continue
+            cfg = agent.get('configurations') or {}
+            bm_str = (cfg.get('bridge_mappings') or
+                      cfg.get('bridge-mappings') or '')
+            # Note: we intentionally only attempt the first bridge mapping
+            # (or requested_physnet if present), consistent with other ML2
+            # mechanism drivers that pick a single physnet per host.
+            return self._select_physnet_from_bridge_mappings(
+                bm_str, requested_physnet, context.host)
+
+        LOG.warning("All OVN Controller agents for host %s are down; "
+                    "using requested physnet %s",
+                    context.host, requested_physnet)
+        return requested_physnet
+
+    def _get_host_physnet(self, plugin_context, host, requested_physnet=None):
+        core_plugin = directory.get_plugin()
+        if not core_plugin or not hasattr(core_plugin, 'get_agents'):
+            return requested_physnet
+
+        filters = {
+            'agent_type': ['OVN Controller agent'],
+            'host': [host],
+        }
+        try:
+            agents = core_plugin.get_agents(plugin_context, filters=filters)
+        except Exception:
+            return requested_physnet
+
+        if not agents:
+            return requested_physnet
+
+        agent = agents[0]
+        cfg = agent.get('configurations') or {}
+        bm_str = cfg.get('bridge-mappings') or ''
+        mapping = {}
+        for item in bm_str.split(','):
+            item = item.strip()
+            if not item or ':' not in item:
+                continue
+            phys, br = item.split(':', 1)
+            mapping[phys.strip()] = br.strip()
+
+        if not mapping:
+            return requested_physnet
+
+        if requested_physnet and requested_physnet in mapping:
+            return requested_physnet
+
+        return sorted(mapping.keys())[0]
+
+    def _get_nd_hpb_vlan(self, context, physnet):
+        network_id = context.current['network_id']
+        plugin_context = context.plugin_context
+        dynamic_segment = segments_db.get_dynamic_segment(
+            plugin_context, network_id, physnet)
+        if not dynamic_segment:
+            LOG.error("No dynamic VLAN segment found for ND network %s on "
+                      "physnet %s", network_id, physnet)
+            return None
+        return dynamic_segment.get(api.SEGMENTATION_ID)
+
     def _get_topology(self, session, host):
         topology = {}
         vpc_peer_map = self.vpc_peer_map or {}
@@ -456,14 +561,15 @@ class NDFCMechanismDriver(api.MechanismDriver,
         else:
             LOG.debug("VRF name for tenant %s not found", tenant_id)
 
-    def attach_network(self, context, host, network):
+    def attach_network(self, context, host, network, vlan_id=None):
         topology_result = self.get_topology(context, network, host)
         if topology_result:
             self.project_details_cache.ensure_project(network['tenant_id'])
             prj_details = self.project_details_cache.get_project_details(
                 network['tenant_id'])
             vrf_name = prj_details[0]
-            vlan_id = network['provider:segmentation_id']
+            if vlan_id is None:
+                vlan_id = network.get('provider:segmentation_id')
             res = self.ndfc.attach_network(vrf_name, network['name'],
                 vlan_id, topology_result)
             if res:
@@ -474,7 +580,7 @@ class NDFCMechanismDriver(api.MechanismDriver,
                 LOG.error("NDFC Network %s failed to attach",
                     network['name'])
 
-    def detach_network(self, context, host, network):
+    def detach_network(self, context, host, network, vlan_id=None):
         topology_result = self.get_topology(context, network,
                 host, detach=True)
         if topology_result:
@@ -482,7 +588,8 @@ class NDFCMechanismDriver(api.MechanismDriver,
             prj_details = self.project_details_cache.get_project_details(
                 network['tenant_id'])
             vrf_name = prj_details[0]
-            vlan_id = network['provider:segmentation_id']
+            if vlan_id is None:
+                vlan_id = network.get('provider:segmentation_id')
             res = self.ndfc.detach_network(vrf_name, network['name'],
                 vlan_id, topology_result)
             if res:
@@ -537,6 +644,10 @@ class NDFCMechanismDriver(api.MechanismDriver,
             self.create_network(tenant_id, network_name,
                     vlan_id, physical_network)
 
+        elif physical_network and network_type == const.TYPE_ND:
+            self.create_network(tenant_id, network_name,
+                                None, physical_network)
+
     def delete_network_postcommit(self, context):
         network = context.current
 
@@ -550,6 +661,9 @@ class NDFCMechanismDriver(api.MechanismDriver,
                 network_type == constants.TYPE_VLAN and
                 cfg.CONF.ndfc.vlan_hardware_l3):
             self.delete_network(network_name, vlan_id, physical_network)
+
+        elif physical_network and network_type == const.TYPE_ND:
+            self.delete_network(network_name, None, physical_network)
 
     def create_subnet_postcommit(self, context):
         subnet = context.current
@@ -572,6 +686,10 @@ class NDFCMechanismDriver(api.MechanismDriver,
                 cfg.CONF.ndfc.vlan_hardware_l3):
             self.update_network(tenant_id, network_name,
                     vlan_id, gateway, physical_network)
+
+        elif physical_network and network_type == const.TYPE_ND:
+            self.update_network(tenant_id, network_name,
+                                None, gateway, physical_network)
 
     def update_subnet_postcommit(self, context):
         subnet = context.current
@@ -597,6 +715,10 @@ class NDFCMechanismDriver(api.MechanismDriver,
                 self.update_network(tenant_id, network_name,
                         vlan_id, gateway, physical_network)
 
+            elif physical_network and network_type == const.TYPE_ND:
+                self.update_network(tenant_id, network_name,
+                                    None, gateway, physical_network)
+
     def delete_subnet_postcommit(self, context):
         subnet = context.current
 
@@ -617,6 +739,10 @@ class NDFCMechanismDriver(api.MechanismDriver,
             self.update_network(tenant_id, network_name,
                     vlan_id, gateway, physical_network)
 
+        elif physical_network and network_type == const.TYPE_ND:
+            self.update_network(tenant_id, network_name,
+                                None, gateway, physical_network)
+
     def update_port_postcommit(self, context):
         old_port = context.original
         port = context.current
@@ -628,8 +754,7 @@ class NDFCMechanismDriver(api.MechanismDriver,
                 network_type == constants.TYPE_VLAN and
                 cfg.CONF.ndfc.vlan_hardware_l3):
 
-            if (context.original_host and
-                    context.original_host != context.host):
+            if context.original_host and context.original_host != context.host:
                 self.detach_network(context, context.original_host, network)
 
             if (old_port.get(
@@ -637,18 +762,89 @@ class NDFCMechanismDriver(api.MechanismDriver,
                     self._is_port_bound(port)):
                 self.attach_network(context, context.host, network)
 
+        if physical_network and network_type == const.TYPE_ND:
+
+            if context.original_host and context.original_host != context.host:
+                orig_physnet = self._get_host_physnet(
+                    context._plugin_context, context.original_host,
+                    physical_network)
+                vlan_id = self._get_nd_hpb_vlan(context, orig_physnet)
+                if vlan_id is not None:
+                    self.detach_network(context, context.original_host,
+                                        network, vlan_id=vlan_id)
+
+            if (old_port.get(
+                portbindings.VIF_TYPE) == portbindings.VIF_TYPE_UNBOUND and
+                    self._is_port_bound(port)):
+                host_physnet = self._get_host_physnet_from_context(
+                    context, physical_network)
+                vlan_id = self._get_nd_hpb_vlan(context, host_physnet)
+                if vlan_id is not None:
+                    self.attach_network(context, context.host, network,
+                                        vlan_id=vlan_id)
+
     def delete_port_postcommit(self, context):
         port = context.current
-        network = context.network.current
-        physical_network = network['provider:physical_network']
-        network_type = network['provider:network_type']
 
-        if (physical_network and
-                network_type == constants.TYPE_VLAN and
-                cfg.CONF.ndfc.vlan_hardware_l3):
+        if self._is_port_bound(port):
+            network = context.network.current
+            physical_network = network['provider:physical_network']
+            network_type = network['provider:network_type']
 
-            if self._is_port_bound(port):
+            if (physical_network and
+                    network_type == constants.TYPE_VLAN and
+                    cfg.CONF.ndfc.vlan_hardware_l3):
                 self.detach_network(context, context.host, network)
+
+            if physical_network and network_type == const.TYPE_ND:
+                host_physnet = self._get_host_physnet_from_context(
+                    context, physical_network)
+                vlan_id = self._get_nd_hpb_vlan(context, host_physnet)
+                if vlan_id is not None:
+                    self.detach_network(context, context.host, network,
+                                        vlan_id=vlan_id)
+
+    def bind_port(self, context):
+        LOG.debug("Attempting to bind port %(port)s on network %(network)s",
+                  {'port': context.current['id'],
+                   'network': context.network.current['id']})
+
+        segments_to_bind = context.segments_to_bind or []
+
+        nd_segment = None
+        for segment in segments_to_bind:
+            if segment.get(api.NETWORK_TYPE) == const.TYPE_ND:
+                nd_segment = segment
+                break
+
+        if not nd_segment:
+            LOG.debug("No ND segment found for port %(port)s on network "
+                      "%(network)s; skipping NDFC HPB",
+                      {'port': context.current['id'],
+                       'network': context.network.current['id']})
+            return
+
+        network = context.network.current
+        net_physnet = network.get('provider:physical_network')
+        if not net_physnet:
+            LOG.warning("ND network %s missing provider:physical_network; "
+                        "skipping HPB bind_port", network['id'])
+            return
+
+        physnet = self._get_host_physnet_from_context(context, net_physnet)
+
+        vlan_req = {
+            api.NETWORK_TYPE: constants.TYPE_VLAN,
+            api.PHYSICAL_NETWORK: physnet,
+        }
+
+        dynamic_segment = context.allocate_dynamic_segment(vlan_req)
+        if not dynamic_segment:
+            LOG.error("Failed to allocate dynamic VLAN segment for ND "
+                      "network %s on physnet %s", network['id'], physnet)
+            return
+
+        context.continue_binding(nd_segment[api.ID], [dynamic_segment])
 
     # Topology RPC method handler
     def update_link(self, context, host, interface, mac,
