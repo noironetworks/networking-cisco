@@ -124,11 +124,15 @@ class Ndfc:
                 'suppressArp': False, 'dhcpServerAddr1': '',
                 'dhcpServerAddr2': '', 'loopbackId': '', 'vrfDhcp': '',
                 'mtu': mtu, 'vrfName': vrf_name, 'networkName': network_name,
-                'isLayer2Only': False, 'nveId': nve_id, 'vlanId': vlan,
+                'isLayer2Only': False, 'nveId': nve_id,
                 'vlanName': '', 'secondaryGW1': '', 'secondaryGW2': '',
                 'trmEnabled': '', 'rtBothAuto': '',
                 'enableL3OnBorder': self.enable_l3_on_border,
                 'tag': tag}
+
+        if vlan is not None:
+            template_config_network['vlanId'] = vlan
+
         dct = {'fabric': self.fabric, 'vrf': vrf_name,
                'networkName': network_name,
                'networkTemplateConfig': template_config_network,
@@ -140,15 +144,18 @@ class Ndfc:
         tag = constants.TAG
         mtu = constants.MTU
         template_type = constants.TEMPLATE_TYPE
-        network_id = vlan * 10
         network_config = {
             "displayName": network_name,
             "fabricName": self.fabric,
             "networkName": network_name,
-            "vlanId": vlan,
             "vrfName": vrf_name,
-            "networkId": network_id,
         }
+
+        if vlan is not None:
+            network_id = vlan * 10
+            network_config["vlanId"] = vlan
+            network_config["networkId"] = network_id
+
         network_config['networkType'] = 'vxlan'
         l2_data = {}
         l2_data['vlanName'] = ""
