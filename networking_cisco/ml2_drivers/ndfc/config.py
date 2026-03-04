@@ -56,7 +56,11 @@ ndfc_opts = [
                 help=("Force usage of old ND API.")),
     cfg.BoolOpt('enable_l3_on_border',
                 default=False,
-                help=("Enable L3 on border."))
+                help=("Enable L3 on border.")),
+    cfg.BoolOpt('vlan_hardware_l3',
+                default=True,
+                help=("Enable NDFC hardware L3 programming for VLAN "
+                      "provider networks."))
 ]
 
 

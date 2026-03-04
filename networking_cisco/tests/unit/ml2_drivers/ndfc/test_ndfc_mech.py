@@ -274,6 +274,33 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
         self.ndfc_mech.delete_port_postcommit(fake_port_context)
         mock_detach_network.assert_called_once()
 
+    def test_create_network_postcommit_vlan_hardware_l3_enabled(self):
+        ndfc_conf.cfg.CONF.set_override('vlan_hardware_l3',
+                True, group='ndfc')
+        ctx = self._create_fake_network_context(
+            constants.TYPE_VLAN, 'physnet1', 1234)
+
+        with mock.patch.object(self.ndfc_mech,
+                'create_network') as mock_create:
+            self.ndfc_mech.create_network_postcommit(ctx)
+            network = ctx.current
+            mock_create.assert_called_once_with(
+                network['tenant_id'],
+                network['name'],
+                network['provider:segmentation_id'],
+                network['provider:physical_network'])
+
+    def test_create_network_postcommit_vlan_hardware_l3_disabled(self):
+        ndfc_conf.cfg.CONF.set_override('vlan_hardware_l3',
+                False, group='ndfc')
+        ctx = self._create_fake_network_context(
+            constants.TYPE_VLAN, 'physnet1', 1234)
+
+        with mock.patch.object(self.ndfc_mech,
+                'create_network') as mock_create:
+            self.ndfc_mech.create_network_postcommit(ctx)
+            mock_create.assert_not_called()
+
     @mock.patch.object(ndfc.Ndfc, 'create_vrf')
     @mock.patch.object(ndfc.Ndfc, 'delete_vrf')
     def test_keystone_notification_endpoint(self, *args):
