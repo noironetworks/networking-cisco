@@ -16,12 +16,25 @@
 
 from networking_cisco.ml2_drivers.ndfc import constants
 from networking_cisco.ml2_drivers.ndfc.ndfc_helper import NdfcHelper
+from oslo_config import cfg
 from oslo_log import log
 from oslo_serialization import jsonutils
 
 LOG = log.getLogger(__name__)
 
 glob_nwk_map = {}
+
+
+def get_ndfc_conf():
+    ndfc_conf = cfg.CONF.ndfc
+    return Ndfc(
+        ndfc_conf.ndfc_ip,
+        ndfc_conf.user,
+        ndfc_conf.pwd,
+        ndfc_conf.fabric_name,
+        ndfc_conf.force_old_api,
+        ndfc_conf.enable_l3_on_border,
+    )
 
 
 class Ndfc:
