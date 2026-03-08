@@ -23,7 +23,7 @@ from networking_cisco.ml2_drivers.ndfc import cache
 from networking_cisco.ml2_drivers.ndfc import config
 from networking_cisco.ml2_drivers.ndfc import constants as const
 from networking_cisco.ml2_drivers.ndfc import db as nc_ml2_db
-from networking_cisco.ml2_drivers.ndfc.ndfc import Ndfc
+from networking_cisco.ml2_drivers.ndfc.ndfc import get_ndfc_conf
 from networking_cisco.ml2_drivers.ovn_hpb import mech_ovn_hpb
 from networking_cisco.rpc import topo_rpc_handler
 from neutron.db import models_v2
@@ -103,15 +103,9 @@ class NDFCMechanismDriver(api.MechanismDriver,
         self.keystone_notification_pool = (cfg.CONF.ndfc.
                                            keystone_notification_pool)
         self._setup_keystone_notification_listeners()
-        self.ndfc_ip = (cfg.CONF.ndfc.ndfc_ip)
-        self.user = (cfg.CONF.ndfc.user)
-        self.pwd = (cfg.CONF.ndfc.pwd)
         self.fabric_name = (cfg.CONF.ndfc.fabric_name)
         self.switch_sync_interval = (cfg.CONF.ndfc.switch_sync_interval)
-        self.force_old_api = (cfg.CONF.ndfc.force_old_api)
-        self.enable_l3_on_border = (cfg.CONF.ndfc.enable_l3_on_border)
-        self.ndfc = Ndfc(self.ndfc_ip, self.user, self.pwd, self.fabric_name,
-                         self.force_old_api, self.enable_l3_on_border)
+        self.ndfc = get_ndfc_conf()
         self._core_plugin = None
         self.project_details_cache = cache.ProjectDetailsCache()
         self.tenants_file = '/tmp/tenants.json'
@@ -254,6 +248,37 @@ class NDFCMechanismDriver(api.MechanismDriver,
         network_db = self.plugin.get_network(context._plugin_context,
                 network_id)
         return network_db
+
+    def _get_nd_vrf_for_subnet(self, context, subnet):
+        plugin_context = context._plugin_context
+        subnetpool_id = subnet.get('subnetpool_id')
+        if not subnetpool_id:
+            return None
+        try:
+            subnetpool = self.plugin.get_subnetpool(plugin_context,
+                                                    subnetpool_id)
+        except Exception as exc:
+            LOG.error("Failed to fetch subnetpool %s for subnet %s: %s",
+                      subnetpool_id, subnet.get('id'), exc)
+            return None
+
+        address_scope_id = subnetpool.get('address_scope_id')
+        if not address_scope_id:
+            return None
+
+        try:
+            addr_scope = self.plugin.get_address_scope(plugin_context,
+                                                       address_scope_id)
+        except Exception as exc:
+            LOG.error("Failed to fetch address scope %s for subnet %s: %s",
+                      address_scope_id, subnet.get('id'), exc)
+            return None
+
+        nd_vrf = addr_scope.get('nd-vrf-name')
+        if nd_vrf:
+            LOG.debug("Resolved ND VRF override %(vrf)s for subnet %(subnet)s",
+                      {'vrf': nd_vrf, 'subnet': subnet.get('id')})
+        return nd_vrf
 
     def _select_physnet_from_bridge_mappings(self, bm_str, requested_physnet,
                                              host):
@@ -600,16 +625,17 @@ class NDFCMechanismDriver(api.MechanismDriver,
                     network['name'])
 
     def update_network(self, tenant_id, network_name, vlan_id,
-            gateway_ip, physical_network):
+            gateway_ip, physical_network, vrf_name=None):
         self.project_details_cache.ensure_project(tenant_id)
         prj_details = self.project_details_cache.get_project_details(tenant_id)
-        vrf_name = prj_details[0]
+        if vrf_name is None:
+            vrf_name = prj_details[0]
         if vrf_name:
             LOG.debug("Update NDFC network with network name: %s "
-                    "vrf name: %s vlan id: %s physical network %s "
-                    "with gateway ip: %s",
-                    network_name, vrf_name, vlan_id,
-                    physical_network, gateway_ip)
+                    "vlan id: %s physical network %s with "
+                    "vrf name: %s and  gateway ip: %s",
+                    network_name, vlan_id, physical_network,
+                    vrf_name, gateway_ip)
             res = self.ndfc.update_network(vrf_name, network_name,
                     vlan_id, gateway_ip, physical_network)
             if res:
@@ -680,16 +706,19 @@ class NDFCMechanismDriver(api.MechanismDriver,
         gateway_ip = subnet['gateway_ip']
         prefix_len = ipaddress.ip_network(subnet['cidr']).prefixlen
         gateway = str(gateway_ip) + "/" + str(prefix_len)
+        nd_vrf = self._get_nd_vrf_for_subnet(context, subnet)
 
         if (physical_network and
                 network_type == constants.TYPE_VLAN and
                 cfg.CONF.ndfc.vlan_hardware_l3):
             self.update_network(tenant_id, network_name,
-                    vlan_id, gateway, physical_network)
+                    vlan_id, gateway, physical_network,
+                    vrf_name=nd_vrf)
 
         elif physical_network and network_type == const.TYPE_ND:
             self.update_network(tenant_id, network_name,
-                                None, gateway, physical_network)
+                                None, gateway, physical_network,
+                                vrf_name=nd_vrf)
 
     def update_subnet_postcommit(self, context):
         subnet = context.current
@@ -708,16 +737,19 @@ class NDFCMechanismDriver(api.MechanismDriver,
             gateway_ip = subnet['gateway_ip']
             prefix_len = ipaddress.ip_network(subnet['cidr']).prefixlen
             gateway = str(gateway_ip) + "/" + str(prefix_len)
+            nd_vrf = self._get_nd_vrf_for_subnet(context, subnet)
 
             if (physical_network and
                     network_type == constants.TYPE_VLAN and
                     cfg.CONF.ndfc.vlan_hardware_l3):
                 self.update_network(tenant_id, network_name,
-                        vlan_id, gateway, physical_network)
+                        vlan_id, gateway, physical_network,
+                        vrf_name=nd_vrf)
 
             elif physical_network and network_type == const.TYPE_ND:
                 self.update_network(tenant_id, network_name,
-                                    None, gateway, physical_network)
+                                    None, gateway, physical_network,
+                                    vrf_name=nd_vrf)
 
     def delete_subnet_postcommit(self, context):
         subnet = context.current

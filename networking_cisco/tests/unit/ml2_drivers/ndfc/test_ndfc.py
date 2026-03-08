@@ -85,6 +85,214 @@ class TestNDFC(TestNDFCBase, test_plugin.Ml2PluginV2TestCase):
         ret = self.ndfc_instance.delete_vrf(vrf_name)
         self.assertTrue(ret)
 
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'update_network')
+    @mock.patch.object(ndfc.Ndfc, '_get_deploy_payload', return_value=[])
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'get_network_info')
+    def test_update_network_sets_ipv6_gateway_v2(
+            self, mock_get_network_info, mock_get_deploy_payload,
+            mock_update_network):
+        vrf_name = 'new_vrf'
+        network_name = 'test_network'
+        vlan = '100'
+        physnet = 'physnet1'
+        gw_v6 = '2001:db8:20:1::1/64'
+
+        self.ndfc_instance.ndfc_obj.nd_new_version = True
+
+        payload = {
+            'networkName': network_name,
+            'l3Data': {
+                'gatewayIpv4Address': '10.10.10.0/24',
+                'gatewayIpv6Address': ''
+            }
+        }
+        mock_get_network_info.return_value = payload
+
+        ret = self.ndfc_instance.update_network(vrf_name, network_name,
+                                                vlan, gw_v6, physnet)
+        self.assertTrue(ret)
+
+        mock_get_network_info.assert_called_once_with(
+            self.ndfc_instance.fabric, network_name)
+        mock_update_network.assert_called_once()
+        _fabric, _net_name, updated_payload = (
+            mock_update_network.call_args[0])
+
+        self.assertEqual(network_name, _net_name)
+        self.assertEqual(vrf_name, updated_payload['vrfName'])
+        l3_data = updated_payload['l3Data']
+        self.assertEqual('10.10.10.0/24', l3_data['gatewayIpv4Address'])
+        self.assertEqual(gw_v6, l3_data['gatewayIpv6Address'])
+
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'update_network')
+    @mock.patch.object(ndfc.Ndfc, '_get_deploy_payload', return_value=[])
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'get_network_info')
+    def test_update_network_clears_gateways_on_empty_gw_v2(
+            self, mock_get_network_info, mock_get_deploy_payload,
+            mock_update_network):
+        vrf_name = 'new_vrf'
+        network_name = 'test_network'
+        vlan = '100'
+        physnet = 'physnet1'
+
+        self.ndfc_instance.ndfc_obj.nd_new_version = True
+
+        payload = {
+            'networkName': network_name,
+            'l3Data': {
+                'gatewayIpv4Address': '10.10.10.0/24',
+                'gatewayIpv6Address': '2001:db8:20:1::1/64'
+            }
+        }
+        mock_get_network_info.return_value = payload
+
+        ret = self.ndfc_instance.update_network(vrf_name, network_name,
+                                                vlan, '', physnet)
+        self.assertTrue(ret)
+
+        mock_update_network.assert_called_once()
+        _fabric, _net_name, updated_payload = (
+            mock_update_network.call_args[0])
+
+        l3_data = updated_payload['l3Data']
+        self.assertEqual('', l3_data['gatewayIpv4Address'])
+        self.assertEqual('', l3_data['gatewayIpv6Address'])
+
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'update_network')
+    @mock.patch.object(ndfc.Ndfc, '_get_deploy_payload', return_value=[])
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'get_network_info')
+    def test_update_network_sets_ipv6_gateway(self, mock_get_network_info,
+            mock_get_deploy_payload, mock_update_network):
+        vrf_name = 'new_vrf'
+        network_name = 'test_network'
+        vlan = '100'
+        physnet = 'physnet1'
+        gw_v6 = '2001:db8:20:1::1/64'
+
+        payload = {
+            'networkTemplateConfig': jsonutils.dumps({
+                'gatewayIpAddress': '10.10.10.0/24',
+                'gatewayIpV6Address': ''
+            })
+        }
+        mock_get_network_info.return_value = payload
+
+        ret = self.ndfc_instance.update_network(vrf_name, network_name,
+                                                vlan, gw_v6, physnet)
+        self.assertTrue(ret)
+
+        mock_update_network.assert_called_once()
+        _fabric, _net_name, updated_payload = (
+            mock_update_network.call_args[0])
+
+        tmpl_cfg = updated_payload['networkTemplateConfig']
+        self.assertEqual('10.10.10.0/24', tmpl_cfg['gatewayIpAddress'])
+        self.assertEqual(gw_v6, tmpl_cfg['gatewayIpV6Address'])
+
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'update_network')
+    @mock.patch.object(ndfc.Ndfc, '_get_deploy_payload', return_value=[])
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'get_network_info')
+    def test_update_network_clears_gateways_on_empty_gw(self,
+            mock_get_network_info, mock_get_deploy_payload,
+            mock_update_network):
+        vrf_name = 'new_vrf'
+        network_name = 'test_network'
+        vlan = '100'
+        physnet = 'physnet1'
+
+        payload = {
+            'networkTemplateConfig': jsonutils.dumps({
+                'gatewayIpAddress': '10.10.10.0/24',
+                'gatewayIpV6Address': '2001:db8:20:1::1/64'
+            })
+        }
+        mock_get_network_info.return_value = payload
+
+        ret = self.ndfc_instance.update_network(vrf_name, network_name,
+                                                vlan, '', physnet)
+        self.assertTrue(ret)
+
+        mock_update_network.assert_called_once()
+        _fabric, _net_name, updated_payload = (
+            mock_update_network.call_args[0])
+
+        tmpl_cfg = updated_payload['networkTemplateConfig']
+        self.assertEqual('', tmpl_cfg['gatewayIpAddress'])
+        self.assertEqual('', tmpl_cfg['gatewayIpV6Address'])
+
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'update_network')
+    @mock.patch.object(ndfc.Ndfc, '_get_deploy_payload', return_value=[])
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'get_network_info')
+    def test_update_network_sets_vrf_in_payload_v2(
+            self, mock_get_network_info, mock_get_deploy_payload,
+            mock_update_network):
+        vrf_name = 'new_vrf'
+        network_name = 'test_network'
+        vlan = '100'
+        physnet = 'physnet1'
+        gw = '10.10.10.0/24'
+
+        self.ndfc_instance.ndfc_obj.nd_new_version = True
+
+        payload = {
+            'networkName': network_name,
+            'l3Data': {}
+        }
+        mock_get_network_info.return_value = payload
+
+        ret = self.ndfc_instance.update_network(vrf_name, network_name,
+                                                vlan, gw, physnet)
+        self.assertTrue(ret)
+
+        mock_get_network_info.assert_called_once_with(
+            self.ndfc_instance.fabric, network_name)
+        mock_update_network.assert_called_once()
+        fabric, net_name, updated_payload = (
+            mock_update_network.call_args[0])
+
+        self.assertEqual(self.ndfc_instance.fabric, fabric)
+        self.assertEqual(network_name, net_name)
+        self.assertEqual(vrf_name, updated_payload['vrfName'])
+        l3_data = updated_payload['l3Data']
+        self.assertIsInstance(l3_data, dict)
+        self.assertEqual(gw, l3_data['gatewayIpv4Address'])
+
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'update_network')
+    @mock.patch.object(ndfc.Ndfc, '_get_deploy_payload', return_value=[])
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'get_network_info')
+    def test_update_network_sets_vrf_in_payload(
+            self, mock_get_network_info, mock_get_deploy_payload,
+            mock_update_network):
+        vrf_name = 'new_vrf'
+        network_name = 'test_network'
+        vlan = '100'
+        physnet = 'physnet1'
+        gw = '10.10.10.0/24'
+
+        payload = {
+            'networkTemplateConfig': jsonutils.dumps({
+                'gatewayIpAddress': ''
+            })
+        }
+        mock_get_network_info.return_value = payload
+
+        ret = self.ndfc_instance.update_network(vrf_name, network_name,
+                                                vlan, gw, physnet)
+        self.assertTrue(ret)
+
+        mock_get_network_info.assert_called_once_with(
+            self.ndfc_instance.fabric, network_name)
+        mock_update_network.assert_called_once()
+        _fabric, _net_name, updated_payload = (
+            mock_update_network.call_args[0])
+
+        self.assertEqual(network_name, _net_name)
+        self.assertEqual(vrf_name, updated_payload['vrf'])
+        tmpl_cfg = updated_payload['networkTemplateConfig']
+        self.assertIsInstance(tmpl_cfg, dict)
+        self.assertEqual(gw, tmpl_cfg['gatewayIpAddress'])
+        self.assertEqual(vrf_name, tmpl_cfg['vrfName'])
+
     @mock.patch.object(ndfc_helper.NdfcHelper, 'create_network')
     @mock.patch.object(ndfc_helper.NdfcHelper, 'update_network')
     @mock.patch.object(ndfc_helper.NdfcHelper, 'delete_network')
