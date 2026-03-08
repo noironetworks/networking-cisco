@@ -209,18 +209,33 @@ class Ndfc:
                 network_name, ret)
         return ret
 
-    def _get_update_network_payload(self, fabric, network_name, gw):
+    def _get_update_network_payload(self, fabric, network_name, gw, vrf_name):
         payload = self.ndfc_obj.get_network_info(fabric, network_name)
         # TODO(padkrish) do return check for None
         LOG.debug("Get network object %s wih GW %s", payload, gw)
         if payload is not None:
             if self.ndfc_obj.nd_new_version:
                 template_data = payload.get("l3Data")
-                template_data["gatewayIpv4Address"] = gw
+                if not gw:
+                    template_data["gatewayIpv4Address"] = ""
+                    template_data["gatewayIpv6Address"] = ""
+                elif ':' in gw:
+                    template_data["gatewayIpv6Address"] = gw
+                else:
+                    template_data["gatewayIpv4Address"] = gw
+                payload["vrfName"] = vrf_name
             else:
                 template_data = payload.get("networkTemplateConfig")
                 template_data_json = jsonutils.loads(template_data)
-                template_data_json["gatewayIpAddress"] = gw
+                if not gw:
+                    template_data_json["gatewayIpAddress"] = ""
+                    template_data_json["gatewayIpV6Address"] = ""
+                elif ':' in gw:
+                    template_data_json["gatewayIpV6Address"] = gw
+                else:
+                    template_data_json["gatewayIpAddress"] = gw
+                template_data_json["vrfName"] = vrf_name
+                payload["vrf"] = vrf_name
                 payload["networkTemplateConfig"] = template_data_json
             return payload
 
@@ -228,7 +243,8 @@ class Ndfc:
         LOG.debug("Update network called for %s:%s:%s with GW %s",
                 vrf_name, network_name, vlan, gw)
         fabric = self.fabric
-        payload = self._get_update_network_payload(fabric, network_name, gw)
+        payload = self._get_update_network_payload(
+                fabric, network_name, gw, vrf_name)
         LOG.debug("Payload for update network is %s", payload)
         deploy_payload = self._get_deploy_payload(network_name)
         LOG.debug("Deploy payload is %s", deploy_payload)
