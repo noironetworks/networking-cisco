@@ -22,6 +22,7 @@ from neutron.tests.common import test_db_base_plugin_v2 as test_pluginV2
 from neutron_lib.api.definitions import portbindings
 from neutron_lib.api.definitions import segment
 from neutron_lib import constants
+from neutron_lib import context as n_ctx
 from neutron_lib.plugins import directory
 
 from networking_cisco.ml2_drivers.ndfc.cache import ProjectDetailsCache
@@ -219,6 +220,58 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
         fake_context.original_host = 'host-0'
         fake_context.host_agents = mock.Mock(return_value=[])
         return fake_context
+
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver, 'plugin', create=True)
+    def test_get_nd_vrf_for_subnet_returns_nd_vrf_name(self, mock_plugin):
+        plugin_context = n_ctx.Context(user_id='user', tenant_id='tenant')
+        subnet = {
+            'id': 'subnet-id',
+            'subnetpool_id': 'sp-id',
+        }
+
+        subnetpool = {
+            'id': 'sp-id',
+            'address_scope_id': 'as-id',
+        }
+        addr_scope = {
+            'id': 'as-id',
+            'nd-vrf-name': 'vrf-ascope-v4',
+        }
+
+        self.context._plugin_context = plugin_context
+        mock_plugin.get_subnetpool.return_value = subnetpool
+        mock_plugin.get_address_scope.return_value = addr_scope
+
+        nd_vrf = self.ndfc_mech._get_nd_vrf_for_subnet(self.context, subnet)
+
+        mock_plugin.get_subnetpool.assert_called_once_with(
+            plugin_context, 'sp-id')
+        mock_plugin.get_address_scope.assert_called_once_with(
+            plugin_context, 'as-id')
+        self.assertEqual('vrf-ascope-v4', nd_vrf)
+
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver, 'plugin', create=True)
+    def test_get_nd_vrf_for_subnet_no_address_scope(self, mock_plugin):
+        plugin_context = n_ctx.Context(user_id='user', tenant_id='tenant')
+        subnet = {
+            'id': 'subnet-id',
+            'subnetpool_id': 'sp-id',
+        }
+
+        subnetpool = {
+            'id': 'sp-id',
+            'address_scope_id': None,
+        }
+
+        self.context._plugin_context = plugin_context
+        mock_plugin.get_subnetpool.return_value = subnetpool
+
+        nd_vrf = self.ndfc_mech._get_nd_vrf_for_subnet(self.context, subnet)
+
+        mock_plugin.get_subnetpool.assert_called_once_with(
+            plugin_context, 'sp-id')
+        mock_plugin.get_address_scope.assert_not_called()
+        self.assertIsNone(nd_vrf)
 
     @mock.patch.object(directory, 'get_plugin')
     def test_get_network(self, mock_get_plugin):
