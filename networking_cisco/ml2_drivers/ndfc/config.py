@@ -60,7 +60,11 @@ ndfc_opts = [
     cfg.BoolOpt('vlan_hardware_l3',
                 default=True,
                 help=("Enable NDFC hardware L3 programming for VLAN "
-                      "provider networks."))
+                      "provider networks.")),
+    cfg.IntOpt('nd_sync_poll_interval',
+               default=600,
+               help=("Interval in seconds to poll NDFC for ND network "
+                     "deploy status."))
 ]
 
 

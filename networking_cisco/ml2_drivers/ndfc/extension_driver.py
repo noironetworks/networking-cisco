@@ -22,6 +22,7 @@ in the ND API extension package so that attributes like ``nd-name``
 are exposed through Neutron's API layer.
 """
 
+from networking_cisco.ml2_drivers.ndfc import constants as ndfc_const
 from networking_cisco.ml2_drivers.ndfc import extension_db
 from networking_cisco.ml2_drivers.ndfc import extensions as nd_ext_pkg
 from networking_cisco.ml2_drivers.ndfc.ndfc import get_ndfc_conf
@@ -54,17 +55,61 @@ class NdExtensionDriver(api.ExtensionDriver):
                         "__path__; skipping append_api_extensions_path")
         LOG.debug("NdExtensionDriver.initialize: completed")
 
+    def _is_nd_network(self, result):
+        return result.get('provider:network_type') == ndfc_const.TYPE_ND
+
+    def _set_nd_network_status(self, plugin_context, network_id, nd_status):
+        if nd_status is None:
+            return
+        with db_api.CONTEXT_WRITER.using(plugin_context):
+            session = plugin_context.session
+            ext = (session.query(extension_db.NdNetworkExtension)
+                   .filter_by(network_id=network_id)
+                   .first())
+            if ext is None:
+                ext = extension_db.NdNetworkExtension(
+                    network_id=network_id,
+                    nd_status=nd_status,
+                )
+                session.add(ext)
+            else:
+                ext.nd_status = nd_status
+
     def process_create_network(self, plugin_context, data, result):
-        return
+        nd_status = data.get('nd-status') or data.get('nd_status')
+        if not nd_status:
+            return
+        if not self._is_nd_network(result):
+            return
+        self._set_nd_network_status(plugin_context, result['id'], nd_status)
 
     def process_update_network(self, plugin_context, data, result):
-        return
+        nd_status = data.get('nd-status') or data.get('nd_status')
+        if nd_status is None:
+            return
+        if not self._is_nd_network(result):
+            return
+        self._set_nd_network_status(plugin_context, result['id'], nd_status)
 
     def extend_network_dict(self, session, base_model, result):
-        return
+        if not self._is_nd_network(result):
+            return
+        ext = (session.query(extension_db.NdNetworkExtension)
+               .filter_by(network_id=base_model.id)
+               .first())
+        if ext is not None:
+            result['nd-status'] = ext.nd_status
 
     def extend_network_dict_bulk(self, session, results):
-        return
+        for result in results:
+            base_model = result.get('db_obj')
+            if base_model is None:
+                # Fallback: rely on extend_network_dict to resolve by id.
+                network_id = result.get('id')
+                if not network_id:
+                    continue
+                base_model = type('obj', (), {'id': network_id})()  # shim
+            self.extend_network_dict(session, base_model, result)
 
     def process_create_subnet(self, plugin_context, data, result):
         return

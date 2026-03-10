@@ -21,7 +21,11 @@ from neutron_lib.db import api as db_api
 from oslo_log import log as logging
 from oslo_utils import excutils
 
+from networking_cisco.ml2_drivers.ndfc import constants as ndfc_const
 from networking_cisco.ml2_drivers.ndfc import extension_db
+from networking_cisco.ml2_drivers.ndfc.extensions import (
+    ndfc_network_deploy as nd_net_ext
+)
 from networking_cisco.plugins.ml2.nd_manager import NdManager
 
 
@@ -31,8 +35,52 @@ LOG = logging.getLogger(__name__)
 class NdMl2Plugin(ml2_plugin.Ml2Plugin):
 
     def __init__(self):
+        if hasattr(ml2_plugin.Ml2Plugin, '_supported_extension_aliases'):
+            if (nd_net_ext.ALIAS not in
+                    ml2_plugin.Ml2Plugin._supported_extension_aliases):
+                ml2_plugin.Ml2Plugin._supported_extension_aliases.append(
+                    nd_net_ext.ALIAS)
+
         super(NdMl2Plugin, self).__init__()
         self._nd_manager = NdManager()
+
+    @property
+    def supported_extension_aliases(self):
+        aliases = list(super(NdMl2Plugin, self).supported_extension_aliases)
+        if nd_net_ext.ALIAS not in aliases:
+            aliases.append(nd_net_ext.ALIAS)
+        return aliases
+
+    def update_network(self, context, id, network):
+        data = network.get('network', network)
+        nd_status = data.get('nd-status') or data.get('nd_status')
+
+        updated = super(NdMl2Plugin, self).update_network(context, id, network)
+
+        if nd_status is None:
+            return updated
+
+        if updated.get('provider:network_type') != ndfc_const.TYPE_ND:
+            return updated
+
+        try:
+            with db_api.CONTEXT_WRITER.using(context):
+                session = context.session
+                ext = (session.query(extension_db.NdNetworkExtension)
+                       .filter_by(network_id=id)
+                       .first())
+                if ext is None:
+                    ext = extension_db.NdNetworkExtension(
+                        network_id=id,
+                        nd_status=nd_status,
+                    )
+                    session.add(ext)
+                else:
+                    ext.nd_status = nd_status
+        except Exception:
+            LOG.exception("NdMl2Plugin.update_network: failed to persist "
+                          "nd-status %s for network %s", nd_status, id)
+        return updated
 
     def create_address_scope(self, context, address_scope):
         mech_context = None
@@ -138,3 +186,42 @@ class NdMl2Plugin(ml2_plugin.Ml2Plugin):
 
         if nd_vrf_name and delete_vrf:
             self._nd_manager.delete_vrf_for_address_scope(nd_vrf_name)
+
+    def get_network(self, context, id, fields=None, net_db=None):
+        res = super(NdMl2Plugin, self).get_network(context, id, fields)
+        if not res:
+            return res
+        try:
+            session = context.session
+        except AttributeError:
+            return res
+        try:
+            with session.begin(subtransactions=True):
+                base_model = type('obj', (), {'id': id})()
+                self._nd_manager.extend_network(session, base_model, res)
+        except Exception:
+            LOG.exception("Failed to extend network %s with nd-status", id)
+        return res
+
+    def get_networks(self, context, filters=None, fields=None, sorts=None,
+                     limit=None, marker=None, page_reverse=False):
+        res_list = super(NdMl2Plugin, self).get_networks(
+            context, filters, fields, sorts, limit, marker, page_reverse)
+        if not res_list:
+            return res_list
+        try:
+            session = context.session
+        except AttributeError:
+            return res_list
+        for res in res_list:
+            net_id = res.get("id")
+            if not net_id:
+                continue
+            try:
+                with session.begin(subtransactions=True):
+                    base_model = type('obj', (), {'id': net_id})()
+                    self._nd_manager.extend_network(session, base_model, res)
+            except Exception:
+                LOG.exception(
+                    "Failed to extend network %s with nd-status", net_id)
+        return res_list
