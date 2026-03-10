@@ -14,15 +14,15 @@
 #    under the License.
 #
 
-import abc
 from unittest import mock
 
 from networking_cisco.ml2_drivers.ndfc import ndfc_helper
+from networking_cisco.tests.unit.ml2_drivers.ndfc import test_base
 from neutron.common import config
 from neutron.tests.unit.plugins.ml2 import test_plugin
 
 
-class TestNDFCHelperBase(abc.ABC):
+class TestNDFCHelperBase(test_base.NdfcMl2Base):
     def setUp(self):
         config.register_common_config_options()
         super().setUp()

@@ -14,7 +14,6 @@
 #    under the License.
 #
 
-import abc
 import os
 from unittest import mock
 
@@ -32,12 +31,13 @@ from networking_cisco.ml2_drivers.ndfc import constants as ndfc_const
 from networking_cisco.ml2_drivers.ndfc import db as nc_ml2_db
 from networking_cisco.ml2_drivers.ndfc import mech_ndfc
 from networking_cisco.ml2_drivers.ndfc import ndfc
+from networking_cisco.tests.unit.ml2_drivers.ndfc import test_base
 from neutron.common import config
 from neutron.tests.unit import fake_resources as fakes
 from neutron.tests.unit.plugins.ml2 import test_plugin
 
 
-class MechDriverSetupBase(abc.ABC):
+class MechDriverSetupBase(test_base.NdfcMl2Base):
     def setUp(self):
         config.register_common_config_options()
         super(MechDriverSetupBase, self).setUp()

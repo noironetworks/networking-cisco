@@ -65,3 +65,10 @@ class NdManager(object):
         if not hasattr(self, "_ext_driver"):
             return
         self._ext_driver.extend_address_scope_dict(session, base_model, result)
+
+    def extend_network(self, session, base_model, result):
+        if not hasattr(self, "_ext_driver"):
+            return
+        if not hasattr(self._ext_driver, "extend_network_dict"):
+            return
+        self._ext_driver.extend_network_dict(session, base_model, result)
