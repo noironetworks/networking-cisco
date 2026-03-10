@@ -14,6 +14,7 @@
 #    under the License.
 
 from neutron.db.models import address_scope as as_db
+from neutron.db import models_v2
 from neutron_lib.db import model_base
 import sqlalchemy as sa
 from sqlalchemy import orm
@@ -40,3 +41,26 @@ class NdAddressScopeExtension(model_base.BASEV2):
             'nd_mapping', lazy='joined', uselist=False, cascade='delete'))
 
     nd_vrf_name = sa.Column(sa.String(255), nullable=True)
+
+
+class NdNetworkExtension(model_base.BASEV2):
+    """Extension table for ND network attributes.
+
+    Stores ND-specific data for Neutron networks, keyed by network_id.
+    This allows us to extend the upstream Network resource without
+    modifying its core table schema.
+    """
+
+    __tablename__ = 'nd_network_extensions'
+
+    network_id = sa.Column(
+        sa.String(36),
+        sa.ForeignKey('networks.id', ondelete='CASCADE'),
+        primary_key=True)
+
+    network = orm.relationship(
+        models_v2.Network,
+        backref=orm.backref(
+            'nd_mapping', lazy='joined', uselist=False, cascade='delete'))
+
+    nd_status = sa.Column(sa.String(32), nullable=True)
