@@ -715,3 +715,91 @@ class TestNDFC(TestNDFCBase, test_plugin.Ml2PluginV2TestCase):
         self.assertEqual(vlan_id, "100")
         mock_get_vrf_attachments.assert_called_with(
             self.ndfc_instance.fabric, vrf_name)
+
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'redeploy_network')
+    @mock.patch.object(ndfc.Ndfc, '_get_deploy_payload')
+    def test_redeploy_network_uses_helper_with_payload(self,
+            mock_get_deploy_payload, mock_helper_redeploy):
+        network_name = 'nd-net-1'
+        deploy_payload = {'some': 'payload'}
+        mock_get_deploy_payload.return_value = deploy_payload
+        mock_helper_redeploy.return_value = True
+
+        result = self.ndfc_instance.redeploy_network(network_name)
+
+        mock_get_deploy_payload.assert_called_once_with(network_name)
+        mock_helper_redeploy.assert_called_once_with(
+            self.ndfc_instance.fabric, deploy_payload)
+        self.assertTrue(result)
+
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'get_network_info')
+    def test_get_network_deploy_status_success_values(self,
+            mock_get_network_info):
+        for status in ('deployed', 'inSync'):
+            mock_get_network_info.reset_mock()
+            mock_get_network_info.return_value = {
+                'networkStatus': status,
+            }
+
+            result = self.ndfc_instance.get_network_deploy_status('nd-net-1')
+
+            mock_get_network_info.assert_called_once_with(
+                self.ndfc_instance.fabric, 'nd-net-1')
+            self.assertIs(result, True)
+
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'get_network_info')
+    def test_get_network_deploy_status_failure_values(self,
+            mock_get_network_info):
+        for status in ('failed', 'error', 'deployFailed'):
+            mock_get_network_info.reset_mock()
+            mock_get_network_info.return_value = {
+                'networkStatus': status,
+            }
+
+            result = self.ndfc_instance.get_network_deploy_status('nd-net-1')
+
+            mock_get_network_info.assert_called_once_with(
+                self.ndfc_instance.fabric, 'nd-net-1')
+            self.assertIs(result, False)
+
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'get_network_info')
+    def test_get_network_deploy_status_neutral_not_applicable(self,
+            mock_get_network_info):
+        mock_get_network_info.return_value = {
+            'networkStatus': 'notApplicable',
+        }
+
+        result = self.ndfc_instance.get_network_deploy_status('nd-net-1')
+
+        mock_get_network_info.assert_called_once_with(
+            self.ndfc_instance.fabric, 'nd-net-1')
+        self.assertIsNone(result)
+
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'get_network_info')
+    def test_get_network_deploy_status_missing_status_payload_present(self,
+            mock_get_network_info):
+        mock_get_network_info.return_value = {
+            'networkName': 'nd-net-1',
+        }
+
+        result = self.ndfc_instance.get_network_deploy_status('nd-net-1')
+
+        mock_get_network_info.assert_called_once_with(
+            self.ndfc_instance.fabric, 'nd-net-1')
+        self.assertIs(result, True)
+
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'get_network_info')
+    def test_get_network_deploy_status_empty_payload_or_error(self,
+            mock_get_network_info):
+        mock_get_network_info.return_value = None
+        result = self.ndfc_instance.get_network_deploy_status('nd-net-1')
+        mock_get_network_info.assert_called_once_with(
+            self.ndfc_instance.fabric, 'nd-net-1')
+        self.assertIs(result, False)
+
+        mock_get_network_info.reset_mock()
+        mock_get_network_info.side_effect = Exception('boom')
+        result = self.ndfc_instance.get_network_deploy_status('nd-net-1')
+        mock_get_network_info.assert_called_once_with(
+            self.ndfc_instance.fabric, 'nd-net-1')
+        self.assertIs(result, False)

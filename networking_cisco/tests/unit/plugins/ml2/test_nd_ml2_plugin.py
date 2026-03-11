@@ -15,9 +15,8 @@
 
 from unittest import mock
 
-from neutron.tests.unit import testlib_api
-
 from neutron.plugins.ml2 import plugin as ml2_plugin
+from neutron.tests.unit import testlib_api
 
 from networking_cisco.ml2_drivers.ndfc import constants as ndfc_const
 from networking_cisco.ml2_drivers.ndfc import extension_db
@@ -90,41 +89,38 @@ class TestNdMl2PluginExtensions(testlib_api.SqlTestCase):
 
         self.assertIn(nd_net_ext.ALIAS, aliases)
 
-
-class TestNdMl2PluginUpdateNetwork(testlib_api.SqlTestCase):
-
-    @mock.patch('networking_cisco.plugins.ml2.nd_ml2.db_api.CONTEXT_WRITER')
-    @mock.patch.object(ml2_plugin.Ml2Plugin, 'update_network')
-    def test_update_network_persists_nd_status_for_nd_network(
-            self, mock_update_network, mock_context_writer):
+    def test_update_network_triggers_mech_postcommit_for_nd_status(self):
         plugin = nd_ml2.NdMl2Plugin()
+        ctx = mock.Mock()
 
+        original = {'id': 'net-id',
+                    'provider:network_type': ndfc_const.TYPE_ND}
         updated = {
             'id': 'net-id',
             'provider:network_type': ndfc_const.TYPE_ND,
+            'nd-status': 'SYNC',
         }
-        mock_update_network.return_value = updated
 
-        mock_cm = mock_context_writer.using.return_value
-        mock_cm.__enter__.return_value = mock_cm
-        mock_cm.__exit__.return_value = False
+        super_get = mock.Mock(return_value=original)
+        super_update = mock.Mock(return_value=updated)
+        mech_mgr = mock.Mock()
+        plugin.mechanism_manager = mech_mgr
 
-        context = mock.Mock()
-        session = mock.Mock()
-        context.session = session
+        with mock.patch.object(ml2_plugin.Ml2Plugin, 'get_network',
+                               super_get), \
+                mock.patch.object(ml2_plugin.Ml2Plugin, 'update_network',
+                                  super_update), \
+                mock.patch.object(nd_ml2.driver_context,
+                                  'NetworkContext') as nc_cls:
+            mech_ctx = mock.Mock()
+            mech_ctx.current = updated
+            nc_cls.return_value = mech_ctx
 
-        (session.query.return_value
-         .filter_by.return_value
-         .first.return_value) = None
+            body = {'network': {'nd-status': 'SYNC'}}
+            res = plugin.update_network(ctx, 'net-id', body)
 
-        body = {'network': {'nd-status': 'FAILED'}}
-
-        plugin.update_network(context, 'net-id', body)
-
-        added = session.add.call_args[0][0]
-        self.assertIsInstance(added, extension_db.NdNetworkExtension)
-        self.assertEqual('net-id', added.network_id)
-        self.assertEqual('FAILED', added.nd_status)
+        self.assertEqual(updated, res)
+        mech_mgr.update_network_postcommit.assert_called_once_with(mech_ctx)
 
 
 class TestNdMl2PluginAddressScopeVrfCleanup(testlib_api.SqlTestCase):

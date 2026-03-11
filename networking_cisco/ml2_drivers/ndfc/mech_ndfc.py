@@ -23,6 +23,7 @@ from networking_cisco.ml2_drivers.ndfc import cache
 from networking_cisco.ml2_drivers.ndfc import config
 from networking_cisco.ml2_drivers.ndfc import constants as const
 from networking_cisco.ml2_drivers.ndfc import db as nc_ml2_db
+from networking_cisco.ml2_drivers.ndfc import extension_db
 from networking_cisco.ml2_drivers.ndfc.ndfc import get_ndfc_conf
 from networking_cisco.ml2_drivers.ovn_hpb import mech_ovn_hpb
 from networking_cisco.rpc import topo_rpc_handler
@@ -93,6 +94,8 @@ class NDFCMechanismDriver(api.MechanismDriver,
         self._last_switch_sync = 0
         self.switch_map = {}
         self.vpc_peer_map = {}
+        self._nd_deploy_state = {}
+        self._nd_sync_poller = None
 
     def initialize(self):
         config.register_opts()
@@ -111,6 +114,7 @@ class NDFCMechanismDriver(api.MechanismDriver,
         self.tenants_file = '/tmp/tenants.json'
         self.load_tenants()
         self.start_rpc_listeners()
+        self._start_nd_sync_loop()
 
     def _start_switch_sync_loop(self):
         # Add jitter up to 10% of interval as initial delay
@@ -168,6 +172,54 @@ class NDFCMechanismDriver(api.MechanismDriver,
 
         except Exception as e:
             LOG.error("Failed to refresh switch list from NDFC: %s", e)
+
+    def _start_nd_sync_loop(self):
+        interval = cfg.CONF.ndfc.nd_sync_poll_interval
+        if interval <= 0:
+            LOG.debug("ND sync poller disabled (interval=%s)", interval)
+            return
+
+        jitter = random.uniform(0, interval * 0.1)
+        self._nd_sync_poller = loopingcall.FixedIntervalLoopingCall(
+            self._poll_nd_deploy_status)
+        self._nd_sync_poller.start(interval=interval,
+                                   initial_delay=jitter,
+                                   stop_on_exception=False)
+        LOG.debug(
+            "Started ND deploy status poller with interval %.2f seconds "
+            "and initial delay %.2f seconds", interval, jitter)
+
+    def _poll_nd_deploy_status(self):
+        LOG.debug("Polling ND deploy status for ND networks...")
+        try:
+            admin_ctx = n_context.get_admin_context()
+            plugin = self.plugin
+            filters = {'provider:network_type': [const.TYPE_ND]}
+            networks = plugin.get_networks(admin_ctx, filters=filters)
+        except Exception as exc:
+            LOG.error("Failed to fetch ND networks for deploy status poll: %s",
+                      exc)
+            return
+
+        for net in networks or []:
+            net_id = net.get('id')
+            net_name = net.get('name')
+            if not net_id or not net_name:
+                continue
+
+            try:
+                status = self.ndfc.get_network_deploy_status(net_name)
+            except Exception as exc:
+                LOG.error(
+                    "get_network_deploy_status failed for network %s: %s",
+                    net_id, exc)
+                status = False
+
+            if status is None:
+                continue
+
+            self._record_nd_deploy_result(net_id, bool(status), reason='poll',
+                                          plugin_context=admin_ctx)
 
     @property
     def switches(self):
@@ -248,6 +300,97 @@ class NDFCMechanismDriver(api.MechanismDriver,
         network_db = self.plugin.get_network(context._plugin_context,
                 network_id)
         return network_db
+
+    def _set_nd_status_for_network(self, plugin_context, network_id,
+                                   nd_status):
+        if nd_status is None:
+            return
+        with db_api.CONTEXT_WRITER.using(plugin_context):
+            session = plugin_context.session
+            ext = (session.query(extension_db.NdNetworkExtension)
+                   .filter_by(network_id=network_id)
+                   .first())
+            if ext is None:
+                ext = extension_db.NdNetworkExtension(
+                    network_id=network_id,
+                    nd_status=nd_status,
+                )
+                session.add(ext)
+            else:
+                ext.nd_status = nd_status
+
+    def _record_nd_deploy_result(self, network_id, success,
+                                 reason=None, error=None,
+                                 plugin_context=None):
+        state = self._nd_deploy_state.setdefault(network_id, {})
+        state.update({
+            'last_attempt_ts': time.time(),
+            'last_success': bool(success),
+            'last_reason': reason,
+            'last_error': str(error) if error else None,
+        })
+
+        nd_status = 'SUCCESS' if success else 'FAILED'
+        if plugin_context is not None:
+            try:
+                self._set_nd_status_for_network(plugin_context,
+                                                network_id, nd_status)
+            except Exception as exc:
+                LOG.error("Failed to persist nd-status %s for network %s: %s",
+                          nd_status, network_id, exc)
+
+        if success:
+            LOG.info("ND deploy for network %s succeeded (reason=%s)",
+                     network_id, reason)
+        else:
+            LOG.error("ND deploy for network %s failed (reason=%s, error=%s)",
+                      network_id, reason, error)
+
+    def _retry_nd_operation(self, network_id, reason,
+                            plugin_context, network_name):
+        max_attempts = 3
+        last_exc = None
+        for attempt in range(1, max_attempts + 1):
+            try:
+                ok = self.ndfc.redeploy_network(network_name)
+            except Exception as exc:
+                last_exc = exc
+                ok = False
+
+            if ok:
+                self._record_nd_deploy_result(network_id, True, reason,
+                                              plugin_context=plugin_context)
+                return True
+
+        self._record_nd_deploy_result(network_id, False, reason,
+                                      error=last_exc,
+                                      plugin_context=plugin_context)
+        return False
+
+    def trigger_nd_deploy(self, context, network, reason=None):
+        network_id = network.get('id')
+        physical_network = network.get('provider:physical_network')
+        network_type = network.get('provider:network_type')
+        plugin_context = getattr(context, '_plugin_context', None)
+        network_name = network.get('name')
+
+        if not (physical_network and network_type == const.TYPE_ND):
+            LOG.debug("trigger_nd_deploy called for non-ND network %s",
+                      network_id)
+            return
+
+        LOG.debug("trigger_nd_deploy called for ND network %s (reason=%s)",
+                  network_id, reason)
+
+        if not network_name:
+            LOG.error("trigger_nd_deploy: ND network %s has no name; "
+                      "cannot redeploy", network_id)
+            return
+
+        self._retry_nd_operation(network_id,
+                                 reason or 'nd-status=SYNC',
+                                 plugin_context,
+                                 network_name)
 
     def _get_nd_vrf_for_as(self, context, subnet):
         plugin_context = context._plugin_context
@@ -673,6 +816,30 @@ class NDFCMechanismDriver(api.MechanismDriver,
         elif physical_network and network_type == const.TYPE_ND:
             self.create_network(tenant_id, network_name,
                                 None, physical_network)
+
+    def update_network_postcommit(self, context):
+        network = context.current
+
+        network_type = network.get('provider:network_type')
+        if network_type != const.TYPE_ND:
+            return
+
+        plugin_context = getattr(context, '_plugin_context', None)
+        new_nd = network.get('nd-status')
+
+        if new_nd is None and plugin_context is not None:
+            session = plugin_context.session
+            with session.begin(subtransactions=True):
+                ext_row = (session.query(extension_db.NdNetworkExtension)
+                           .filter_by(network_id=network['id'])
+                           .first())
+                if ext_row is not None:
+                    new_nd = ext_row.nd_status
+
+        if new_nd == 'SYNC':
+            LOG.debug("update_network_postcommit: nd-status=SYNC for ND "
+                      "network %s; triggering redeploy", network.get('id'))
+            self.trigger_nd_deploy(context, network, reason='nd-status=SYNC')
 
     def delete_network_postcommit(self, context):
         network = context.current

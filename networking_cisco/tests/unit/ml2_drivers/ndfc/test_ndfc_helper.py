@@ -416,6 +416,42 @@ class TestNDFCHelper(TestNDFCHelperBase, test_plugin.Ml2PluginV2TestCase):
         result = self.helper._config_deploy_save(fabric, deploy_payload)
         self.assertFalse(result)
 
+    @mock.patch.object(ndfc_helper.NdfcHelper, '_config_deploy_save')
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'logout')
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'login')
+    def test_redeploy_network_success(self, mock_login, mock_logout,
+            mock_config_save):
+        mock_login.return_value = True
+        mock_config_save.return_value = True
+
+        fabric = 'test_fabric'
+        deploy_payload = {'config': 'deploy_config'}
+
+        result = self.helper.redeploy_network(fabric, deploy_payload)
+
+        mock_login.assert_called_once()
+        mock_config_save.assert_called_once_with(fabric, deploy_payload)
+        mock_logout.assert_called_once()
+        self.assertTrue(result)
+
+    @mock.patch.object(ndfc_helper.NdfcHelper, '_config_deploy_save')
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'logout')
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'login')
+    def test_redeploy_network_failure(self, mock_login, mock_logout,
+            mock_config_save):
+        mock_login.return_value = True
+        mock_config_save.return_value = False
+
+        fabric = 'test_fabric'
+        deploy_payload = {'config': 'deploy_config'}
+
+        result = self.helper.redeploy_network(fabric, deploy_payload)
+
+        mock_login.assert_called_once()
+        mock_config_save.assert_called_once_with(fabric, deploy_payload)
+        mock_logout.assert_called_once()
+        self.assertFalse(result)
+
     @mock.patch('requests.get')
     @mock.patch('requests.post')
     def test_get_network_switch_interface_map(self, mock_post, mock_get):
