@@ -17,6 +17,7 @@ from argparse import ArgumentParser
 from argparse import Namespace
 from unittest import mock
 
+from osc_lib import exceptions as osc_exc
 from osc_lib.tests import utils as osc_utils
 
 from networking_cisco.osc.v2 import network as ndfc_osc_network
@@ -27,8 +28,8 @@ class TestNdfcOscNetworkDeploy(osc_utils.TestCommand):
     def setUp(self):
         super(TestNdfcOscNetworkDeploy, self).setUp()
 
-    def test_get_attrs_nd_adds_nd_status(self):
-        parsed_args = Namespace(nd_status='SUCCESS')
+    def test_get_attrs_nd_adds_sync_status(self):
+        parsed_args = Namespace(nd_status='SYNC')
 
         client_mgr = mock.Mock()
 
@@ -36,7 +37,19 @@ class TestNdfcOscNetworkDeploy(osc_utils.TestCommand):
                                return_value={}):
             attrs = ndfc_osc_network._get_attrs_nd(client_mgr, parsed_args)
 
-        self.assertEqual('SUCCESS', attrs.get('nd-status'))
+        self.assertEqual('SYNC', attrs.get('nd-status'))
+
+    def test_get_attrs_nd_rejects_non_sync_status(self):
+        parsed_args = Namespace(nd_status='SUCCESS')
+        client_mgr = mock.Mock()
+
+        with mock.patch.object(ndfc_osc_network, '_get_attrs_orig',
+                               return_value={}):
+            self.assertRaises(
+                osc_exc.CommandError,
+                ndfc_osc_network._get_attrs_nd,
+                client_mgr,
+                parsed_args)
 
     def test_get_attrs_nd_ignores_missing_nd_status(self):
         parsed_args = Namespace()
@@ -56,8 +69,41 @@ class TestSetNetworkNdStatusHook(osc_utils.TestCommand):
         cmd = mock.Mock()
         self.hook = ndfc_osc_network.SetNetworkNdStatus(cmd)
 
-    def test_before_returns_parsed_args(self):
+    def test_before_returns_parsed_args_when_nd_status_missing(self):
         parsed_args = Namespace(foo='bar')
+        result = self.hook.before(parsed_args)
+        self.assertIs(result, parsed_args)
+
+    def test_before_rejects_non_nd_network(self):
+        parsed_args = Namespace(network='net1', nd_status='SYNC')
+
+        net = Namespace(id='net1', provider_network_type='vxlan')
+        network_proxy = mock.Mock()
+        network_proxy.find_network.return_value = net
+
+        client_mgr = mock.Mock()
+        client_mgr.network = network_proxy
+
+        app = mock.Mock()
+        app.client_manager = client_mgr
+        self.hook.cmd.app = app
+
+        self.assertRaises(osc_exc.CommandError, self.hook.before, parsed_args)
+
+    def test_before_allows_sync_for_nd_network(self):
+        parsed_args = Namespace(network='net1', nd_status='SYNC')
+
+        net = Namespace(id='net1', provider_network_type='nd')
+        network_proxy = mock.Mock()
+        network_proxy.find_network.return_value = net
+
+        client_mgr = mock.Mock()
+        client_mgr.network = network_proxy
+
+        app = mock.Mock()
+        app.client_manager = client_mgr
+        self.hook.cmd.app = app
+
         result = self.hook.before(parsed_args)
         self.assertIs(result, parsed_args)
 

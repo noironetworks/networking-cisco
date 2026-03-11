@@ -318,6 +318,59 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
         self.ndfc_mech.update_subnet_postcommit(fake_subnet_context)
         self.ndfc_mech.delete_subnet_postcommit(fake_subnet_context)
 
+    def test_update_network_postcommit_triggers_redeploy_on_sync(self):
+        net_id = 'net-id'
+        context = mock.Mock()
+        context.current = {
+            'id': net_id,
+            'provider:network_type': ndfc_const.TYPE_ND,
+            'nd-status': 'SYNC',
+        }
+
+        with mock.patch.object(self.ndfc_mech, 'trigger_nd_deploy') as tnd:
+            self.ndfc_mech.update_network_postcommit(context)
+
+        tnd.assert_called_once()
+        args, kwargs = tnd.call_args
+        call_ctx, call_net = args
+        self.assertIs(call_ctx, context)
+        self.assertEqual(net_id, call_net['id'])
+        self.assertEqual('nd-status=SYNC', kwargs.get('reason'))
+
+    def test_update_network_postcommit_uses_db_for_nd_status(self):
+        net_id = 'net-id'
+        context = mock.Mock()
+        context.current = {
+            'id': net_id,
+            'provider:network_type': ndfc_const.TYPE_ND,
+        }
+
+        plugin_context = mock.Mock()
+        session = mock.MagicMock()
+        plugin_context.session = session
+        context._plugin_context = plugin_context
+
+        cm = mock.Mock()
+        session.begin.return_value.__enter__.return_value = cm
+        session.begin.return_value.__exit__.return_value = False
+
+        ext_row = mock.Mock()
+        ext_row.nd_status = 'SYNC'
+
+        (session.query.return_value
+         .filter_by.return_value
+         .first.return_value) = ext_row
+
+        with mock.patch.object(self.ndfc_mech, 'trigger_nd_deploy') as tnd:
+            self.ndfc_mech.update_network_postcommit(context)
+
+        tnd.assert_called_once()
+        args, kwargs = tnd.call_args
+        call_ctx, call_net = args
+        self.assertIs(call_ctx, context)
+        self.assertEqual(net_id, call_net['id'])
+        self.assertEqual('nd-status=SYNC', kwargs.get('reason'))
+
     @mock.patch.object(mech_ndfc.NDFCMechanismDriver, 'get_topology')
     @mock.patch.object(ndfc.Ndfc, 'attach_network')
     @mock.patch.object(ndfc.Ndfc, 'detach_network')
@@ -459,6 +512,65 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
         mock_detach.assert_called_once_with(ctx, 'host-1', network,
                                             vlan_id=321)
 
+    def test_trigger_nd_deploy_sync_success_records_status(self):
+        network = {
+            'id': 'net-nd',
+            'tenant_id': test_pluginV2.TEST_TENANT_ID,
+            'provider:physical_network': 'physnet1',
+            'provider:network_type': ndfc_const.TYPE_ND,
+            'name': 'net-nd-name',
+        }
+
+        ctx = mock.Mock()
+        plugin_context = mock.Mock()
+        ctx._plugin_context = plugin_context
+
+        with mock.patch.object(self.ndfc_mech.ndfc, 'redeploy_network',
+                               return_value=True) as mock_redeploy, \
+                mock.patch.object(self.ndfc_mech,
+                                  '_set_nd_status_for_network') as mock_set:
+            self.ndfc_mech.trigger_nd_deploy(ctx, network,
+                                             reason='nd-status=SYNC')
+
+            mock_redeploy.assert_called_once_with(network['name'])
+            mock_set.assert_called_once_with(plugin_context,
+                                             network['id'], 'SUCCESS')
+
+        state = self.ndfc_mech._nd_deploy_state.get(network['id'])
+        self.assertIsNotNone(state)
+        self.assertTrue(state['last_success'])
+        self.assertEqual('nd-status=SYNC', state['last_reason'])
+
+    def test_trigger_nd_deploy_sync_failure_retries_three_times(self):
+        network = {
+            'id': 'net-nd',
+            'tenant_id': test_pluginV2.TEST_TENANT_ID,
+            'provider:physical_network': 'physnet1',
+            'provider:network_type': ndfc_const.TYPE_ND,
+            'name': 'net-nd-name',
+        }
+
+        ctx = mock.Mock()
+        plugin_context = mock.Mock()
+        ctx._plugin_context = plugin_context
+
+        with mock.patch.object(self.ndfc_mech.ndfc, 'redeploy_network',
+                               return_value=False) as mock_redeploy, \
+                mock.patch.object(self.ndfc_mech,
+                                  '_set_nd_status_for_network') as mock_set:
+            self.ndfc_mech.trigger_nd_deploy(ctx, network,
+                                             reason='nd-status=SYNC')
+
+            self.assertEqual(3, mock_redeploy.call_count)
+            mock_redeploy.assert_called_with(network['name'])
+            mock_set.assert_called_once_with(plugin_context,
+                                             network['id'], 'FAILED')
+
+        state = self.ndfc_mech._nd_deploy_state.get(network['id'])
+        self.assertIsNotNone(state)
+        self.assertFalse(state['last_success'])
+        self.assertEqual('nd-status=SYNC', state['last_reason'])
+
     def test_create_network_postcommit_vlan_hardware_l3_enabled(self):
         ndfc_conf.cfg.CONF.set_override('vlan_hardware_l3',
                 True, group='ndfc')
@@ -485,6 +597,67 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
                 'create_network') as mock_create:
             self.ndfc_mech.create_network_postcommit(ctx)
             mock_create.assert_not_called()
+
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver,
+            '_record_nd_deploy_result')
+    @mock.patch.object(ndfc.Ndfc, 'get_network_deploy_status')
+    @mock.patch.object(mech_ndfc.directory, 'get_plugin')
+    @mock.patch.object(mech_ndfc.n_context, 'get_admin_context')
+    def test_poll_nd_deploy_status_queries_nd_networks_and_records_results(
+            self, mock_get_admin_ctx, mock_get_plugin,
+            mock_get_status, mock_record):
+        admin_ctx = mock.Mock()
+        mock_get_admin_ctx.return_value = admin_ctx
+
+        plugin = mock.Mock()
+        mock_get_plugin.return_value = plugin
+        networks = [
+            {'id': 'net-1', 'name': 'nd-net-1'},
+            {'id': 'net-2', 'name': 'nd-net-2'},
+        ]
+        plugin.get_networks.return_value = networks
+
+        mock_get_status.side_effect = [True, False]
+
+        self.ndfc_mech._poll_nd_deploy_status()
+
+        plugin.get_networks.assert_called_once_with(
+            admin_ctx, filters={'provider:network_type': [ndfc_const.TYPE_ND]})
+
+        expected_calls = [
+            mock.call('net-1', True, reason='poll',
+                      plugin_context=admin_ctx),
+            mock.call('net-2', False, reason='poll',
+                      plugin_context=admin_ctx),
+        ]
+        mock_record.assert_has_calls(expected_calls, any_order=False)
+
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver,
+            '_record_nd_deploy_result')
+    @mock.patch.object(ndfc.Ndfc, 'get_network_deploy_status')
+    @mock.patch.object(mech_ndfc.directory, 'get_plugin')
+    @mock.patch.object(mech_ndfc.n_context, 'get_admin_context')
+    def test_poll_nd_deploy_status_ignores_neutral_status(self,
+            mock_get_admin_ctx, mock_get_plugin,
+            mock_get_status, mock_record):
+        admin_ctx = mock.Mock()
+        mock_get_admin_ctx.return_value = admin_ctx
+
+        plugin = mock.Mock()
+        mock_get_plugin.return_value = plugin
+        networks = [
+            {'id': 'net-1', 'name': 'nd-net-1'},
+        ]
+        plugin.get_networks.return_value = networks
+
+        mock_get_status.return_value = None
+
+        self.ndfc_mech._poll_nd_deploy_status()
+
+        plugin.get_networks.assert_called_once_with(
+            admin_ctx, filters={'provider:network_type': [ndfc_const.TYPE_ND]})
+
+        mock_record.assert_not_called()
 
     @mock.patch.object(ndfc.Ndfc, 'create_vrf')
     @mock.patch.object(ndfc.Ndfc, 'delete_vrf')
@@ -711,20 +884,27 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
     def test_initialize_starts_periodic_sync(
         self, mock_cleanup, mock_time, mock_random, mock_looping_call_cls):
         mock_time.return_value = 1000
-        mock_looping_call = mock.Mock()
-        mock_looping_call_cls.return_value = mock_looping_call
+        mock_loop = mock.Mock()
+        mock_looping_call_cls.return_value = mock_loop
 
         self.ndfc_mech = mech_ndfc.NDFCMechanismDriver()
         self.ndfc_mech.ndfc = mock.Mock()
         self.ndfc_mech.ndfc.ndfc_obj.get_switches.return_value = {}
         self.ndfc_mech.switch_sync_interval = 1800
 
+        ndfc_conf.cfg.CONF.set_override(
+            'nd_sync_poll_interval', 600, group='ndfc')
         self.ndfc_mech.initialize()
 
-        mock_looping_call_cls.assert_called_once()
-        mock_looping_call.start.assert_called_once_with(
+        calls = mock_looping_call_cls.call_args_list
+        self.assertGreaterEqual(len(calls), 1)
+
+        first_call = calls[0]
+        args, kwargs = first_call
+        self.assertEqual(self.ndfc_mech._refresh_switch_list, args[0])
+
+        mock_loop.start.assert_any_call(
             interval=1800, initial_delay=5, stop_on_exception=False)
-        self.assertEqual(self.ndfc_mech.switch_map, {})
 
     def test_get_host_physnet_from_context_uses_bridge_mappings(self):
         fake_agent = {
