@@ -652,6 +652,25 @@ class NdfcHelper:
             return False
         return True
 
+    def redeploy_network(self, fabric, deploy_payload):
+        try:
+            ret = self.login()
+            if not ret:
+                LOG.error("Failed to login to NDFC")
+                return False
+            try:
+                ret = self._config_deploy_save(fabric, deploy_payload)
+                if not ret:
+                    LOG.error("Failed to redeploy network")
+                    return False
+            finally:
+                self.logout()
+        except Exception as exc:
+            LOG.error("redeploy network failed with exception %(exc)s",
+                      {'exc': exc})
+            return False
+        return True
+
     @http_exc_handler
     def _delete_network(self, fabric, network):
         '''

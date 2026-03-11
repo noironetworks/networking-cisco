@@ -16,14 +16,19 @@
 from openstack.network.v2 import network as network_sdk
 from openstack import resource
 from openstackclient.network.v2 import network as osc_network
+from osc_lib import exceptions as osc_exc
 
 from cliff import hooks
+from oslo_log import log as logging
 
 from openstackclient.i18n import _
 
 ND_STATUS = 'nd-status'
 
 _get_attrs_orig = getattr(osc_network, '_get_attrs', None)
+
+
+LOG = logging.getLogger(__name__)
 
 
 def _get_attrs_nd(client_manager, parsed_args):
@@ -33,6 +38,10 @@ def _get_attrs_nd(client_manager, parsed_args):
         attrs = {}
     nd_status = getattr(parsed_args, 'nd_status', None)
     if nd_status:
+        if nd_status != 'SYNC':
+            raise osc_exc.CommandError(
+                "Only nd-status=SYNC is allowed; SUCCESS/FAILED are "
+                "managed by NDFC and the Neutron ND poller.")
         attrs[ND_STATUS] = nd_status
     return attrs
 
@@ -50,9 +59,10 @@ class SetNetworkNdStatus(hooks.CommandHook):
             '--nd-status',
             metavar='<nd-status>',
             dest='nd_status',
-            choices=['SUCCESS', 'FAILED', 'SYNC'],
-            help=_('Set ND deploy status or trigger SYNC for an ND '
-                   'network.'),
+            choices=['SYNC'],
+            help=_('Trigger ND redeploy (nd-status=SYNC) for an ND network. '
+                   'The nd_status field may be SUCCESS, FAILED, or SYNC; '
+                   'only SYNC may be set via this command.'),
         )
         return parser
 
@@ -60,6 +70,36 @@ class SetNetworkNdStatus(hooks.CommandHook):
         return ''
 
     def before(self, parsed_args):
+        nd_status = getattr(parsed_args, 'nd_status', None)
+        if not nd_status:
+            return parsed_args
+
+        cmd = getattr(self, 'cmd', None)
+        app = getattr(cmd, 'app', None) if cmd is not None else None
+        client_manager = getattr(app, 'client_manager', None) if app else None
+        network_proxy = getattr(
+                client_manager, 'network', None) if client_manager else None
+        if network_proxy is None:
+            return parsed_args
+
+        net_name_or_id = getattr(parsed_args, 'network', None)
+        if not net_name_or_id:
+            return parsed_args
+
+        net = network_proxy.find_network(net_name_or_id, ignore_missing=True)
+        if not net:
+            return parsed_args
+
+        net_type = getattr(net, 'provider_network_type', None)
+
+        LOG.debug("SetNetworkNdStatus.before: resolved network %r with "
+                  "provider_network_type=%r", net, net_type)
+
+        if net_type and net_type != 'nd':
+            raise osc_exc.CommandError(
+                "nd-status can only be set on ND networks "
+                "(provider:network_type=nd).")
+
         return parsed_args
 
     def after(self, parsed_args, return_code):
