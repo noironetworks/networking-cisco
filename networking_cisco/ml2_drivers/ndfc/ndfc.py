@@ -674,6 +674,66 @@ class Ndfc:
                  self.fabric, vrf_name, network_name, ret)
         return ret
 
+    def redeploy_network(self, network_name):
+        fabric = self.fabric
+        deploy_payload = self._get_deploy_payload(network_name)
+        LOG.debug("Redeploy payload for fabric %s network %s is %s",
+                  fabric, network_name, deploy_payload)
+        ret = self.ndfc_obj.redeploy_network(fabric, deploy_payload)
+        LOG.info("For %s:%s redeploy network returned %s",
+                 fabric, network_name, ret)
+        return ret
+
+    def get_network_deploy_status(self, network_name):
+        fabric = self.fabric
+        try:
+            payload = self.ndfc_obj.get_network_info(fabric, network_name)
+        except Exception as exc:
+            LOG.error("get_network_deploy_status failed for %s:%s: %s",
+                      fabric, network_name, exc)
+            return False
+
+        if not payload:
+            LOG.debug("get_network_deploy_status: no payload for %s:%s; "
+                      "treating as not deployed/invalid",
+                      fabric, network_name)
+            return False
+
+        status = (payload.get('networkStatus') or '').lower()
+        if not status:
+            LOG.debug("get_network_deploy_status: payload for %s:%s has no "
+                      "networkStatus; treating presence as deployed/valid",
+                      fabric, network_name)
+            return True
+
+        success_statuses = {'deployed', 'insync'}
+        failure_statuses = {'failed', 'error', 'deployfailed', 'outofsync',
+                            'pending'}
+        neutral_statuses = {'notapplicable'}
+
+        if status in success_statuses:
+            LOG.debug("get_network_deploy_status: network %s on fabric %s "
+                      "reported status %s; treating as deployed/valid",
+                      network_name, fabric, status)
+            return True
+
+        if status in failure_statuses:
+            LOG.debug("get_network_deploy_status: network %s on fabric %s "
+                      "reported status %s; treating as failed/invalid",
+                      network_name, fabric, status)
+            return False
+
+        if status in neutral_statuses:
+            LOG.debug("get_network_deploy_status: network %s on fabric %s "
+                      "reported neutral status %s; leaving nd-status "
+                      "unchanged", network_name, fabric, status)
+            return None
+
+        LOG.debug("get_network_deploy_status: network %s on fabric %s "
+                  "reported unknown status %s; treating as neutral/"
+                  "no-op for nd-status", network_name, fabric, status)
+        return None
+
     def delete_network(self, network_name, vlan, physnet):
         LOG.debug("Delete network called with %s", network_name)
         fabric = self.fabric

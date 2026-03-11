@@ -55,37 +55,6 @@ class NdMl2Plugin(ml2_plugin.Ml2Plugin):
             aliases.append(nd_net_ext.ALIAS)
         return aliases
 
-    def update_network(self, context, id, network):
-        data = network.get('network', network)
-        nd_status = data.get('nd-status') or data.get('nd_status')
-
-        updated = super(NdMl2Plugin, self).update_network(context, id, network)
-
-        if nd_status is None:
-            return updated
-
-        if updated.get('provider:network_type') != ndfc_const.TYPE_ND:
-            return updated
-
-        try:
-            with db_api.CONTEXT_WRITER.using(context):
-                session = context.session
-                ext = (session.query(extension_db.NdNetworkExtension)
-                       .filter_by(network_id=id)
-                       .first())
-                if ext is None:
-                    ext = extension_db.NdNetworkExtension(
-                        network_id=id,
-                        nd_status=nd_status,
-                    )
-                    session.add(ext)
-                else:
-                    ext.nd_status = nd_status
-        except Exception:
-            LOG.exception("NdMl2Plugin.update_network: failed to persist "
-                          "nd-status %s for network %s", nd_status, id)
-        return updated
-
     def create_address_scope(self, context, address_scope):
         mech_context = None
         with db_api.CONTEXT_WRITER.using(context):
@@ -236,3 +205,24 @@ class NdMl2Plugin(ml2_plugin.Ml2Plugin):
                 LOG.exception(
                     "Failed to extend network %s with nd-status", net_id)
         return res_list
+
+    def update_network(self, context, id, network):
+        original = super(NdMl2Plugin, self).get_network(context, id)
+
+        result = super(NdMl2Plugin, self).update_network(context, id, network)
+        LOG.debug("update_network: network id: %s; network type: %s",
+                  result.get('id'), result.get('provider:network_type'))
+
+        body = network.get('network', {}) or {}
+        nd_status = body.get(nd_net_ext.ND_STATUS)
+        if not nd_status:
+            return result
+
+        if result.get('provider:network_type') != ndfc_const.TYPE_ND:
+            return result
+
+        mech_context = driver_context.NetworkContext(
+            self, context, result, original)
+        self.mechanism_manager.update_network_postcommit(mech_context)
+
+        return result

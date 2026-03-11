@@ -106,6 +106,21 @@ class TestNdfcNetworkDeployExtensionDriver(testlib_api.SqlTestCase):
         ctx.session.add.assert_not_called()
         self.assertEqual('SUCCESS', ext_row.nd_status)
 
+    @mock.patch('neutron_lib.db.api.CONTEXT_WRITER.using')
+    def test_process_update_network_sync_persists_and_updates_result(
+            self, mock_writer):
+        ctx = mock.Mock()
+        ctx.session = mock.Mock()
+
+        data = {'nd-status': 'SYNC'}
+        result = {
+            'id': 'net-id',
+            'provider:network_type': ndfc_const.TYPE_ND,
+        }
+        self.driver.process_update_network(ctx, data, result)
+
+        self.assertEqual('SYNC', result.get('nd-status'))
+
     def test_extend_network_dict_populates_nd_status(self):
         session = mock.Mock()
         base_model = mock.Mock()
