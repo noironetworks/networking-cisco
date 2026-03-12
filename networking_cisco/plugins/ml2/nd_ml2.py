@@ -26,6 +26,9 @@ from networking_cisco.ml2_drivers.ndfc import extension_db
 from networking_cisco.ml2_drivers.ndfc.extensions import (
     ndfc_network_deploy as nd_net_ext
 )
+from networking_cisco.plugins.ml2.nd_extension_manager import (
+    NdExtensionManager
+)
 from networking_cisco.plugins.ml2.nd_manager import NdManager
 
 
@@ -43,6 +46,7 @@ class NdMl2Plugin(ml2_plugin.Ml2Plugin):
 
         super(NdMl2Plugin, self).__init__()
         self._nd_manager = NdManager()
+        self.nd_extension_manager = NdExtensionManager(self._nd_manager)
 
     @property
     def supported_extension_aliases(self):
@@ -89,7 +93,7 @@ class NdMl2Plugin(ml2_plugin.Ml2Plugin):
                 context, address_scope)
 
             body = address_scope.get(as_def.ADDRESS_SCOPE, {})
-            self._nd_manager.handle_address_scope_create(
+            self.nd_extension_manager.handle_address_scope_create(
                 context, body, result)
 
             if hasattr(driver_context, 'AddressScopeContext'):
@@ -124,7 +128,9 @@ class NdMl2Plugin(ml2_plugin.Ml2Plugin):
         try:
             with session.begin(subtransactions=True):
                 base_model = self._get_address_scope(context, id)
-                self._nd_manager.extend_address_scope(session, base_model, res)
+                self.nd_extension_manager.extend_address_scope_dict(
+                    session, base_model, res
+                )
         except Exception:
             LOG.exception("Failed to extend address_scope %s with nd-name", id)
         return res
@@ -145,8 +151,9 @@ class NdMl2Plugin(ml2_plugin.Ml2Plugin):
             try:
                 with session.begin(subtransactions=True):
                     base_model = self._get_address_scope(context, addr_id)
-                    self._nd_manager.extend_address_scope(
-                        session, base_model, res)
+                    self.nd_extension_manager.extend_address_scope_dict(
+                        session, base_model, res
+                    )
             except Exception:
                 LOG.exception("Failed to extend address_scope %s with "
                         "nd-vrf-name", addr_id)
@@ -185,7 +192,7 @@ class NdMl2Plugin(ml2_plugin.Ml2Plugin):
                     "VRF %s", nd_vrf_name)
 
         if nd_vrf_name and delete_vrf:
-            self._nd_manager.delete_vrf_for_address_scope(nd_vrf_name)
+            self.nd_extension_manager.delete_vrf_for_address_scope(nd_vrf_name)
 
     def get_network(self, context, id, fields=None, net_db=None):
         res = super(NdMl2Plugin, self).get_network(context, id, fields)
@@ -198,7 +205,9 @@ class NdMl2Plugin(ml2_plugin.Ml2Plugin):
         try:
             with session.begin(subtransactions=True):
                 base_model = type('obj', (), {'id': id})()
-                self._nd_manager.extend_network(session, base_model, res)
+                self.nd_extension_manager.extend_network_dict(
+                    session, base_model, res
+                )
         except Exception:
             LOG.exception("Failed to extend network %s with nd-status", id)
         return res
@@ -220,7 +229,9 @@ class NdMl2Plugin(ml2_plugin.Ml2Plugin):
             try:
                 with session.begin(subtransactions=True):
                     base_model = type('obj', (), {'id': net_id})()
-                    self._nd_manager.extend_network(session, base_model, res)
+                    self.nd_extension_manager.extend_network_dict(
+                        session, base_model, res
+                    )
             except Exception:
                 LOG.exception(
                     "Failed to extend network %s with nd-status", net_id)
