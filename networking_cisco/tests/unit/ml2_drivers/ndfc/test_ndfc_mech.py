@@ -222,7 +222,7 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
         return fake_context
 
     @mock.patch.object(mech_ndfc.NDFCMechanismDriver, 'plugin', create=True)
-    def test_get_nd_vrf_for_subnet_returns_nd_vrf_name(self, mock_plugin):
+    def test_get_nd_vrf_for_as_returns_nd_vrf_name(self, mock_plugin):
         plugin_context = n_ctx.Context(user_id='user', tenant_id='tenant')
         subnet = {
             'id': 'subnet-id',
@@ -242,7 +242,7 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
         mock_plugin.get_subnetpool.return_value = subnetpool
         mock_plugin.get_address_scope.return_value = addr_scope
 
-        nd_vrf = self.ndfc_mech._get_nd_vrf_for_subnet(self.context, subnet)
+        nd_vrf = self.ndfc_mech._get_nd_vrf_for_as(self.context, subnet)
 
         mock_plugin.get_subnetpool.assert_called_once_with(
             plugin_context, 'sp-id')
@@ -251,7 +251,7 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
         self.assertEqual('vrf-ascope-v4', nd_vrf)
 
     @mock.patch.object(mech_ndfc.NDFCMechanismDriver, 'plugin', create=True)
-    def test_get_nd_vrf_for_subnet_no_address_scope(self, mock_plugin):
+    def test_get_nd_vrf_for_as_no_address_scope(self, mock_plugin):
         plugin_context = n_ctx.Context(user_id='user', tenant_id='tenant')
         subnet = {
             'id': 'subnet-id',
@@ -266,7 +266,7 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
         self.context._plugin_context = plugin_context
         mock_plugin.get_subnetpool.return_value = subnetpool
 
-        nd_vrf = self.ndfc_mech._get_nd_vrf_for_subnet(self.context, subnet)
+        nd_vrf = self.ndfc_mech._get_nd_vrf_for_as(self.context, subnet)
 
         mock_plugin.get_subnetpool.assert_called_once_with(
             plugin_context, 'sp-id')
