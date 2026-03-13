@@ -180,3 +180,80 @@ class TestNdMl2PluginAddressScopeVrfCleanup(testlib_api.SqlTestCase):
 
         nd_ext_mgr = self.plugin.nd_extension_manager
         nd_ext_mgr.delete_vrf_for_address_scope.assert_not_called()
+
+
+class TestNdMl2PluginRouterInterfaceValidation(testlib_api.SqlTestCase):
+
+    def setUp(self):
+        super(TestNdMl2PluginRouterInterfaceValidation, self).setUp()
+        self.plugin = nd_ml2.NdMl2Plugin()
+
+    def _make_payload(self, network_id):
+        payload = mock.Mock()
+        payload.context = mock.Mock()
+        payload.metadata = {'network_id': network_id}
+        return payload
+
+    def test_blocks_router_interface_on_nd_network(self):
+        nd_network = {
+            'id': 'net-nd',
+            'provider:network_type': ndfc_const.TYPE_ND,
+        }
+        payload = self._make_payload('net-nd')
+
+        with mock.patch.object(ml2_plugin.Ml2Plugin, 'get_network',
+                               return_value=nd_network):
+            self.assertRaises(
+                nd_ml2.RouterNotCompatibleWithNetworkType,
+                self.plugin._check_router_interface_network_type,
+                'router_interface', 'before_create', self.plugin,
+                payload=payload)
+
+    def test_allows_router_interface_on_vlan_network(self):
+        vlan_network = {
+            'id': 'net-vlan',
+            'provider:network_type': 'vlan',
+        }
+        payload = self._make_payload('net-vlan')
+
+        with mock.patch.object(ml2_plugin.Ml2Plugin, 'get_network',
+                               return_value=vlan_network):
+            self.plugin._check_router_interface_network_type(
+                'router_interface', 'before_create', self.plugin,
+                payload=payload)
+
+    def test_allows_router_interface_on_vxlan_network(self):
+        vxlan_network = {
+            'id': 'net-vxlan',
+            'provider:network_type': 'vxlan',
+        }
+        payload = self._make_payload('net-vxlan')
+
+        with mock.patch.object(ml2_plugin.Ml2Plugin, 'get_network',
+                               return_value=vxlan_network):
+            self.plugin._check_router_interface_network_type(
+                'router_interface', 'before_create', self.plugin,
+                payload=payload)
+
+    def test_skips_check_when_payload_is_none(self):
+        self.plugin._check_router_interface_network_type(
+            'router_interface', 'before_create', self.plugin,
+            payload=None)
+
+    def test_skips_check_when_network_id_missing(self):
+        payload = mock.Mock()
+        payload.context = mock.Mock()
+        payload.metadata = {}
+
+        self.plugin._check_router_interface_network_type(
+            'router_interface', 'before_create', self.plugin,
+            payload=payload)
+
+    def test_skips_check_when_network_fetch_fails(self):
+        payload = self._make_payload('net-missing')
+
+        with mock.patch.object(ml2_plugin.Ml2Plugin, 'get_network',
+                               side_effect=Exception('not found')):
+            self.plugin._check_router_interface_network_type(
+                'router_interface', 'before_create', self.plugin,
+                payload=payload)
