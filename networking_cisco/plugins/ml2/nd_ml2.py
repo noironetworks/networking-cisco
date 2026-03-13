@@ -16,8 +16,12 @@
 from neutron.plugins.ml2 import driver_context
 from neutron.plugins.ml2 import plugin as ml2_plugin
 from neutron_lib.api.definitions import address_scope as as_def
+from neutron_lib.callbacks import events
+from neutron_lib.callbacks import registry
+from neutron_lib.callbacks import resources
 from neutron_lib import context as n_context
 from neutron_lib.db import api as db_api
+from neutron_lib import exceptions as n_exc
 from oslo_log import log as logging
 from oslo_utils import excutils
 
@@ -35,6 +39,11 @@ from networking_cisco.plugins.ml2.nd_manager import NdManager
 LOG = logging.getLogger(__name__)
 
 
+class RouterNotCompatibleWithNetworkType(n_exc.BadRequest):
+    message = ("RouterNotCompatibleWithNetworkType: Router interface "
+               "cannot be added to a network of type '%(network_type)s'.")
+
+
 class NdMl2Plugin(ml2_plugin.Ml2Plugin):
 
     def __init__(self):
@@ -47,6 +56,10 @@ class NdMl2Plugin(ml2_plugin.Ml2Plugin):
         super(NdMl2Plugin, self).__init__()
         self._nd_manager = NdManager()
         self.nd_extension_manager = NdExtensionManager(self._nd_manager)
+        registry.subscribe(
+            self._check_router_interface_network_type,
+            resources.ROUTER_INTERFACE,
+            events.BEFORE_CREATE)
 
     @property
     def supported_extension_aliases(self):
@@ -226,3 +239,23 @@ class NdMl2Plugin(ml2_plugin.Ml2Plugin):
         self.mechanism_manager.update_network_postcommit(mech_context)
 
         return result
+
+    def _check_router_interface_network_type(self, resource, event,
+            trigger, payload=None):
+        if payload is None:
+            return
+        context = payload.context
+        metadata = payload.metadata or {}
+        network_id = metadata.get('network_id')
+        if not network_id:
+            return
+        try:
+            network = super(NdMl2Plugin, self).get_network(context, network_id)
+        except Exception:
+            LOG.debug("_check_router_interface_network_type: could not "
+                      "fetch network %s", network_id)
+            return
+        network_type = network.get('provider:network_type')
+        if network_type == ndfc_const.TYPE_ND:
+            raise RouterNotCompatibleWithNetworkType(
+                network_type=network_type)
