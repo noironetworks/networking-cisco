@@ -104,11 +104,8 @@ class NdMl2Plugin(ml2_plugin.Ml2Plugin):
         if not res:
             return res
         try:
-            session = context.session
-        except AttributeError:
-            return res
-        try:
-            with session.begin(subtransactions=True):
+            with db_api.CONTEXT_READER.using(context):
+                session = context.session
                 base_model = self._get_address_scope(context, id)
                 self.nd_extension_manager.extend_address_scope_dict(
                     session, base_model, res
@@ -122,16 +119,13 @@ class NdMl2Plugin(ml2_plugin.Ml2Plugin):
             context, filters, fields)
         if not res_list:
             return res_list
-        try:
-            session = context.session
-        except AttributeError:
-            return res_list
         for res in res_list:
             addr_id = res.get("id")
             if not addr_id:
                 continue
             try:
-                with session.begin(subtransactions=True):
+                with db_api.CONTEXT_READER.using(context):
+                    session = context.session
                     base_model = self._get_address_scope(context, addr_id)
                     self.nd_extension_manager.extend_address_scope_dict(
                         session, base_model, res
@@ -181,11 +175,8 @@ class NdMl2Plugin(ml2_plugin.Ml2Plugin):
         if not res:
             return res
         try:
-            session = context.session
-        except AttributeError:
-            return res
-        try:
-            with session.begin(subtransactions=True):
+            with db_api.CONTEXT_READER.using(context):
+                session = context.session
                 base_model = type('obj', (), {'id': id})()
                 self.nd_extension_manager.extend_network_dict(
                     session, base_model, res
@@ -200,16 +191,13 @@ class NdMl2Plugin(ml2_plugin.Ml2Plugin):
             context, filters, fields, sorts, limit, marker, page_reverse)
         if not res_list:
             return res_list
-        try:
-            session = context.session
-        except AttributeError:
-            return res_list
         for res in res_list:
             net_id = res.get("id")
             if not net_id:
                 continue
             try:
-                with session.begin(subtransactions=True):
+                with db_api.CONTEXT_READER.using(context):
+                    session = context.session
                     base_model = type('obj', (), {'id': net_id})()
                     self.nd_extension_manager.extend_network_dict(
                         session, base_model, res
