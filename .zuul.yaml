@@ -38,6 +38,10 @@
             required-projects:
               - name: openstack/requirements
                 override-checkout: stable/2025.2
+        - openstack-tox-py311:
+            required-projects:
+              - name: openstack/requirements
+                override-checkout: stable/2025.2
         - openstack-tox-py312:
             required-projects:
               - name: openstack/requirements
@@ -65,6 +69,10 @@
               - name: openstack/requirements
                 override-checkout: stable/2025.2
         - openstack-tox-py310:
+            required-projects:
+              - name: openstack/requirements
+                override-checkout: stable/2025.2
+        - openstack-tox-py311:
             required-projects:
               - name: openstack/requirements
                 override-checkout: stable/2025.2
