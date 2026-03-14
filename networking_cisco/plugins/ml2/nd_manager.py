@@ -39,26 +39,26 @@ class NdManager(object):
             return
         self._ext_driver.process_create_address_scope(context, body, result)
 
-    def delete_vrf_for_address_scope(self, nd_name):
-        if not nd_name:
+    def delete_vrf_for_address_scope(self, nd_vrf_name):
+        if not nd_vrf_name:
             return
         try:
             ndfc = get_ndfc_conf()
-            deleted = ndfc.delete_vrf(nd_name)
+            deleted = ndfc.delete_vrf(nd_vrf_name)
             if not deleted:
                 LOG.error(
                     "Failed to delete VRF %s in ND for "
-                    "address-scope cleanup", nd_name,
+                    "address-scope cleanup", nd_vrf_name,
                 )
             else:
                 LOG.debug(
                     "Deleted VRF %s in ND for address-scope cleanup",
-                    nd_name,
+                    nd_vrf_name,
                 )
         except Exception:
             LOG.exception(
                 "Exception while deleting VRF %s in ND for "
-                "address-scope cleanup", nd_name,
+                "address-scope cleanup", nd_vrf_name,
             )
 
     def extend_address_scope(self, session, base_model, result):
