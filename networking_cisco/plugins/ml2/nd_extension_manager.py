@@ -48,5 +48,5 @@ class NdExtensionManager(object):
     def handle_address_scope_create(self, context, body, result):
         self._nd_manager.handle_address_scope_create(context, body, result)
 
-    def delete_vrf_for_address_scope(self, nd_name):
-        self._nd_manager.delete_vrf_for_address_scope(nd_name)
+    def delete_vrf_for_address_scope(self, nd_vrf_name):
+        self._nd_manager.delete_vrf_for_address_scope(nd_vrf_name)

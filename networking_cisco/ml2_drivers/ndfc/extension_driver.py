@@ -18,7 +18,7 @@
 This driver is intentionally minimal. It exists primarily so that
 deployments can enable an ND-specific ML2 extension driver via the
 ``[ml2] extension_drivers`` configuration option. Once enabled, it wires
-in the ND API extension package so that attributes like ``nd-name``
+in the ND API extension package so that attributes like ``nd-vrf-name``
 are exposed through Neutron's API layer.
 """
 
