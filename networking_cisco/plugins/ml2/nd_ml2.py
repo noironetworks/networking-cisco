@@ -111,7 +111,8 @@ class NdMl2Plugin(ml2_plugin.Ml2Plugin):
                     session, base_model, res
                 )
         except Exception:
-            LOG.exception("Failed to extend address_scope %s with nd-name", id)
+            LOG.exception("Failed to extend address_scope %s with nd-vrf-name",
+                    id)
         return res
 
     def get_address_scopes(self, context, filters=None, fields=None):
