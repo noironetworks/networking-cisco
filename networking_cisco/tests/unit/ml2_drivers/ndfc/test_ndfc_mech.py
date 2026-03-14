@@ -492,12 +492,15 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
         mock_detach.assert_any_call(ctx, 'host-0', network, vlan_id=321)
         mock_attach.assert_any_call(ctx, 'host-1', network, vlan_id=321)
 
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver,
+                       '_count_bound_ports_on_network', return_value=1)
     @mock.patch.object(mech_ndfc.NDFCMechanismDriver, '_get_nd_hpb_vlan',
                        return_value=321)
     @mock.patch.object(mech_ndfc.NDFCMechanismDriver, 'detach_network')
     def test_delete_port_postcommit_nd_calls_detach(self,
                                                     mock_detach,
-                                                    mock_get_vlan):
+                                                    mock_get_vlan,
+                                                    mock_count):
         network = {
             'id': 'net-nd',
             'tenant_id': test_pluginV2.TEST_TENANT_ID,
@@ -511,6 +514,52 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
         mock_get_vlan.assert_called_once_with(ctx, 'physnet1')
         mock_detach.assert_called_once_with(ctx, 'host-1', network,
                                             vlan_id=321)
+
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver,
+                       '_release_nd_dynamic_segments')
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver,
+                       '_count_bound_ports_on_network', return_value=1)
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver, '_get_nd_hpb_vlan',
+                       return_value=321)
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver, 'detach_network')
+    def test_delete_port_nd_retains_segment_when_other_ports_exist(
+            self, mock_detach, mock_get_vlan, mock_count, mock_release):
+        network = {
+            'id': 'net-nd',
+            'tenant_id': test_pluginV2.TEST_TENANT_ID,
+            'provider:physical_network': 'physnet1',
+            'provider:network_type': ndfc_const.TYPE_ND,
+        }
+
+        ctx = self._create_fake_port_context(network)
+        self.ndfc_mech.delete_port_postcommit(ctx)
+
+        mock_detach.assert_called_once()
+        mock_count.assert_called_once_with(ctx._plugin_context, 'net-nd')
+        mock_release.assert_not_called()
+
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver,
+                       '_release_nd_dynamic_segments')
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver,
+                       '_count_bound_ports_on_network', return_value=0)
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver, '_get_nd_hpb_vlan',
+                       return_value=321)
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver, 'detach_network')
+    def test_delete_port_nd_releases_segment_when_last_port_deleted(
+            self, mock_detach, mock_get_vlan, mock_count, mock_release):
+        network = {
+            'id': 'net-nd',
+            'tenant_id': test_pluginV2.TEST_TENANT_ID,
+            'provider:physical_network': 'physnet1',
+            'provider:network_type': ndfc_const.TYPE_ND,
+        }
+
+        ctx = self._create_fake_port_context(network)
+        self.ndfc_mech.delete_port_postcommit(ctx)
+
+        mock_detach.assert_called_once()
+        mock_count.assert_called_once_with(ctx._plugin_context, 'net-nd')
+        mock_release.assert_called_once_with(ctx, 'net-nd')
 
     def test_trigger_nd_deploy_sync_success_records_status(self):
         network = {

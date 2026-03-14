@@ -38,10 +38,10 @@ class Patched_address_scope(address_scope.Address_scope):
 
     @classmethod
     def get_extended_resources(cls, version):
-        """Return extended resources with nd-name injected.
+        """Return extended resources with nd-vrf-name injected.
 
         We delegate to the base address_scope extension to build the
-        standard attribute map, and then add nd-name as an additional
+        standard attribute map, and then add nd-vrf-name as an additional
         attribute on the address_scopes resource.
         """
         extended = super(Patched_address_scope, cls).get_extended_resources(
