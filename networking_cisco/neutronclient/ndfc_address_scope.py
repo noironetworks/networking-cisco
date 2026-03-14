@@ -77,7 +77,7 @@ class NdAddressScopeCreate(extension.ClientExtensionCreate,
         }}
 
         if getattr(parsed_args, 'nd_vrf_name', None):
-            body[self.resource]['nd-vrf-name'] = parsed_args.nd_name
+            body[self.resource]['nd-vrf-name'] = parsed_args.nd_vrf_name
 
         neutronV20.update_dict(parsed_args, body[self.resource], [])
         return body

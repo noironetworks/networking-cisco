@@ -525,6 +525,32 @@ class NDFCMechanismDriver(api.MechanismDriver,
             return None
         return dynamic_segment.get(api.SEGMENTATION_ID)
 
+    def _count_bound_ports_on_network(self, plugin_context, network_id):
+        with db_api.CONTEXT_READER.using(plugin_context) as session:
+            count = (session.query(
+                func.count(sa.distinct(models.PortBindingLevel.port_id)))
+                .join(models_v2.Port,
+                      models_v2.Port.id == models.PortBindingLevel.port_id)
+                .filter(models_v2.Port.network_id == network_id)
+                .scalar()) or 0
+            return count
+
+    def _release_nd_dynamic_segments(self, context, network_id):
+        plugin_context = context._plugin_context
+        dynamic_segments = segments_db.get_network_segments(
+            plugin_context, network_id, filter_dynamic=True)
+        for segment in dynamic_segments:
+            seg_id = segment.get(api.ID)
+            if seg_id:
+                try:
+                    context.release_dynamic_segment(seg_id)
+                    LOG.info("Released dynamic VLAN segment %s for ND "
+                             "network %s (last port deleted)",
+                             seg_id, network_id)
+                except Exception:
+                    LOG.exception("Failed to release dynamic segment %s "
+                                  "for ND network %s", seg_id, network_id)
+
     def _get_topology(self, session, host):
         topology = {}
         vpc_peer_map = self.vpc_peer_map or {}
@@ -1002,6 +1028,11 @@ class NDFCMechanismDriver(api.MechanismDriver,
                 if vlan_id is not None:
                     self.detach_network(context, context.host, network,
                                         vlan_id=vlan_id)
+                remaining = self._count_bound_ports_on_network(
+                    context._plugin_context, network['id'])
+                if remaining == 0:
+                    self._release_nd_dynamic_segments(
+                        context, network['id'])
 
     def bind_port(self, context):
         LOG.debug("Attempting to bind port %(port)s on network %(network)s",
