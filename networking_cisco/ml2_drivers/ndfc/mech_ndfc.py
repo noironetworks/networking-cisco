@@ -274,6 +274,7 @@ class NDFCMechanismDriver(api.MechanismDriver,
 
     def start_rpc_listeners(self):
         LOG.debug("NDFC MD starting RPC listeners")
+        self._refresh_switch_list()
         return self._start_rpc_listeners()
 
     @property
