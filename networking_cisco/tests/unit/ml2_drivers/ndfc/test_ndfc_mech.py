@@ -146,6 +146,10 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
                 group='ndfc')
         self.mock_keystone_auth = mock.patch.object(
             ProjectDetailsCache, 'get_auth', return_value=None).start()
+        self._refresh_patcher = mock.patch.object(
+            mech_ndfc.NDFCMechanismDriver,
+            '_refresh_switch_list')
+        self._refresh_patcher.start()
         patcher = mock.patch(
             'networking_cisco.ml2_drivers.ndfc.mech_ndfc.loopingcall'
             '.FixedIntervalLoopingCall')
@@ -1022,10 +1026,29 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
 
         self.ndfc_mech.ndfc.ndfc_obj.get_switches.return_value = \
             updated_switch_data
+        self._refresh_patcher.stop()
         self.ndfc_mech._refresh_switch_list()
 
         self.assertEqual(self.ndfc_mech.switch_map, updated_switch_data)
         mock_cleanup.assert_called_once_with(['sn1'])
+
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver, '_start_rpc_listeners')
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver,
+            '_start_switch_sync_loop')
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver, '_refresh_switch_list')
+    def test_start_rpc_listeners_refreshes_switches_first(
+            self, mock_refresh, mock_sync_loop, mock_rpc):
+        call_order = []
+        mock_refresh.side_effect = lambda: call_order.append('refresh')
+        mock_sync_loop.side_effect = lambda: call_order.append('sync_loop')
+        mock_rpc.side_effect = lambda: call_order.append('rpc')
+
+        self.ndfc_mech.start_rpc_listeners()
+
+        mock_refresh.assert_called_once()
+        mock_sync_loop.assert_called_once()
+        mock_rpc.assert_called_once()
+        self.assertEqual(call_order, ['refresh', 'sync_loop', 'rpc'])
 
     @mock.patch('neutron_lib.db.api.CONTEXT_WRITER.using')
     def test_cleanup_stale_tors_no_stale_sns(self, mock_db_writer):
