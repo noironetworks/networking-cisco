@@ -364,6 +364,22 @@ class TestNDFC(TestNDFCBase, test_plugin.Ml2PluginV2TestCase):
                 vlan, leaf_attachments)
         self.assertTrue(ret)
 
+    @mock.patch.object(ndfc_helper.NdfcHelper,
+            'get_network_switch_interface_map', return_value=None)
+    def test_network_attach_detach_none_guard(self, mock_get_map):
+        vrf_name = 'test_vrf'
+        network_name = 'test_network'
+        vlan = '100'
+        leaf_attachments = test_ndfc_mech.TEST_LEAF_ATTACHMENTS
+
+        ret = self.ndfc_instance.attach_network(vrf_name, network_name,
+                vlan, leaf_attachments)
+        self.assertFalse(ret)
+
+        ret = self.ndfc_instance.detach_network(vrf_name, network_name,
+                vlan, leaf_attachments)
+        self.assertFalse(ret)
+
     def test_create_network_payload_enable_l3_on_border(self):
         vrf_name = 'test_vrf'
         network_name = 'test_network'
