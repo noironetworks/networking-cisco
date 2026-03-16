@@ -1070,8 +1070,8 @@ class NdfcHelper:
         if self.nd_new_version:
             pairs = data.get('vpcPairs', [])
             for pair in pairs:
-                p1 = pair.get('peer1SwitchId')
-                p2 = pair.get('peer2SwitchId')
+                p1 = pair.get('switchId')
+                p2 = pair.get('peerSwitchId')
                 if switch_id == p1 and p2:
                     peer_serial = p2
                     break
@@ -1129,7 +1129,8 @@ class NdfcHelper:
         try:
             switches = self.get_switches(fabric)
             for sw_ip, sw_info in switches.items():
-                if not sw_info or sw_info.get('role') != 'leaf':
+                if not sw_info or sw_info.get('role') not in (
+                        'leaf', 'border'):
                     continue
                 leaf_serial = sw_info.get('serial')
                 if not leaf_serial or leaf_serial in peer_map:
