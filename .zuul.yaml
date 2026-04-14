@@ -1,3 +1,10 @@
+- job:
+    name: networking-cisco-coverage
+    parent: openstack-tox-cover
+    description: "Runs unit tests with coverage reporting."
+    vars:
+      tox_envlist: cover
+
 - project:
     name: x/networking-cisco
     templates:
@@ -29,6 +36,12 @@
             required-projects:
               - name: openstack/requirements
                 override-checkout: unmaintained/2024.1
+        - networking-cisco-coverage:
+            nodeset: ubuntu-jammy
+            timeout: 6000
+            required-projects:
+              - name: openstack/requirements
+                override-checkout: unmaintained/2024.1
     gate:
       jobs:
         - openstack-tox-pep8:
@@ -53,6 +66,12 @@
               - name: openstack/requirements
                 override-checkout: unmaintained/2024.1
         - openstack-tox-py312:
+            required-projects:
+              - name: openstack/requirements
+                override-checkout: unmaintained/2024.1
+        - networking-cisco-coverage:
+            nodeset: ubuntu-jammy
+            timeout: 6000
             required-projects:
               - name: openstack/requirements
                 override-checkout: unmaintained/2024.1
