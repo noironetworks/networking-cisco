@@ -5,6 +5,13 @@
     vars:
       tox_envlist: ndfc
 
+- job:
+    name: networking-cisco-coverage
+    parent: openstack-tox-cover
+    description: "Runs unit tests with coverage reporting."
+    vars:
+      tox_envlist: cover
+
 - project:
     name: x/networking-cisco
     templates:
@@ -18,6 +25,12 @@
                 override-checkout: stable/2025.2
         - networking-cisco-ndfc-tests:
             nodeset: ubuntu-jammy
+            required-projects:
+              - name: openstack/requirements
+                override-checkout: stable/2025.2
+        - networking-cisco-coverage:
+            nodeset: ubuntu-jammy
+            timeout: 6000
             required-projects:
               - name: openstack/requirements
                 override-checkout: stable/2025.2
@@ -42,6 +55,12 @@
                 override-checkout: stable/2025.2
         - networking-cisco-ndfc-tests:
             nodeset: ubuntu-jammy
+            required-projects:
+              - name: openstack/requirements
+                override-checkout: stable/2025.2
+        - networking-cisco-coverage:
+            nodeset: ubuntu-jammy
+            timeout: 6000
             required-projects:
               - name: openstack/requirements
                 override-checkout: stable/2025.2
