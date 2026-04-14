@@ -4,6 +4,12 @@
     description: "Runs only the NDFC driver unit tests as a voting gate."
     vars:
       tox_envlist: ndfc
+- job:
+    name: networking-cisco-coverage
+    parent: openstack-tox-cover
+    description: "Runs unit tests with coverage reporting."
+    vars:
+      tox_envlist: cover
 
 - project:
     name: x/networking-cisco
@@ -25,18 +31,24 @@
               - name: openstack/requirements
                 override-checkout: stable/2025.1
             voting: false
+        - networking-cisco-coverage:
+            nodeset: ubuntu-jammy
+            timeout: 6000
+            required-projects:
+              - name: openstack/requirements
+                override-checkout: stable/2025.1
         - openstack-tox-py310:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2025.2
+                override-checkout: stable/2025.1
         - openstack-tox-py312:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2025.2
+                override-checkout: stable/2025.1
         - openstack-tox-py313:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2025.2
+                override-checkout: stable/2025.1
     gate:
       jobs:
         - openstack-tox-pep8:
@@ -53,15 +65,21 @@
               - name: openstack/requirements
                 override-checkout: stable/2025.1
             voting: false
+        - networking-cisco-coverage:
+            nodeset: ubuntu-jammy
+            timeout: 6000
+            required-projects:
+              - name: openstack/requirements
+                override-checkout: stable/2025.1
         - openstack-tox-py310:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2025.2
+                override-checkout: stable/2025.1
         - openstack-tox-py312:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2025.2
+                override-checkout: stable/2025.1
         - openstack-tox-py313:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2025.2
+                override-checkout: stable/2025.1
