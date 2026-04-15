@@ -251,7 +251,7 @@ class NDFCMechanismDriver(api.MechanismDriver,
                 network_id)
         return network_db
 
-    def _get_nd_vrf_for_subnet(self, context, subnet):
+    def _get_nd_vrf_for_as(self, context, subnet):
         plugin_context = context._plugin_context
         subnetpool_id = subnet.get('subnetpool_id')
         if not subnetpool_id:
@@ -708,7 +708,7 @@ class NDFCMechanismDriver(api.MechanismDriver,
         gateway_ip = subnet['gateway_ip']
         prefix_len = ipaddress.ip_network(subnet['cidr']).prefixlen
         gateway = str(gateway_ip) + "/" + str(prefix_len)
-        nd_vrf = self._get_nd_vrf_for_subnet(context, subnet)
+        nd_vrf = self._get_nd_vrf_for_as(context, subnet)
 
         if (physical_network and
                 network_type == constants.TYPE_VLAN and
@@ -739,7 +739,7 @@ class NDFCMechanismDriver(api.MechanismDriver,
             gateway_ip = subnet['gateway_ip']
             prefix_len = ipaddress.ip_network(subnet['cidr']).prefixlen
             gateway = str(gateway_ip) + "/" + str(prefix_len)
-            nd_vrf = self._get_nd_vrf_for_subnet(context, subnet)
+            nd_vrf = self._get_nd_vrf_for_as(context, subnet)
 
             if (physical_network and
                     network_type == constants.TYPE_VLAN and
