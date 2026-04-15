@@ -26,6 +26,7 @@ from neutron_lib.plugins import directory
 
 from networking_cisco.ml2_drivers.ndfc.cache import ProjectDetailsCache
 from networking_cisco.ml2_drivers.ndfc import config as ndfc_conf
+from networking_cisco.ml2_drivers.ndfc import constants as ndfc_const
 from networking_cisco.ml2_drivers.ndfc import db as nc_ml2_db
 from networking_cisco.ml2_drivers.ndfc import mech_ndfc
 from networking_cisco.ml2_drivers.ndfc import ndfc
@@ -199,6 +200,26 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
             return fakes.FakeSubnetContext(fake_subnet, fake_old_subnet)
         return fakes.FakeSubnetContext(fake_subnet)
 
+    def _create_fake_port_context(self, network, segments_to_bind=None,
+                                  vif_type_old=portbindings.VIF_TYPE_UNBOUND,
+                                  vif_type_new=portbindings.VIF_TYPE_OVS):
+        original_port = fakes.FakePort.create_one_port(
+            attrs={'binding:vif_type': vif_type_old,
+                   'network_id': network['id']}).info()
+        current_port = fakes.FakePort.create_one_port(
+            attrs={'binding:vif_type': vif_type_new,
+                   'network_id': network['id']}).info()
+
+        fake_context = mock.Mock()
+        fake_context.current = current_port
+        fake_context.original = original_port
+        fake_context.network = mock.Mock(current=network,
+                segments_to_bind=segments_to_bind or [])
+        fake_context.host = 'host-1'
+        fake_context.original_host = 'host-0'
+        fake_context.host_agents = mock.Mock(return_value=[])
+        return fake_context
+
     @mock.patch.object(directory, 'get_plugin')
     def test_get_network(self, mock_get_plugin):
         fake_network_id = 'fake-network-id'
@@ -273,6 +294,117 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
         mock_detach_network.reset_mock()
         self.ndfc_mech.delete_port_postcommit(fake_port_context)
         mock_detach_network.assert_called_once()
+
+    def test_bind_port_nd_hpb_allocates_vlan_and_continues_binding(self):
+        network = {
+            'id': 'net-nd',
+            'provider:physical_network': 'physnet1',
+        }
+        nd_segment = {
+            segment.NETWORK_TYPE: ndfc_const.TYPE_ND,
+            'id': 'nd-seg-id',
+        }
+
+        fake_context = mock.Mock()
+        fake_context.current = {'id': 'port-1', 'network_id': 'net-nd'}
+        fake_context.network = mock.Mock(current=network,
+                                         segments_to_bind=[nd_segment])
+        fake_context.segments_to_bind = [nd_segment]
+        fake_context.host = 'host-1'
+        fake_context.host_agents = mock.Mock(return_value=[])
+        fake_context.allocate_dynamic_segment = mock.Mock(
+            return_value={segment.SEGMENTATION_ID: 200,
+                          segment.NETWORK_TYPE: constants.TYPE_VLAN,
+                          segment.PHYSICAL_NETWORK: 'physnet1'})
+        fake_context.continue_binding = mock.Mock()
+
+        self.ndfc_mech.bind_port(fake_context)
+
+        fake_context.allocate_dynamic_segment.assert_called_once_with({
+            segment.NETWORK_TYPE: constants.TYPE_VLAN,
+            segment.PHYSICAL_NETWORK: 'physnet1',
+        })
+        fake_context.continue_binding.assert_called_once()
+
+    def test_bind_port_non_nd_noop(self):
+        network = {
+            'id': 'net-vlan',
+            'provider:physical_network': 'physnet1',
+        }
+        vlan_segment = {
+            segment.NETWORK_TYPE: constants.TYPE_VLAN,
+            'id': 'vlan-seg-id',
+        }
+
+        fake_context = mock.Mock()
+        fake_context.current = {'id': 'port-1', 'network_id': 'net-vlan'}
+        fake_context.network = mock.Mock(current=network,
+                                         segments_to_bind=[vlan_segment])
+        fake_context.segments_to_bind = [vlan_segment]
+        fake_context.allocate_dynamic_segment = mock.Mock()
+        fake_context.continue_binding = mock.Mock()
+
+        self.ndfc_mech.bind_port(fake_context)
+
+        fake_context.allocate_dynamic_segment.assert_not_called()
+        fake_context.continue_binding.assert_not_called()
+
+    @mock.patch('neutron.db.segments_db.get_dynamic_segment')
+    def test_get_nd_hpb_vlan(self, mock_get_dynamic):
+        mock_get_dynamic.return_value = {segment.SEGMENTATION_ID: 321}
+
+        fake_context = mock.Mock()
+        fake_context.current = {'network_id': 'net-nd'}
+        fake_plugin_context = mock.Mock()
+        fake_plugin_context.session = 'db-ref'
+        fake_context.plugin_context = fake_plugin_context
+
+        vlan_id = self.ndfc_mech._get_nd_hpb_vlan(fake_context, 'physnet1')
+
+        mock_get_dynamic.assert_called_once_with(fake_plugin_context,
+                                                 'net-nd', 'physnet1')
+        self.assertEqual(321, vlan_id)
+
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver, '_get_nd_hpb_vlan',
+                       return_value=321)
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver, 'detach_network')
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver, 'attach_network')
+    def test_update_port_postcommit_nd_calls_attach_detach(self,
+                                                           mock_attach,
+                                                           mock_detach,
+                                                           mock_get_vlan):
+        network = {
+            'id': 'net-nd',
+            'tenant_id': test_pluginV2.TEST_TENANT_ID,
+            'provider:physical_network': 'physnet1',
+            'provider:network_type': ndfc_const.TYPE_ND,
+        }
+        ctx = self._create_fake_port_context(network)
+        self.ndfc_mech.update_port_postcommit(ctx)
+
+        mock_get_vlan.assert_called()
+        mock_detach.assert_any_call(ctx, 'host-0', network, vlan_id=321)
+        mock_attach.assert_any_call(ctx, 'host-1', network, vlan_id=321)
+
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver, '_get_nd_hpb_vlan',
+                       return_value=321)
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver, 'detach_network')
+    def test_delete_port_postcommit_nd_calls_detach(self,
+                                                    mock_detach,
+                                                    mock_get_vlan):
+        network = {
+            'id': 'net-nd',
+            'tenant_id': test_pluginV2.TEST_TENANT_ID,
+            'provider:physical_network': 'physnet1',
+            'provider:network_type': ndfc_const.TYPE_ND,
+        }
+
+        ctx = self._create_fake_port_context(network)
+        self.ndfc_mech.delete_port_postcommit(ctx)
+
+        mock_get_vlan.assert_called_once_with(ctx, 'physnet1')
+        mock_detach.assert_called_once_with(ctx, 'host-1', network,
+                                            vlan_id=321)
 
     def test_create_network_postcommit_vlan_hardware_l3_enabled(self):
         ndfc_conf.cfg.CONF.set_override('vlan_hardware_l3',
@@ -540,6 +672,34 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
         mock_looping_call.start.assert_called_once_with(
             interval=1800, initial_delay=5, stop_on_exception=False)
         self.assertEqual(self.ndfc_mech.switch_map, {})
+
+    def test_get_host_physnet_from_context_uses_bridge_mappings(self):
+        fake_agent = {
+            'alive': True,
+            'configurations': {
+                'bridge-mappings': 'physnet2:br-foo,physnet1:br-ex',
+            },
+        }
+        fake_context = mock.Mock()
+        fake_context.host = 'compute01.maas'
+        fake_context.host_agents.return_value = [fake_agent]
+
+        phys = self.ndfc_mech._get_host_physnet_from_context(
+            fake_context, requested_physnet='physnet1')
+        self.assertEqual('physnet1', phys)
+
+        phys2 = self.ndfc_mech._get_host_physnet_from_context(
+            fake_context, requested_physnet=None)
+        self.assertEqual('physnet1', phys2)
+
+    def test_get_host_physnet_from_context_no_agents_falls_back(self):
+        fake_context = mock.Mock()
+        fake_context.host = 'compute02.maas'
+        fake_context.host_agents.return_value = []
+
+        phys = self.ndfc_mech._get_host_physnet_from_context(
+            fake_context, requested_physnet='physnetX')
+        self.assertEqual('physnetX', phys)
 
     @mock.patch('time.time')
     @mock.patch.object(mech_ndfc.NDFCMechanismDriver, '_cleanup_stale_tors')
