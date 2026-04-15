@@ -56,7 +56,7 @@ TEST_TENANT_NAMES = {
     'test-tenant': 'TestTenantName',
     'ten_1': 'prj_ten_1',
     'ten_2': 'prj_ten_2',
-    test_pluginV2.TEST_TENANT_ID: test_pluginV2.TEST_TENANT_ID,
+    test_pluginV2.TEST_PROJECT_ID: test_pluginV2.TEST_PROJECT_ID,
 }
 
 
@@ -486,7 +486,7 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
                                                            mock_get_vlan):
         network = {
             'id': 'net-nd',
-            'tenant_id': test_pluginV2.TEST_TENANT_ID,
+            'tenant_id': test_pluginV2.TEST_PROJECT_ID,
             'provider:physical_network': 'physnet1',
             'provider:network_type': ndfc_const.TYPE_ND,
         }
@@ -508,7 +508,7 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
                                                     mock_count):
         network = {
             'id': 'net-nd',
-            'tenant_id': test_pluginV2.TEST_TENANT_ID,
+            'tenant_id': test_pluginV2.TEST_PROJECT_ID,
             'provider:physical_network': 'physnet1',
             'provider:network_type': ndfc_const.TYPE_ND,
         }
@@ -531,7 +531,7 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
             self, mock_detach, mock_get_vlan, mock_count, mock_release):
         network = {
             'id': 'net-nd',
-            'tenant_id': test_pluginV2.TEST_TENANT_ID,
+            'tenant_id': test_pluginV2.TEST_PROJECT_ID,
             'provider:physical_network': 'physnet1',
             'provider:network_type': ndfc_const.TYPE_ND,
         }
@@ -554,7 +554,7 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
             self, mock_detach, mock_get_vlan, mock_count, mock_release):
         network = {
             'id': 'net-nd',
-            'tenant_id': test_pluginV2.TEST_TENANT_ID,
+            'tenant_id': test_pluginV2.TEST_PROJECT_ID,
             'provider:physical_network': 'physnet1',
             'provider:network_type': ndfc_const.TYPE_ND,
         }
@@ -569,7 +569,7 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
     def test_trigger_nd_deploy_sync_success_records_status(self):
         network = {
             'id': 'net-nd',
-            'tenant_id': test_pluginV2.TEST_TENANT_ID,
+            'tenant_id': test_pluginV2.TEST_PROJECT_ID,
             'provider:physical_network': 'physnet1',
             'provider:network_type': ndfc_const.TYPE_ND,
             'name': 'net-nd-name',
@@ -598,7 +598,7 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
     def test_trigger_nd_deploy_sync_failure_retries_three_times(self):
         network = {
             'id': 'net-nd',
-            'tenant_id': test_pluginV2.TEST_TENANT_ID,
+            'tenant_id': test_pluginV2.TEST_PROJECT_ID,
             'provider:physical_network': 'physnet1',
             'provider:network_type': ndfc_const.TYPE_ND,
             'name': 'net-nd-name',
@@ -636,7 +636,7 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
             self.ndfc_mech.create_network_postcommit(ctx)
             network = ctx.current
             mock_create.assert_called_once_with(
-                network['tenant_id'],
+                network['project_id'],
                 network['name'],
                 network['provider:segmentation_id'],
                 network['provider:physical_network'])
