@@ -150,9 +150,25 @@ def hpb_update_network(self, context, network, original_network=None):
                 # network
                 self.set_gateway_mtu(n_context.get_admin_context(),
                                      network, txn=txn)
+        if not hasattr(self, "_check_network_changes_in_ha_chassis_groups"):
+            if self.is_external_ports_supported():
+                # If there are no external ports in this  network, there's
+                # no need to check the AZs
+                if any(p for p in lswitch.ports if
+                       p.type == ovn_const.LSP_TYPE_EXTERNAL):
+                    # Check for changes in the network Availability Zones
+                    ovn_ls_azs = lswitch.external_ids.get(
+                        ovn_const.OVN_AZ_HINTS_EXT_ID_KEY, '')
+                    neutron_net_azs = lswitch_params['external_ids'].get(
+                        ovn_const.OVN_AZ_HINTS_EXT_ID_KEY, '')
+                    if ovn_ls_azs != neutron_net_azs:
+                        utils.sync_ha_chassis_group(
+                            context, network['id'], self._nb_idl,
+                            self._sb_idl, txn)
 
-        self._check_network_changes_in_ha_chassis_groups(
-            context, lswitch, lswitch_params, txn)
+        if hasattr(self, "_check_network_changes_in_ha_chassis_groups"):
+            self._check_network_changes_in_ha_chassis_groups(
+                context, lswitch, lswitch_params, txn)
 
         # Update the segment tags, if any
         segments = segments_db.get_network_segments(context, network['id'])
