@@ -146,6 +146,11 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
                 group='ndfc')
         self.mock_keystone_auth = mock.patch.object(
             ProjectDetailsCache, 'get_auth', return_value=None).start()
+        patcher = mock.patch(
+            'networking_cisco.ml2_drivers.ndfc.mech_ndfc.loopingcall'
+            '.FixedIntervalLoopingCall')
+        self.mock_loopingcall = patcher.start()
+        self.addCleanup(patcher.stop)
         super(TestNDFCMechanismDriver, self).setUp()
         mm = directory.get_plugin().mechanism_manager
         self.ndfc_mech = mm.mech_drivers['ndfc'].obj
