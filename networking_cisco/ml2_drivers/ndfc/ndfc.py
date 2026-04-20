@@ -616,6 +616,11 @@ class Ndfc:
         exist_attach = self.ndfc_obj.get_network_switch_interface_map(
             self.fabric, network_name)
         LOG.debug("existing attachments %s", exist_attach)
+        if exist_attach is None:
+            LOG.warning("Unable to retrieve existing attachments for "
+                        "network %s from NDFC — skipping attach",
+                        network_name)
+            return False
         collated_attach = self._merge_attachments(
             exist_attach, leaf_attachments)
         LOG.debug("collated attachments %s", collated_attach)
@@ -650,6 +655,11 @@ class Ndfc:
         exist_attach = self.ndfc_obj.get_network_switch_interface_map(
             self.fabric, network_name)
         LOG.debug("existing attachments %s", exist_attach)
+        if exist_attach is None:
+            LOG.warning("Unable to retrieve existing attachments for "
+                        "network %s from NDFC — skipping detach",
+                        network_name)
+            return False
         removed_attach = self._remove_attachments(
             exist_attach, leaf_attachments)
         LOG.debug("removed attachments %s", removed_attach)
