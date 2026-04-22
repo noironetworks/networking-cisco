@@ -1,6 +1,6 @@
 - job:
     name: networking-cisco-ndfc-tests
-    parent: openstack-tox-py310
+    parent: openstack-tox-py312
     description: "Runs only the NDFC driver unit tests as a voting gate."
     vars:
       tox_envlist: ndfc
@@ -19,68 +19,62 @@
     check:
       jobs:
         - openstack-tox-pep8:
-            nodeset: ubuntu-jammy
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2025.2
+                override-checkout: stable/2026.1
         - networking-cisco-ndfc-tests:
-            nodeset: ubuntu-jammy
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2025.2
+                override-checkout: stable/2026.1
         - networking-cisco-coverage:
-            nodeset: ubuntu-jammy
             timeout: 6000
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2025.2
+                override-checkout: stable/2026.1
         - openstack-tox-py310:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2025.2
+                override-checkout: stable/2026.1
         - openstack-tox-py311:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2025.2
+                override-checkout: stable/2026.1
         - openstack-tox-py312:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2025.2
+                override-checkout: stable/2026.1
         - openstack-tox-py313:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2025.2
+                override-checkout: stable/2026.1
     gate:
       jobs:
         - openstack-tox-pep8:
-            nodeset: ubuntu-jammy
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2025.2
+                override-checkout: stable/2026.1
         - networking-cisco-ndfc-tests:
-            nodeset: ubuntu-jammy
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2025.2
+                override-checkout: stable/2026.1
         - networking-cisco-coverage:
-            nodeset: ubuntu-jammy
             timeout: 6000
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2025.2
+                override-checkout: stable/2026.1
         - openstack-tox-py310:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2025.2
+                override-checkout: stable/2026.1
         - openstack-tox-py311:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2025.2
+                override-checkout: stable/2026.1
         - openstack-tox-py312:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2025.2
+                override-checkout: stable/2026.1
         - openstack-tox-py313:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2025.2
+                override-checkout: stable/2026.1

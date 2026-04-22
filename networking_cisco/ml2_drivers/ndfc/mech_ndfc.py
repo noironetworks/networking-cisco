@@ -759,9 +759,9 @@ class NDFCMechanismDriver(api.MechanismDriver,
     def attach_network(self, context, host, network, vlan_id=None):
         topology_result = self.get_topology(context, network, host)
         if topology_result:
-            self.project_details_cache.ensure_project(network['tenant_id'])
+            self.project_details_cache.ensure_project(network['project_id'])
             prj_details = self.project_details_cache.get_project_details(
-                network['tenant_id'])
+                network['project_id'])
             vrf_name = prj_details[0]
             if vlan_id is None:
                 vlan_id = network.get('provider:segmentation_id')
@@ -779,9 +779,9 @@ class NDFCMechanismDriver(api.MechanismDriver,
         topology_result = self.get_topology(context, network,
                 host, detach=True)
         if topology_result:
-            self.project_details_cache.ensure_project(network['tenant_id'])
+            self.project_details_cache.ensure_project(network['project_id'])
             prj_details = self.project_details_cache.get_project_details(
-                network['tenant_id'])
+                network['project_id'])
             vrf_name = prj_details[0]
             if vlan_id is None:
                 vlan_id = network.get('provider:segmentation_id')
@@ -828,7 +828,7 @@ class NDFCMechanismDriver(api.MechanismDriver,
         network = context.current
 
         network_name = network['name']
-        tenant_id = network['tenant_id']
+        tenant_id = network['project_id']
         vlan_id = network['provider:segmentation_id']
         physical_network = network['provider:physical_network']
         network_type = network['provider:network_type']
