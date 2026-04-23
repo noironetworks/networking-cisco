@@ -346,7 +346,9 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
         self.assertEqual(net_id, call_net['id'])
         self.assertEqual('nd-status=SYNC', kwargs.get('reason'))
 
-    def test_update_network_postcommit_uses_db_for_nd_status(self):
+    @mock.patch('neutron_lib.db.api.CONTEXT_READER.using')
+    def test_update_network_postcommit_uses_db_for_nd_status(self,
+            mock_db_reader):
         net_id = 'net-id'
         context = mock.Mock()
         context.current = {
@@ -355,13 +357,9 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
         }
 
         plugin_context = mock.Mock()
-        session = mock.MagicMock()
-        plugin_context.session = session
         context._plugin_context = plugin_context
 
-        cm = mock.Mock()
-        session.begin.return_value.__enter__.return_value = cm
-        session.begin.return_value.__exit__.return_value = False
+        session = mock_db_reader.return_value.__enter__.return_value
 
         ext_row = mock.Mock()
         ext_row.nd_status = 'SYNC'
@@ -373,6 +371,9 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
         with mock.patch.object(self.ndfc_mech, 'trigger_nd_deploy') as tnd:
             self.ndfc_mech.update_network_postcommit(context)
 
+        mock_db_reader.assert_called_once_with(plugin_context)
+        session.query.assert_called_once_with(mech_ndfc.extension_db
+                                              .NdNetworkExtension)
         tnd.assert_called_once()
         args, kwargs = tnd.call_args
         call_ctx, call_net = args
