@@ -1137,12 +1137,12 @@ class TestNDFCHelper(TestNDFCHelperBase, test_plugin.Ml2PluginV2TestCase):
         mock_response.json.return_value = {
             'vpcPairs': [
                 {
-                    'peer1SwitchId': 'FDO23390CUN',
-                    'peer2SwitchId': 'FDO23390CUU'
+                    'switchId': 'FDO23390CUN',
+                    'peerSwitchId': 'FDO23390CUU'
                 },
                 {
-                    'peer1SwitchId': 'OTHER1',
-                    'peer2SwitchId': 'OTHER2'
+                    'switchId': 'OTHER1',
+                    'peerSwitchId': 'OTHER2'
                 }
             ]
         }
@@ -1214,3 +1214,43 @@ class TestNDFCHelper(TestNDFCHelperBase, test_plugin.Ml2PluginV2TestCase):
         self.helper.determine_nd_api_version()
 
         self.assertFalse(self.helper.nd_new_version)
+
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'get_vpc_peer')
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'get_switches')
+    def test_build_vpc_peer_map_leaf_switches(self, mock_get_sw, mock_vpc):
+        mock_get_sw.return_value = {
+            '10.0.7.53': {'serial': 'SN1', 'role': 'leaf'},
+            '10.0.7.54': {'serial': 'SN2', 'role': 'leaf'},
+        }
+        mock_vpc.side_effect = lambda f, sn: {'SN1': 'SN2'}.get(sn)
+
+        result = self.helper.build_vpc_peer_map('fab1')
+
+        self.assertEqual(result, {'SN1': 'SN2', 'SN2': 'SN1'})
+
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'get_vpc_peer')
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'get_switches')
+    def test_build_vpc_peer_map_border_switches(self, mock_get_sw, mock_vpc):
+        mock_get_sw.return_value = {
+            '10.0.7.51': {'serial': 'SN1', 'role': 'border'},
+            '10.0.7.52': {'serial': 'SN2', 'role': 'border'},
+        }
+        mock_vpc.side_effect = lambda f, sn: {'SN1': 'SN2'}.get(sn)
+
+        result = self.helper.build_vpc_peer_map('fab1')
+
+        self.assertEqual(result, {'SN1': 'SN2', 'SN2': 'SN1'})
+
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'get_vpc_peer')
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'get_switches')
+    def test_build_vpc_peer_map_skips_spine_and_bgw(
+            self, mock_get_sw, mock_vpc):
+        mock_get_sw.return_value = {
+            '10.0.7.17': {'serial': 'SN1', 'role': 'borderGatewaySpine'},
+            '10.0.7.18': {'serial': 'SN2', 'role': 'spine'},
+        }
+
+        result = self.helper.build_vpc_peer_map('fab1')
+
+        self.assertEqual(result, {})
+        mock_vpc.assert_not_called()
