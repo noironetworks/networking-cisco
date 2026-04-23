@@ -37,6 +37,7 @@ from neutron.objects import network as nw
 from neutron.plugins.ml2.drivers.ovn.mech_driver import mech_driver as ovn_mech
 from neutron.plugins.ml2.drivers.ovn.mech_driver.ovsdb import ovn_client as oc
 from neutron.plugins.ml2.drivers.ovn.mech_driver.ovsdb import ovn_db_sync as od
+from neutron.plugins.ml2 import managers as ml2_managers
 from neutron.services.segments import db
 
 from networking_cisco.ml2_drivers.ndfc import constants as ndfc_const
@@ -401,6 +402,28 @@ def new_add_network_segment(context, network_id, segment, segment_index=0,
              {'id': netseg_obj.id,
               'network_type': netseg_obj.network_type,
               'network_id': netseg_obj.network_id})
+
+
+def publish_segment_after_delete(context, segment):
+    registry.publish(resources.SEGMENT,
+                     events.AFTER_DELETE,
+                     publish_segment_after_delete,
+                     payload=events.DBEventPayload(
+                         context, resource_id=segment['id'],
+                         states=(segment,)))
+
+
+_real_release_dynamic_seg = ml2_managers.TypeManager.release_dynamic_segment
+
+
+def hpb_release_dynamic_segment(self, context, segment_id):
+    segment = segments_db.get_segment_by_id(context, segment_id)
+    _real_release_dynamic_seg(self, context, segment_id)
+    if segment and not segments_db.get_segment_by_id(context, segment_id):
+        publish_segment_after_delete(context, segment)
+
+
+ml2_managers.TypeManager.release_dynamic_segment = hpb_release_dynamic_segment
 
 
 _real_map_segment_to_hosts = db.map_segment_to_hosts
