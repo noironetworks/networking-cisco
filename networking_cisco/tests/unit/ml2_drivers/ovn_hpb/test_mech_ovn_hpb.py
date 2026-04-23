@@ -197,6 +197,58 @@ class TestOVNHPBHelpers(neutron_base.BaseTestCase):
             context, segment_id='segment-id', host='host-b')
         new_mapping.create.assert_called_once_with()
 
+    @mock.patch.object(mech_ovn_hpb.registry, 'publish')
+    def test_publish_segment_after_delete_uses_segment_payload(
+            self, mock_publish):
+        context = mock.Mock()
+        segment = {'id': 'seg-id', 'network_id': 'net-id'}
+
+        mech_ovn_hpb.publish_segment_after_delete(context, segment)
+
+        mock_publish.assert_called_once()
+        resource, event, trigger = mock_publish.call_args[0]
+        payload = mock_publish.call_args[1]['payload']
+        self.assertEqual(mech_ovn_hpb.resources.SEGMENT, resource)
+        self.assertEqual(mech_ovn_hpb.events.AFTER_DELETE, event)
+        self.assertEqual(mech_ovn_hpb.publish_segment_after_delete, trigger)
+        self.assertEqual(context, payload.context)
+        self.assertEqual('seg-id', payload.resource_id)
+        self.assertEqual((segment,), payload.states)
+
+    @mock.patch.object(mech_ovn_hpb, 'publish_segment_after_delete')
+    @mock.patch.object(mech_ovn_hpb.segments_db, 'get_segment_by_id')
+    def test_hpb_release_dynamic_segment_publishes_after_successful_delete(
+            self, mock_get_segment, mock_publish):
+        context = mock.Mock()
+        type_manager = mock.Mock()
+        segment = {'id': 'seg-id', 'network_type': 'vlan'}
+        mock_get_segment.side_effect = [segment, None]
+
+        with mock.patch.object(
+                mech_ovn_hpb, '_real_release_dynamic_segment') as mock_real:
+            mech_ovn_hpb.hpb_release_dynamic_segment(
+                type_manager, context, 'seg-id')
+
+        mock_real.assert_called_once_with(type_manager, context, 'seg-id')
+        mock_publish.assert_called_once_with(context, segment)
+
+    @mock.patch.object(mech_ovn_hpb, 'publish_segment_after_delete')
+    @mock.patch.object(mech_ovn_hpb.segments_db, 'get_segment_by_id')
+    def test_hpb_release_dynamic_segment_skips_notify_when_not_deleted(
+            self, mock_get_segment, mock_publish):
+        context = mock.Mock()
+        type_manager = mock.Mock()
+        segment = {'id': 'seg-id', 'network_type': 'vlan'}
+        mock_get_segment.side_effect = [segment, segment]
+
+        with mock.patch.object(
+                mech_ovn_hpb, '_real_release_dynamic_segment') as mock_real:
+            mech_ovn_hpb.hpb_release_dynamic_segment(
+                type_manager, context, 'seg-id')
+
+        mock_real.assert_called_once_with(type_manager, context, 'seg-id')
+        mock_publish.assert_not_called()
+
 
 class TestOVNHPBMechanismDriver(neutron_base.BaseTestCase):
 
