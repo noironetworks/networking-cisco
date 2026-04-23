@@ -857,8 +857,7 @@ class NDFCMechanismDriver(api.MechanismDriver,
         new_nd = network.get('nd-status')
 
         if new_nd is None and plugin_context is not None:
-            session = plugin_context.session
-            with session.begin(subtransactions=True):
+            with db_api.CONTEXT_READER.using(plugin_context) as session:
                 ext_row = (session.query(extension_db.NdNetworkExtension)
                            .filter_by(network_id=network['id'])
                            .first())
