@@ -21,63 +21,63 @@
             nodeset: ubuntu-jammy
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2024.2
+                override-checkout: 2024.2-eol
         - networking-cisco-ndfc-tests:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2024.2
+                override-checkout: 2024.2-eol
         - openstack-tox-py39:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2024.2
+                override-checkout: 2024.2-eol
         - openstack-tox-py310:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2024.2
+                override-checkout: 2024.2-eol
         - openstack-tox-py311:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2024.2
+                override-checkout: 2024.2-eol
         - openstack-tox-py312:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2024.2
+                override-checkout: 2024.2-eol
         - networking-cisco-coverage:
             nodeset: ubuntu-jammy
             timeout: 6000
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2024.2
+                override-checkout: 2024.2-eol
     gate:
       jobs:
         - openstack-tox-pep8:
             nodeset: ubuntu-jammy
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2024.2
+                override-checkout: 2024.2-eol
         - networking-cisco-ndfc-tests:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2024.2
+                override-checkout: 2024.2-eol
         - openstack-tox-py39:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2024.2
+                override-checkout: 2024.2-eol
         - openstack-tox-py310:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2024.2
+                override-checkout: 2024.2-eol
         - openstack-tox-py311:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2024.2
+                override-checkout: 2024.2-eol
         - openstack-tox-py312:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2024.2
+                override-checkout: 2024.2-eol
         - networking-cisco-coverage:
             nodeset: ubuntu-jammy
             timeout: 6000
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2024.2
+                override-checkout: 2024.2-eol
