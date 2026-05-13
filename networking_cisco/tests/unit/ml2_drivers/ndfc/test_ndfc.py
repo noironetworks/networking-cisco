@@ -347,6 +347,55 @@ class TestNDFC(TestNDFCBase, test_plugin.Ml2PluginV2TestCase):
                 vlan, physnet)
         self.assertTrue(ret)
 
+    @mock.patch.object(ndfc.time, 'sleep')
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'create_network')
+    def test_create_network_v2_retries_auto_alloc_with_original_payload(
+            self, mock_create_network, mock_sleep):
+        vrf_name = 'test_vrf'
+        network_name = 'test_network'
+        physnet = 'physnet1'
+        payloads = []
+
+        def create_network_side_effect(fabric, payload):
+            payloads.append(jsonutils.loads(jsonutils.dumps(payload)))
+            if len(payloads) == 1:
+                payload['networks'][0]['networkId'] = 30000
+                payload['networks'][0]['l2Data']['rtAuto'] = True
+                raise ndfc_helper.NdfcNetworkIdAlreadyAllocated(30000)
+            return True
+
+        mock_create_network.side_effect = create_network_side_effect
+        self.ndfc_instance.ndfc_obj.nd_new_version = True
+
+        ret = self.ndfc_instance.create_network(vrf_name, network_name,
+                None, physnet)
+
+        self.assertTrue(ret)
+        self.assertEqual(2, mock_create_network.call_count)
+        self.assertNotIn('networkId', payloads[0]['networks'][0])
+        self.assertEqual(payloads[0], payloads[1])
+        mock_sleep.assert_called_once_with(
+            ndfc.NETWORK_CREATE_ID_RETRY_INTERVAL)
+
+    @mock.patch.object(ndfc.time, 'sleep')
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'create_network')
+    def test_create_network_v2_does_not_retry_explicit_network_id_collision(
+            self, mock_create_network, mock_sleep):
+        vrf_name = 'test_vrf'
+        network_name = 'test_network'
+        vlan = 100
+        physnet = 'physnet1'
+        mock_create_network.side_effect = (
+            ndfc_helper.NdfcNetworkIdAlreadyAllocated(1000))
+        self.ndfc_instance.ndfc_obj.nd_new_version = True
+
+        ret = self.ndfc_instance.create_network(vrf_name, network_name,
+                vlan, physnet)
+
+        self.assertFalse(ret)
+        self.assertEqual(1, mock_create_network.call_count)
+        mock_sleep.assert_not_called()
+
     @mock.patch.object(ndfc_helper.NdfcHelper, 'attach_deploy_network')
     @mock.patch.object(ndfc_helper.NdfcHelper,
             'get_network_switch_interface_map')
