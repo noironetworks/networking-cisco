@@ -18,5 +18,6 @@ oslo.utils>=3.5.0                       # Apache-2.0
 neutron>=20.3.1
 neutron-lib>=3.4.0 # Apache-2.0
 python-neutronclient
+tenacity>=6.0.0 # Apache-2.0
 pika>=0.10.0
 ucsmsdk>=0.9.3.1
