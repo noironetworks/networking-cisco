@@ -172,6 +172,27 @@ class TestNDFCHelper(TestNDFCHelperBase, test_plugin.Ml2PluginV2TestCase):
         self.assertFalse(result)
 
     @mock.patch('requests.post')
+    def test_create_network_v2_raises_network_id_collision(
+            self, mock_post):
+        failed_response = mock.MagicMock()
+        failed_response.status_code = 207
+        failed_response.json.return_value = {
+            'results': [{
+                'message': 'Id[30000]is already allocated to other-network',
+                'networkName': 'test_network',
+                'status': 'failed'
+            }]
+        }
+        mock_post.return_value = failed_response
+
+        fabric = 'test_fabric'
+        payload = {'networks': [{'networkName': 'test_network'}]}
+        self.helper.nd_new_version = True
+
+        self.assertRaises(ndfc_helper.NdfcNetworkIdAlreadyAllocated,
+            self.helper.create_network, fabric, payload)
+
+    @mock.patch('requests.post')
     @mock.patch('requests.put')
     def test_update_network(self, mock_post, mock_put):
         mock_response = mock.MagicMock()

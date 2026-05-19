@@ -20,6 +20,8 @@ NDFC helper module. This module interacts with NDFC.
 '''
 
 from functools import wraps
+import re
+
 from oslo_log import log
 from oslo_serialization import jsonutils
 import requests
@@ -30,6 +32,10 @@ DELETE_ADD = "DELETE_ADD"
 NOOP = "NOOP"
 
 LOG = log.getLogger(__name__)
+
+NETWORK_ID_ALREADY_ALLOCATED_RE = re.compile(
+    r'\bid\s*\[(?P<network_id>\d+)\]\s*is\s+already\s+allocated',
+    re.IGNORECASE)
 
 
 def _find_fail_recursively(data):
@@ -44,6 +50,38 @@ def _find_fail_recursively(data):
     if isinstance(data, str):
         return 'fail' in data.lower()
     return False
+
+
+def _find_allocated_network_id_recursively(data):
+    '''
+    Return the first network id found in an NDFC "already allocated" message.
+    '''
+    if isinstance(data, dict):
+        for value in data.values():
+            network_id = _find_allocated_network_id_recursively(value)
+            if network_id is not None:
+                return network_id
+    if isinstance(data, list):
+        for item in data:
+            network_id = _find_allocated_network_id_recursively(item)
+            if network_id is not None:
+                return network_id
+    if isinstance(data, str):
+        match = NETWORK_ID_ALREADY_ALLOCATED_RE.search(data)
+        if match:
+            return int(match.group('network_id'))
+    return None
+
+
+class NdfcNetworkIdAlreadyAllocated(Exception):
+    '''
+    Raised when NDFC reports that a generated network id is already in use.
+    '''
+
+    def __init__(self, network_id):
+        self.network_id = network_id
+        super(NdfcNetworkIdAlreadyAllocated, self).__init__(
+            "NDFC network id %s is already allocated" % network_id)
 
 
 class NdfcHelper:
@@ -149,6 +187,15 @@ class NdfcHelper:
             LOG.debug("Response for '%s' was not JSON, cannot check for "
                       "failure keywords.", func_name)
         return False
+
+    def _response_allocated_network_id(self, res):
+        '''
+        Return the allocated network id from an NDFC allocation failure body.
+        '''
+        try:
+            return _find_allocated_network_id_recursively(res.json())
+        except ValueError:
+            return None
 
     def http_exc_handler(http_func):
         '''
@@ -488,18 +535,32 @@ class NdfcHelper:
         else:
             url = self._build_url(self._network_url) + fabric + "/networks"
         LOG.debug("Create network url is %s", url)
+        payload_json = jsonutils.dumps(payload)
         res = requests.post(url, headers=self._req_headers,
-                            data=jsonutils.dumps(payload),
+                            data=payload_json,
                             timeout=self._timeout_resp, verify=False)
-        if not res or res.status_code not in self._resp_ok:
+        if res is None or res.status_code not in self._resp_ok:
             LOG.error(
                 "create network failed with status code: %s, "
                 "reason: %s, response body: %s, payload: %s",
-                res.status_code, res.reason, res.text, jsonutils.dumps(payload)
+                getattr(res, 'status_code', None),
+                getattr(res, 'reason', None),
+                getattr(res, 'text', None),
+                payload_json
             )
             return False
+
+        allocated_network_id = self._response_allocated_network_id(res)
+        if allocated_network_id is not None:
+            LOG.warning(
+                "create network failed because NDFC reported allocated "
+                "network id %(network_id)s. payload: %(payload)s",
+                {'network_id': allocated_network_id, 'payload': payload_json}
+            )
+            raise NdfcNetworkIdAlreadyAllocated(allocated_network_id)
+
         if self._response_body_indicates_failure(
-            res, '_create_network', payload=jsonutils.dumps(payload)):
+            res, '_create_network', payload=payload_json):
             return False
 
         LOG.debug("create network successful")
@@ -509,20 +570,24 @@ class NdfcHelper:
         '''
         Top level function to create the Network.
         '''
+        logged_in = False
         try:
             ret = self.login()
             if not ret:
                 LOG.error("Failed to login to NDFC")
                 return False
+            logged_in = True
             ret = self._create_network(fabric, payload)
-            if not ret:
-                return False
-            self.logout()
+            return bool(ret)
+        except NdfcNetworkIdAlreadyAllocated:
+            raise
         except Exception as exc:
             LOG.error("create network failed with exception %(exc)s",
                       {'exc': exc})
             return False
-        return True
+        finally:
+            if logged_in:
+                self.logout()
 
     @http_exc_handler
     def _update_network(self, fabric, network_name, payload):

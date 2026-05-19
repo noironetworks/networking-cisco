@@ -14,7 +14,12 @@
 #    under the License.
 #
 
+import time
+
+import tenacity
+
 from networking_cisco.ml2_drivers.ndfc import constants
+from networking_cisco.ml2_drivers.ndfc import ndfc_helper
 from networking_cisco.ml2_drivers.ndfc.ndfc_helper import NdfcHelper
 from oslo_config import cfg
 from oslo_log import log
@@ -23,6 +28,23 @@ from oslo_serialization import jsonutils
 LOG = log.getLogger(__name__)
 
 glob_nwk_map = {}
+
+NETWORK_CREATE_ID_RETRY_ATTEMPTS = 5
+NETWORK_CREATE_ID_RETRY_INTERVAL = 0.5
+
+
+def _network_create_retry_sleep(delay):
+    time.sleep(delay)
+
+
+def _log_network_create_id_retry(retry_state):
+    exc = retry_state.outcome.exception()
+    network_name = retry_state.args[2]
+    LOG.warning(
+        "NDFC network %s hit allocated networkId %s; retrying "
+        "with auto-allocated networkId (attempt %s/%s)",
+        network_name, exc.network_id, retry_state.attempt_number + 1,
+        NETWORK_CREATE_ID_RETRY_ATTEMPTS)
 
 
 def get_ndfc_conf():
@@ -193,6 +215,19 @@ class Ndfc:
             network_config['networkTemplateName'] = template_type
         return {"networks": [network_config]}
 
+    @tenacity.retry(
+        retry=tenacity.retry_if_exception_type(
+            ndfc_helper.NdfcNetworkIdAlreadyAllocated),
+        stop=tenacity.stop_after_attempt(NETWORK_CREATE_ID_RETRY_ATTEMPTS),
+        wait=tenacity.wait_fixed(NETWORK_CREATE_ID_RETRY_INTERVAL),
+        before_sleep=_log_network_create_id_retry,
+        sleep=_network_create_retry_sleep,
+        reraise=True)
+    def _create_network_with_auto_allocated_id(self, vrf_name, network_name):
+        payload = self._get_create_network_payload_v2(
+                vrf_name, network_name, None)
+        return self.ndfc_obj.create_network(self.fabric, payload)
+
     def create_network(self, vrf_name, network_name, vlan, physnet):
         LOG.debug("Create network called for vrf %s network %s vlan %s and "
             "physnet %s", vrf_name, network_name, vlan, physnet)
@@ -203,7 +238,19 @@ class Ndfc:
             payload = self._get_create_network_payload(
                     vrf_name, network_name, vlan)
         LOG.debug("create network payload is %s", payload)
-        ret = self.ndfc_obj.create_network(self.fabric, payload)
+
+        retry_auto_network_id = self.ndfc_obj.nd_new_version and vlan is None
+        try:
+            if retry_auto_network_id:
+                ret = self._create_network_with_auto_allocated_id(
+                        vrf_name, network_name)
+            else:
+                ret = self.ndfc_obj.create_network(self.fabric, payload)
+        except ndfc_helper.NdfcNetworkIdAlreadyAllocated as exc:
+            LOG.error("NDFC network %s failed due to allocated networkId %s",
+                      network_name, exc.network_id)
+            ret = False
+
         LOG.info("For %s:%s Create Network returned %s", vrf_name,
                 network_name, ret)
         return ret
