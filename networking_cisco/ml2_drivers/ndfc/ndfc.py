@@ -198,10 +198,9 @@ class Ndfc:
         network_config['l2Data'] = l2_data
         l3_data = {}
         l3_data['gatewayIp'] = gw
-        l3_data['vlanInterfaceDescription'] = ""
         l3_data['arp'] = True
         if mtu is not None:
-            l3_data['mtu'] = {'protocol': {'layer2': mtu}}
+            l3_data['mtu'] = mtu
         l3_data['ipv4Trm'] = False
         l3_data['ipv6Trm'] = False
         fabric_data = {}
