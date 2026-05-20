@@ -351,12 +351,14 @@ class Ndfc:
                 for intf_name in tor_interfaces:
                     interfaces.append({
                         "interfaceRange": intf_name,
+                        "mode": "trunk",
                     })
 
         if 'interfaces' in leaf_info:
             for intf_name in leaf_info['interfaces']:
                 interfaces.append({
                     "interfaceRange": intf_name,
+                    "mode": "trunk",
                 })
         return interfaces
 
