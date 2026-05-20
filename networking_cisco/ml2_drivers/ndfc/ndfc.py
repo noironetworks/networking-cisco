@@ -438,7 +438,9 @@ class Ndfc:
         return {"attachments": attach_list}
 
     def _create_detach_payload(self, leaf_attachments, collated_attach,
-                               vrf_name, network_name, vlan):
+                               vrf_name, network_name, vlan,
+                               exist_attach=None,
+                               network_has_other_ports=True):
         fabric = self.fabric
         attach_list = []
         for leaf_snum, leaf_info in collated_attach.items():
@@ -448,8 +450,16 @@ class Ndfc:
             if attach_snum is None:
                 LOG.error("Leaf %s has no regular or ToR interfaces")
                 continue
-            if not attach_snum.get("switchPorts") and not attach_snum.get(
-                    "torPorts"):
+            has_ports = (attach_snum.get("switchPorts") or
+                         attach_snum.get("torPorts"))
+            if not has_ports or not network_has_other_ports:
+                if has_ports and not network_has_other_ports:
+                    LOG.warning(
+                        "Leaf %s has remaining interfaces on ND but "
+                        "no bound ports remain on this network in "
+                        "OpenStack. Forcing full detach.", leaf_snum)
+                    attach_snum["switchPorts"] = ""
+                    attach_snum["torPorts"] = ""
                 attach_snum["deployment"] = False
             if leaf_snum in leaf_attachments:
                 if leaf_attachments[leaf_snum].get("interfaces") is not None:
@@ -459,35 +469,92 @@ class Ndfc:
 
             peer_serial = leaf_info.get('peer_serial')
             if peer_serial and peer_serial not in collated_attach:
-                LOG.debug(
-                    "Adding vPC peer detach entry for leaf %s peer %s",
-                    leaf_snum, peer_serial)
-                peer_attach = {
-                    'fabric': fabric,
-                    'networkName': network_name,
-                    'serialNumber': peer_serial,
-                    'detachSwitchPorts': '',
-                    'vlan': vlan,
-                    'dot1QVlan': constants.DOT1Q_VLAN,
-                    'untagged': 'false',
-                    'freeformConfig': '',
-                    'deployment': False,
-                    'extensionValues': '',
-                    'instanceValues': ''
-                }
-                attach_list.append(peer_attach)
+                if (exist_attach and peer_serial in exist_attach and
+                        (exist_attach[peer_serial].get('interfaces') or
+                         exist_attach[peer_serial].get('tor_sw_intf_map'))):
+                    LOG.debug(
+                        "Skipping vPC peer detach for leaf %s peer %s "
+                        "— peer still has active ND interfaces",
+                        leaf_snum, peer_serial)
+                else:
+                    LOG.debug(
+                        "Adding vPC peer detach entry for leaf %s peer %s",
+                        leaf_snum, peer_serial)
+                    peer_attach = {
+                        'fabric': fabric,
+                        'networkName': network_name,
+                        'serialNumber': peer_serial,
+                        'detachSwitchPorts': '',
+                        'vlan': vlan,
+                        'dot1QVlan': constants.DOT1Q_VLAN,
+                        'untagged': 'false',
+                        'freeformConfig': '',
+                        'deployment': False,
+                        'extensionValues': '',
+                        'instanceValues': ''
+                    }
+                    attach_list.append(peer_attach)
         attach_dct = [{"networkName": network_name,
             "lanAttachList": attach_list}]
         return attach_dct
 
-    def _create_detach_payload_v2(self, leaf_attachments, collated_attach,
-                                  vrf_name, network_name, vlan):
+    def _switch_has_other_interfaces(self, exist_attach, leaf_snum,
+                                     leaf_info_to_detach):
+        """Check if a switch has interfaces beyond those being detached."""
+        if not exist_attach or leaf_snum not in exist_attach:
+            return False
+        nd_info = exist_attach[leaf_snum]
+        nd_intfs = set(nd_info.get('interfaces') or [])
+        our_intfs = set(leaf_info_to_detach.get('interfaces') or [])
+        if nd_intfs - our_intfs:
+            return True
+        nd_tors = nd_info.get('tor_sw_intf_map') or {}
+        our_tors = leaf_info_to_detach.get('tor_sw_intf_map') or {}
+        for tor_key, tor_info in nd_tors.items():
+            nd_tor_intfs = set(tor_info.get('tor_interfaces') or [])
+            our_tor_info = our_tors.get(tor_key, {})
+            our_tor_intfs = set(our_tor_info.get('tor_interfaces') or [])
+            if nd_tor_intfs - our_tor_intfs:
+                return True
+        return False
+
+    def _create_detach_payload_v2(self, leaf_attachments, vrf_name,
+                                  network_name, vlan,
+                                  exist_attach=None,
+                                  network_has_other_ports=True):
         attach_list = []
         for leaf_snum, leaf_info_to_detach in leaf_attachments.items():
             interfaces_to_detach = self._get_common_attach_payload_v2(
                 self.fabric, network_name, vlan, leaf_snum, leaf_info_to_detach
             )
-            if interfaces_to_detach:
+            if not interfaces_to_detach:
+                LOG.warning(
+                    "Leaf %s has no interfaces specified for detachment. "
+                    "Skipping.", leaf_snum)
+                continue
+
+            switch_has_others = (
+                network_has_other_ports and
+                self._switch_has_other_interfaces(
+                    exist_attach, leaf_snum, leaf_info_to_detach))
+
+            if switch_has_others:
+                LOG.debug(
+                    "Leaf %s: partial detach — sending specific "
+                    "interfaces to remove: %s",
+                    leaf_snum, interfaces_to_detach)
+                attachment_entry = {
+                    "attach": False,
+                    "interfaces": interfaces_to_detach,
+                    "networkName": network_name,
+                    "switchId": leaf_snum,
+                    "vlanId": vlan
+                }
+                attach_list.append(attachment_entry)
+            else:
+                LOG.debug(
+                    "Leaf %s: full detach — no other interfaces on "
+                    "this switch for network %s", leaf_snum, network_name)
                 attachment_entry = {
                     "attach": False,
                     "interfaces": [],
@@ -497,25 +564,30 @@ class Ndfc:
                 }
                 attach_list.append(attachment_entry)
 
-                leaf_info_full = collated_attach.get(leaf_snum, {})
-                peer_serial = leaf_info_full.get('peer_serial') or (
-                    leaf_info_to_detach.get('peer_serial'))
+                peer_serial = leaf_info_to_detach.get('peer_serial')
                 if peer_serial and peer_serial not in leaf_attachments:
-                    LOG.debug(
-                        "Adding vPC peer detach entry for leaf %s peer %s",
-                        leaf_snum, peer_serial)
-                    peer_attachment_entry = {
-                        "attach": False,
-                        "interfaces": [],
-                        "networkName": network_name,
-                        "switchId": peer_serial,
-                        "vlanId": vlan
-                    }
-                    attach_list.append(peer_attachment_entry)
-            else:
-                LOG.warning(
-                    "Leaf %s has no interfaces specified for detachment. "
-                    "Skipping.", leaf_snum)
+                    peer_has_others = (
+                        network_has_other_ports and
+                        exist_attach and peer_serial in exist_attach and
+                        (exist_attach[peer_serial].get('interfaces') or
+                         exist_attach[peer_serial].get('tor_sw_intf_map')))
+                    if peer_has_others:
+                        LOG.debug(
+                            "Skipping vPC peer detach for leaf %s "
+                            "peer %s — peer still has other interfaces",
+                            leaf_snum, peer_serial)
+                    else:
+                        LOG.debug(
+                            "Adding vPC peer full detach for leaf %s "
+                            "peer %s", leaf_snum, peer_serial)
+                        peer_attachment_entry = {
+                            "attach": False,
+                            "interfaces": [],
+                            "networkName": network_name,
+                            "switchId": peer_serial,
+                            "vlanId": vlan
+                        }
+                        attach_list.append(peer_attachment_entry)
         return {"attachments": attach_list}
 
     def _get_exist_attach_copy(self, exist_attach, new_attach):
@@ -696,7 +768,8 @@ class Ndfc:
                  self.fabric, vrf_name, network_name, ret)
         return ret
 
-    def detach_network(self, vrf_name, network_name, vlan, leaf_attachments):
+    def detach_network(self, vrf_name, network_name, vlan, leaf_attachments,
+                       network_has_other_ports=True):
         # leaf_attachments is a map of snums
         # map[leaf_snums] -> {leaf_name, interface, map[tors]}
         # map[tors] -> {tor_name, tor_interface}
@@ -711,17 +784,21 @@ class Ndfc:
                         "network %s from NDFC — skipping detach",
                         network_name)
             return False
-        removed_attach = self._remove_attachments(
-            exist_attach, leaf_attachments)
-        LOG.debug("removed attachments %s", removed_attach)
         if self.ndfc_obj.nd_new_version:
             detach_payload = self._create_detach_payload_v2(
-                leaf_attachments, removed_attach, vrf_name, network_name, vlan)
+                leaf_attachments, vrf_name, network_name, vlan,
+                exist_attach=exist_attach,
+                network_has_other_ports=network_has_other_ports)
             deploy_payload = self._get_deploy_payload_attach_v2(
                 leaf_attachments, network_name)
         else:
+            removed_attach = self._remove_attachments(
+                exist_attach, leaf_attachments)
+            LOG.debug("removed attachments %s", removed_attach)
             detach_payload = self._create_detach_payload(
-                leaf_attachments, removed_attach, vrf_name, network_name, vlan)
+                leaf_attachments, removed_attach, vrf_name, network_name,
+                vlan, exist_attach=exist_attach,
+                network_has_other_ports=network_has_other_ports)
             deploy_payload = self._get_deploy_payload_attach(
                 leaf_attachments, network_name)
         LOG.debug("detach payload is %s", detach_payload)
