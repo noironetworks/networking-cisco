@@ -21,6 +21,7 @@ NDFC helper module. This module interacts with NDFC.
 
 from functools import wraps
 import re
+import time
 
 from oslo_log import log
 from oslo_serialization import jsonutils
@@ -659,6 +660,22 @@ class NdfcHelper:
             return False
         return True
 
+    def _is_retryable_attach_error(self, res):
+        '''
+        Checks if an attach/detach failure response contains a transient
+        error (e.g. VRF deployment/undeployment in progress) that may
+        succeed on retry.
+        '''
+        try:
+            data = res.json()
+            text = str(data).lower()
+            return 'in progress' in text
+        except (ValueError, AttributeError):
+            return False
+
+    _ATTACH_MAX_RETRIES = 3
+    _ATTACH_INITIAL_DELAY = 5
+
     @http_exc_handler
     def _attach_network(self, fabric, payload):
         '''
@@ -670,26 +687,45 @@ class NdfcHelper:
         else:
             url = self._build_url(self._network_url) + fabric + (
                 "/networks/attachments")
-        res = requests.post(url, headers=self._req_headers,
-                data=jsonutils.dumps(payload), timeout=self._timeout_resp,
-                verify=False)
-        LOG.debug("attach/detach network url %s payload %s", url,
-            jsonutils.dumps(payload))
 
-        if not res or res.status_code not in self._resp_ok:
-            LOG.error(
-                "attach/detach network failed with status code: %s, "
-                "reason: %s, response body: %s, payload: %s",
-                res.status_code, res.reason, res.text, jsonutils.dumps(payload)
-            )
-            return False
+        delay = self._ATTACH_INITIAL_DELAY
+        for attempt in range(self._ATTACH_MAX_RETRIES + 1):
+            res = requests.post(url, headers=self._req_headers,
+                    data=jsonutils.dumps(payload),
+                    timeout=self._timeout_resp, verify=False)
+            LOG.debug("attach/detach network url %s payload %s", url,
+                jsonutils.dumps(payload))
 
-        if self._response_body_indicates_failure(
-            res, '_attach_network', payload=jsonutils.dumps(payload)):
-            return False
+            if not res or res.status_code not in self._resp_ok:
+                LOG.error(
+                    "attach/detach network failed with status code: %s, "
+                    "reason: %s, response body: %s, payload: %s",
+                    res.status_code, res.reason, res.text,
+                    jsonutils.dumps(payload)
+                )
+                return False
 
-        LOG.debug("attach/detach network successful")
-        return True
+            if self._response_body_indicates_failure(
+                res, '_attach_network',
+                payload=jsonutils.dumps(payload)):
+                if (attempt < self._ATTACH_MAX_RETRIES and
+                        self._is_retryable_attach_error(res)):
+                    LOG.warning(
+                        "Attach/detach attempt %d/%d hit a transient "
+                        "error, retrying in %d seconds.",
+                        attempt + 1, self._ATTACH_MAX_RETRIES + 1, delay)
+                    time.sleep(delay)
+                    delay *= 2
+                    continue
+                return False
+
+            if attempt > 0:
+                LOG.info(
+                    "attach/detach network succeeded on retry "
+                    "(attempt %d)", attempt + 1)
+            LOG.debug("attach/detach network successful")
+            return True
+        return False
 
     def attach_deploy_network(self, fabric, payload, deploy_payload):
         '''

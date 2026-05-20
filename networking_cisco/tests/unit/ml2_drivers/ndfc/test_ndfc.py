@@ -648,6 +648,75 @@ class TestNDFC(TestNDFCBase, test_plugin.Ml2PluginV2TestCase):
             self.assertFalse(att['attach'])
             self.assertEqual(att['interfaces'], [])
 
+    @mock.patch('time.sleep')
+    def test_attach_retries_on_transient_error(self, mock_sleep):
+        helper = self.ndfc_instance.ndfc_obj
+        helper.nd_new_version = True
+        fail_response = mock.MagicMock(
+            status_code=207,
+            text='fail')
+        fail_response.json.return_value = {
+            'results': [{'status': 'failed',
+                         'message': 'Failed : VRF Undeployment in Progress '
+                                    'for switch TOR1.'}]}
+        ok_response = mock.MagicMock(status_code=200, text='ok')
+        ok_response.json.return_value = {}
+        deploy_response = mock.MagicMock(status_code=200, text='ok')
+        deploy_response.json.return_value = {}
+        self.mock_requests_post.side_effect = [
+                fail_response, ok_response, deploy_response]
+        ret = helper.attach_deploy_network(
+            'fabric', {'attachments': []}, {'networkNames': []})
+        self.assertTrue(ret)
+        self.assertEqual(mock_sleep.call_count, 1)
+
+    @mock.patch('time.sleep')
+    def test_attach_exhausts_retries(self, mock_sleep):
+        helper = self.ndfc_instance.ndfc_obj
+        helper.nd_new_version = True
+        fail_response = mock.MagicMock(
+            status_code=207,
+            text='fail')
+        fail_response.json.return_value = {
+            'results': [{'status': 'failed',
+                         'message': 'Failed : VRF Undeployment in Progress '
+                                    'for switch TOR1.'}]}
+        self.mock_requests_post.side_effect = [
+            fail_response, fail_response, fail_response, fail_response]
+        ret = helper.attach_deploy_network(
+            'fabric', {'attachments': []}, {'networkNames': []})
+        self.assertFalse(ret)
+        self.assertEqual(mock_sleep.call_count, 3)
+
+    @mock.patch('time.sleep')
+    def test_attach_no_retry_on_non_transient_error(self, mock_sleep):
+        helper = self.ndfc_instance.ndfc_obj
+        helper.nd_new_version = True
+        fail_response = mock.MagicMock(
+            status_code=207,
+            text='fail')
+        fail_response.json.return_value = {
+            'results': [{'status': 'failed',
+                         'message': 'Invalid payload format.'}]}
+        self.mock_requests_post.side_effect = [fail_response]
+        ret = helper.attach_deploy_network(
+            'fabric', {'attachments': []}, {'networkNames': []})
+        self.assertFalse(ret)
+        mock_sleep.assert_not_called()
+
+    def test_attach_succeeds_first_attempt(self):
+        helper = self.ndfc_instance.ndfc_obj
+        helper.nd_new_version = True
+        ok_response = mock.MagicMock(status_code=200, text='ok')
+        ok_response.json.return_value = {}
+        deploy_response = mock.MagicMock(status_code=200, text='ok')
+        deploy_response.json.return_value = {}
+        self.mock_requests_post.side_effect = [
+                ok_response, deploy_response]
+        ret = helper.attach_deploy_network(
+            'fabric', {'attachments': []}, {'networkNames': []})
+        self.assertTrue(ret)
+
     def test_attach_payload_v2_hardcodes_trunk_mode(self):
         network_name = 'test_network'
         vlan = '100'
