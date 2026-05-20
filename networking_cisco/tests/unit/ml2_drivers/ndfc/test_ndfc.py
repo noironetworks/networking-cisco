@@ -648,6 +648,21 @@ class TestNDFC(TestNDFCBase, test_plugin.Ml2PluginV2TestCase):
             self.assertFalse(att['attach'])
             self.assertEqual(att['interfaces'], [])
 
+    def test_attach_payload_v2_hardcodes_trunk_mode(self):
+        network_name = 'test_network'
+        vlan = '100'
+        leaf_info = {
+            'interfaces': ['Port-channel2']
+        }
+
+        self.ndfc_instance.ndfc_obj.nd_new_version = True
+        interfaces = self.ndfc_instance._get_common_attach_payload_v2(
+            'fabric_name', network_name, vlan, 'leaf1', leaf_info)
+
+        self.assertEqual(len(interfaces), 1)
+        self.assertEqual(interfaces[0]['interfaceRange'], 'Port-channel2')
+        self.assertEqual(interfaces[0]['mode'], 'trunk')
+
     def test_merge_attachments(self):
         existing_attachments = {
             'leaf1': {
