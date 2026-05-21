@@ -150,6 +150,14 @@ class NdExtensionDriver(api.ExtensionDriver):
             LOG.debug("NdExtensionDriver: no nd-vrf-name in request, skipping")
             return
 
+        if data.get('shared'):
+            raise n_exc.InvalidInput(
+                error_message=(
+                    'Address scopes with nd-vrf-name cannot be shared. '
+                    'A shared address scope would allow multiple projects '
+                    'to route through the same VRF, violating tenant '
+                    'isolation.'))
+
         ip_version = data.get('ip_version')
         if ip_version is not None:
             session = plugin_context.session
@@ -190,6 +198,25 @@ class NdExtensionDriver(api.ExtensionDriver):
             session.add(ext)
             LOG.debug("NdExtensionDriver: inserted extension row for %s",
                       result['id'])
+
+    def process_update_address_scope(self, plugin_context, data, result):
+        if not data.get('shared'):
+            return
+        address_scope_id = result.get('id')
+        if not address_scope_id:
+            return
+        with db_api.CONTEXT_READER.using(plugin_context):
+            session = plugin_context.session
+            ext = (session.query(extension_db.NdAddressScopeExtension)
+                   .filter_by(address_scope_id=address_scope_id)
+                   .first())
+            if ext is not None:
+                raise n_exc.InvalidInput(
+                    error_message=(
+                        'Address scopes with nd-vrf-name cannot be shared. '
+                        'A shared address scope would allow multiple projects '
+                        'to route through the same VRF, violating tenant '
+                        'isolation.'))
 
     def extend_address_scope_dict(self, session, base_model, result):
         LOG.debug("NdExtensionDriver.extend_address_scope_dict: id=%s",

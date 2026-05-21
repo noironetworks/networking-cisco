@@ -196,6 +196,64 @@ class TestNdExtensionDriver(testlib_api.SqlTestCase):
         self.assertEqual('new-scope-id', added.address_scope_id)
         self.assertEqual('ndfc-scope', added.nd_vrf_name)
 
+    def test_process_create_address_scope_rejects_shared_with_nd_vrf_name(
+            self):
+        ctx = mock.Mock()
+        ctx.session = mock.Mock()
+
+        data = {'nd-vrf-name': 'FEAT_039_VRF', 'shared': True,
+                'ip_version': 4}
+        result = {'id': 'scope-id'}
+
+        from neutron_lib import exceptions as n_exc
+        self.assertRaises(n_exc.InvalidInput,
+                          self.driver.process_create_address_scope,
+                          ctx, data, result)
+        ctx.session.add.assert_not_called()
+
+    @mock.patch('neutron_lib.db.api.CONTEXT_READER.using')
+    def test_process_update_address_scope_rejects_shared_with_nd_vrf_name(
+            self, mock_reader):
+        ctx = mock.Mock()
+        ctx.session = mock.Mock()
+        ext_row = mock.Mock()
+        ext_row.nd_vrf_name = 'FEAT_039_VRF'
+        (ctx.session.query.return_value
+         .filter_by.return_value
+         .first.return_value) = ext_row
+
+        data = {'shared': True}
+        result = {'id': 'scope-id'}
+
+        from neutron_lib import exceptions as n_exc
+        self.assertRaises(n_exc.InvalidInput,
+                          self.driver.process_update_address_scope,
+                          ctx, data, result)
+
+    @mock.patch('neutron_lib.db.api.CONTEXT_READER.using')
+    def test_process_update_address_scope_allows_shared_without_nd_vrf_name(
+            self, mock_reader):
+        ctx = mock.Mock()
+        ctx.session = mock.Mock()
+        (ctx.session.query.return_value
+         .filter_by.return_value
+         .first.return_value) = None
+
+        data = {'shared': True}
+        result = {'id': 'scope-id'}
+
+        self.driver.process_update_address_scope(ctx, data, result)
+
+    def test_process_update_address_scope_ignores_non_shared_update(self):
+        ctx = mock.Mock()
+        ctx.session = mock.Mock()
+
+        data = {'name': 'new-name'}
+        result = {'id': 'scope-id'}
+
+        self.driver.process_update_address_scope(ctx, data, result)
+        ctx.session.query.assert_not_called()
+
 
 class TestNdMl2PluginAddressScope(testlib_api.SqlTestCase):
 
