@@ -39,6 +39,13 @@ class NdManager(object):
             return
         self._ext_driver.process_create_address_scope(context, body, result)
 
+    def handle_address_scope_update(self, context, body, result):
+        if not hasattr(self, "_ext_driver"):
+            return
+        if not hasattr(self._ext_driver, "process_update_address_scope"):
+            return
+        self._ext_driver.process_update_address_scope(context, body, result)
+
     def delete_vrf_for_address_scope(self, nd_vrf_name):
         if not nd_vrf_name:
             return

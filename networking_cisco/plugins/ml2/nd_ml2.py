@@ -99,6 +99,17 @@ class NdMl2Plugin(ml2_plugin.Ml2Plugin):
                   address_scope, result)
         return result
 
+    def update_address_scope(self, context, id, address_scope):
+        body = address_scope.get(as_def.ADDRESS_SCOPE, {})
+        if body.get('shared'):
+            with db_api.CONTEXT_READER.using(context):
+                result = super(NdMl2Plugin, self).get_address_scope(
+                    context, id)
+                self.nd_extension_manager.handle_address_scope_update(
+                    context, body, result)
+        return super(NdMl2Plugin, self).update_address_scope(
+            context, id, address_scope)
+
     def get_address_scope(self, context, id, fields=None):
         res = super(NdMl2Plugin, self).get_address_scope(context, id, fields)
         if not res:
