@@ -269,6 +269,9 @@ class Ndfc:
                     template_data["gatewayIpv6Address"] = gw
                 else:
                     template_data["gatewayIpv4Address"] = gw
+                for key in ("gatewayIpv4Address", "gatewayIpv6Address"):
+                    if template_data.get(key) == "":
+                        template_data.pop(key, None)
                 payload["vrfName"] = vrf_name
             else:
                 template_data = payload.get("networkTemplateConfig")
