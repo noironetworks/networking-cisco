@@ -155,8 +155,8 @@ class TestNDFC(TestNDFCBase, test_plugin.Ml2PluginV2TestCase):
             mock_update_network.call_args[0])
 
         l3_data = updated_payload['l3Data']
-        self.assertEqual('', l3_data['gatewayIpv4Address'])
-        self.assertEqual('', l3_data['gatewayIpv6Address'])
+        self.assertNotIn('gatewayIpv4Address', l3_data)
+        self.assertNotIn('gatewayIpv6Address', l3_data)
 
     @mock.patch.object(ndfc_helper.NdfcHelper, 'update_network')
     @mock.patch.object(ndfc.Ndfc, '_get_deploy_payload', return_value=[])
@@ -795,6 +795,76 @@ class TestNDFC(TestNDFCBase, test_plugin.Ml2PluginV2TestCase):
         self.assertEqual(vlan_id, "100")
         mock_get_vrf_attachments.assert_called_with(
             self.ndfc_instance.fabric, vrf_name)
+
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'update_network')
+    @mock.patch.object(ndfc.Ndfc, '_get_deploy_payload', return_value=[])
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'get_network_info')
+    def test_update_network_removes_stale_empty_ipv6_on_ipv4_set_v2(
+            self, mock_get_network_info, mock_get_deploy_payload,
+            mock_update_network):
+        vrf_name = 'new_vrf'
+        network_name = 'test_network'
+        vlan = '100'
+        physnet = 'physnet1'
+        gw = '192.168.1.1/24'
+
+        self.ndfc_instance.ndfc_obj.nd_new_version = True
+
+        payload = {
+            'networkName': network_name,
+            'l3Data': {
+                'gatewayIpv4Address': '',
+                'gatewayIpv6Address': ''
+            }
+        }
+        mock_get_network_info.return_value = payload
+
+        ret = self.ndfc_instance.update_network(vrf_name, network_name,
+                                                vlan, gw, physnet)
+        self.assertTrue(ret)
+
+        mock_update_network.assert_called_once()
+        _fabric, _net_name, updated_payload = (
+            mock_update_network.call_args[0])
+
+        l3_data = updated_payload['l3Data']
+        self.assertEqual(gw, l3_data['gatewayIpv4Address'])
+        self.assertNotIn('gatewayIpv6Address', l3_data)
+
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'update_network')
+    @mock.patch.object(ndfc.Ndfc, '_get_deploy_payload', return_value=[])
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'get_network_info')
+    def test_update_network_removes_stale_empty_ipv4_on_ipv6_set_v2(
+            self, mock_get_network_info, mock_get_deploy_payload,
+            mock_update_network):
+        vrf_name = 'new_vrf'
+        network_name = 'test_network'
+        vlan = '100'
+        physnet = 'physnet1'
+        gw_v6 = '2001:db8:20:1::1/64'
+
+        self.ndfc_instance.ndfc_obj.nd_new_version = True
+
+        payload = {
+            'networkName': network_name,
+            'l3Data': {
+                'gatewayIpv4Address': '',
+                'gatewayIpv6Address': ''
+            }
+        }
+        mock_get_network_info.return_value = payload
+
+        ret = self.ndfc_instance.update_network(vrf_name, network_name,
+                                                vlan, gw_v6, physnet)
+        self.assertTrue(ret)
+
+        mock_update_network.assert_called_once()
+        _fabric, _net_name, updated_payload = (
+            mock_update_network.call_args[0])
+
+        l3_data = updated_payload['l3Data']
+        self.assertNotIn('gatewayIpv4Address', l3_data)
+        self.assertEqual(gw_v6, l3_data['gatewayIpv6Address'])
 
     @mock.patch.object(ndfc_helper.NdfcHelper, 'redeploy_network')
     @mock.patch.object(ndfc.Ndfc, '_get_deploy_payload')
