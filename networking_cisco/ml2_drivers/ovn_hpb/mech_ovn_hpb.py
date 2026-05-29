@@ -372,12 +372,13 @@ def new_add_network_segment(context, network_id, segment, segment_index=0,
                              context, resource_id=netseg_obj.id,
                              states=(netseg_obj,)))
         segment['id'] = netseg_obj.id
-    registry.publish(resources.SEGMENT,
-                     events.AFTER_CREATE,
-                     new_add_network_segment,
-                     payload=events.DBEventPayload(
-                         context, resource_id=netseg_obj.id,
-                         states=(netseg_obj,)))
+    if is_dynamic:
+        registry.publish(resources.SEGMENT,
+                         events.AFTER_CREATE,
+                         new_add_network_segment,
+                         payload=events.DBEventPayload(
+                             context, resource_id=netseg_obj.id,
+                             states=(netseg_obj,)))
     LOG.info("Added segment %(id)s of type %(network_type)s for network "
              "%(network_id)s",
              {'id': netseg_obj.id,
