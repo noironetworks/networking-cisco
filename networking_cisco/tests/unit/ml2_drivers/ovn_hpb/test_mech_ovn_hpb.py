@@ -139,7 +139,7 @@ class TestOVNHPBHelpers(neutron_base.BaseTestCase):
     @mock.patch.object(mech_ovn_hpb.uuidutils, 'generate_uuid',
                        return_value='generated-segment-id')
     @mock.patch.object(mech_ovn_hpb.nw, 'NetworkSegment')
-    def test_new_add_network_segment_creates_and_publishes(
+    def test_new_add_network_segment_creates_and_publishes_precommit(
             self, mock_network_segment, mock_generate_uuid, mock_publish):
         context = mock.Mock()
         network_segment = mock.Mock(
@@ -168,7 +168,57 @@ class TestOVNHPBHelpers(neutron_base.BaseTestCase):
             segmentation_id=101, segment_index=0, is_dynamic=False)
         network_segment.create.assert_called_once_with()
         self.assertEqual('generated-segment-id', segment['id'])
+        mock_publish.assert_called_once()
+        resource, event, trigger = mock_publish.call_args[0]
+        payload = mock_publish.call_args[1]['payload']
+        self.assertEqual(mech_ovn_hpb.resources.SEGMENT, resource)
+        self.assertEqual(mech_ovn_hpb.events.PRECOMMIT_CREATE, event)
+        self.assertEqual(mech_ovn_hpb.new_add_network_segment, trigger)
+        self.assertEqual(context, payload.context)
+        self.assertEqual('generated-segment-id', payload.resource_id)
+        self.assertEqual((network_segment,), payload.states)
+
+    @mock.patch.object(mech_ovn_hpb.registry, 'publish')
+    @mock.patch.object(mech_ovn_hpb.uuidutils, 'generate_uuid',
+                       return_value='generated-segment-id')
+    @mock.patch.object(mech_ovn_hpb.nw, 'NetworkSegment')
+    def test_new_add_network_segment_publishes_after_create_for_dynamic(
+            self, mock_network_segment, mock_generate_uuid, mock_publish):
+        context = mock.Mock()
+        network_segment = mock.Mock(
+            id='generated-segment-id',
+            network_id='net-id',
+            network_type='vlan')
+        mock_network_segment.return_value = network_segment
+        writer = mock.MagicMock()
+        writer.__enter__.return_value = None
+        writer.__exit__.return_value = None
+        with mock.patch.object(
+                mech_ovn_hpb.db_api.CONTEXT_WRITER, 'using',
+                return_value=writer):
+            segment = {
+                'network_type': 'vlan',
+                'physical_network': 'physnet1',
+                'segmentation_id': 101,
+            }
+
+            mech_ovn_hpb.new_add_network_segment(
+                context, 'net-id', segment, is_dynamic=True)
+
+        mock_generate_uuid.assert_called_once_with()
+        mock_network_segment.assert_called_once_with(
+            context, id='generated-segment-id', network_id='net-id',
+            network_type='vlan', physical_network='physnet1',
+            segmentation_id=101, segment_index=0, is_dynamic=True)
+        network_segment.create.assert_called_once_with()
+        self.assertEqual('generated-segment-id', segment['id'])
         self.assertEqual(2, mock_publish.call_count)
+        self.assertEqual(
+            mech_ovn_hpb.events.PRECOMMIT_CREATE,
+            mock_publish.call_args_list[0][0][1])
+        self.assertEqual(
+            mech_ovn_hpb.events.AFTER_CREATE,
+            mock_publish.call_args_list[1][0][1])
 
     @mock.patch.object(mech_ovn_hpb.nw, 'SegmentHostMapping')
     def test_new_map_segment_to_hosts_adds_only_new_hosts(
@@ -225,7 +275,7 @@ class TestOVNHPBHelpers(neutron_base.BaseTestCase):
         mock_get_segment.side_effect = [segment, None]
 
         with mock.patch.object(
-                mech_ovn_hpb, '_real_release_dynamic_segment') as mock_real:
+                mech_ovn_hpb, '_real_release_dynamic_seg') as mock_real:
             mech_ovn_hpb.hpb_release_dynamic_segment(
                 type_manager, context, 'seg-id')
 
@@ -242,7 +292,7 @@ class TestOVNHPBHelpers(neutron_base.BaseTestCase):
         mock_get_segment.side_effect = [segment, segment]
 
         with mock.patch.object(
-                mech_ovn_hpb, '_real_release_dynamic_segment') as mock_real:
+                mech_ovn_hpb, '_real_release_dynamic_seg') as mock_real:
             mech_ovn_hpb.hpb_release_dynamic_segment(
                 type_manager, context, 'seg-id')
 
@@ -262,29 +312,28 @@ class TestOVNHPBMechanismDriver(neutron_base.BaseTestCase):
         self.ovn_client_p.start()
         self.addCleanup(self.ovn_client_p.stop)
 
-    @mock.patch(
-        'networking_cisco.ml2_drivers.ovn_hpb.mech_ovn_hpb.'
-        'ovn_mech.OVNMechanismDriver._validate_network_segments')
-    def test_validate_network_segments_filters_nd_segments(self, mock_super):
-        self.driver._validate_network_segments([
-            {'network_type': ndfc_const.TYPE_ND},
-            {'network_type': 'vlan'},
-            {'network_type': 'flat'},
-        ])
+    def test_validate_network_segments_filters_nd_segments(self):
+        super_driver = mech_ovn_hpb.OVNHPBMechanismDriver.__mro__[1]
+        with mock.patch.object(
+                super_driver, '_validate_network_segments') as mock_super:
+            self.driver._validate_network_segments([
+                {'network_type': ndfc_const.TYPE_ND},
+                {'network_type': 'vlan'},
+                {'network_type': 'flat'},
+            ])
 
         mock_super.assert_called_once_with([
             {'network_type': 'vlan'},
             {'network_type': 'flat'},
         ])
 
-    @mock.patch(
-        'networking_cisco.ml2_drivers.ovn_hpb.mech_ovn_hpb.'
-        'ovn_mech.OVNMechanismDriver._validate_network_segments')
-    def test_validate_network_segments_skips_super_for_nd_only(
-            self, mock_super):
-        self.driver._validate_network_segments([
-            {'network_type': ndfc_const.TYPE_ND},
-        ])
+    def test_validate_network_segments_skips_super_for_nd_only(self):
+        super_driver = mech_ovn_hpb.OVNHPBMechanismDriver.__mro__[1]
+        with mock.patch.object(
+                super_driver, '_validate_network_segments') as mock_super:
+            self.driver._validate_network_segments([
+                {'network_type': ndfc_const.TYPE_ND},
+            ])
 
         mock_super.assert_not_called()
 
