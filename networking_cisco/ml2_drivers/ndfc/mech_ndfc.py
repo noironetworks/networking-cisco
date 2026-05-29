@@ -785,8 +785,11 @@ class NDFCMechanismDriver(api.MechanismDriver,
             vrf_name = prj_details[0]
             if vlan_id is None:
                 vlan_id = network.get('provider:segmentation_id')
+            remaining_ports = self._count_bound_ports_on_network(
+                context._plugin_context, network['id'])
             res = self.ndfc.detach_network(vrf_name, network['name'],
-                vlan_id, topology_result)
+                vlan_id, topology_result,
+                network_has_other_ports=(remaining_ports > 0))
             if res:
                 LOG.info("NDFC Network %s detached successfully",
                     network['name'])
