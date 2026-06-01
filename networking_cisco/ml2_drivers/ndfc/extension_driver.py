@@ -28,6 +28,7 @@ from networking_cisco.ml2_drivers.ndfc import extensions as nd_ext_pkg
 from networking_cisco.ml2_drivers.ndfc.ndfc import get_ndfc_conf
 from neutron.api import extensions as old_extensions
 from neutron.db.models import address_scope as as_db
+from neutron_lib import constants as n_const
 from neutron_lib.db import api as db_api
 from neutron_lib import exceptions as n_exc
 from neutron_lib.plugins.ml2 import api
@@ -75,6 +76,12 @@ class NdExtensionDriver(api.ExtensionDriver):
             else:
                 ext.nd_status = nd_status
 
+    def _get_nd_status_from_data(self, data):
+        nd_status = data.get('nd-status') or data.get('nd_status')
+        if not nd_status or nd_status is n_const.ATTR_NOT_SPECIFIED:
+            return None
+        return nd_status
+
     def process_create_network(self, plugin_context, data, result):
         nd_status = data.get('nd-status') or data.get('nd_status')
         if not nd_status:
@@ -84,13 +91,19 @@ class NdExtensionDriver(api.ExtensionDriver):
         self._set_nd_network_status(plugin_context, result['id'], nd_status)
 
     def process_update_network(self, plugin_context, data, result):
-        nd_status = data.get('nd-status') or data.get('nd_status')
+        nd_status = self._get_nd_status_from_data(data)
         LOG.debug("NdExtensionDriver.process_update_network: data=%s, "
                   "result=%s, nd_status=%s", data, result, nd_status)
         if nd_status is None:
             LOG.debug("NdExtensionDriver.process_update_network: nd-status "
                       "is None, nothing to persist")
             return
+        if nd_status != 'SYNC':
+            raise n_exc.InvalidInput(
+                error_message=(
+                    'Only nd-status=SYNC is accepted as user input. '
+                    'SUCCESS and FAILED are internal states managed by '
+                    'the mechanism driver.'))
         network_id = result['id']
         LOG.debug("NdExtensionDriver.process_update_network: persisting "
                   "nd-status=%s for network %s", nd_status, network_id)
