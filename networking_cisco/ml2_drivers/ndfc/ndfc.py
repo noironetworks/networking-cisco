@@ -729,15 +729,19 @@ class Ndfc:
                         return item["vlanId"]
         return vlan_id
 
-    def attach_network(self, vrf_name, network_name, vlan, leaf_attachments):
+    def attach_network(self, vrf_name, network_name, vlan, leaf_attachments,
+                       existing_attachments=None):
         # leaf_attachments is a map of snums
         # map[leaf_snums] -> {leaf_name, interface, map[tors]}
         # map[tors] -> {tor_name, tor_interface}
         LOG.debug("attach network called for vrf %s network %s vlan %s with "
                   "new attachment %s", vrf_name, network_name, vlan,
                   leaf_attachments)
-        exist_attach = self.ndfc_obj.get_network_switch_interface_map(
-            self.fabric, network_name)
+        if existing_attachments is None:
+            exist_attach = self.ndfc_obj.get_network_switch_interface_map(
+                self.fabric, network_name)
+        else:
+            exist_attach = existing_attachments
         LOG.debug("existing attachments %s", exist_attach)
         if exist_attach is None:
             LOG.warning("Unable to retrieve existing attachments for "
@@ -769,15 +773,19 @@ class Ndfc:
         return ret
 
     def detach_network(self, vrf_name, network_name, vlan, leaf_attachments,
-                       network_has_other_ports=True):
+                       network_has_other_ports=True,
+                       existing_attachments=None):
         # leaf_attachments is a map of snums
         # map[leaf_snums] -> {leaf_name, interface, map[tors]}
         # map[tors] -> {tor_name, tor_interface}
         LOG.debug("detach network called for vrf %s network %s vlan %s with "
                   "new attachment %s", vrf_name, network_name, vlan,
                   leaf_attachments)
-        exist_attach = self.ndfc_obj.get_network_switch_interface_map(
-            self.fabric, network_name)
+        if existing_attachments is None:
+            exist_attach = self.ndfc_obj.get_network_switch_interface_map(
+                self.fabric, network_name)
+        else:
+            exist_attach = existing_attachments
         LOG.debug("existing attachments %s", exist_attach)
         if exist_attach is None:
             LOG.warning("Unable to retrieve existing attachments for "
