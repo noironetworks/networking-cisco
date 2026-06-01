@@ -14,12 +14,22 @@
 #    under the License.
 
 from unittest import mock
+import uuid
 
+from neutron.common import _constants as n_const
 from neutron.common.ovn import constants as ovn_const
+from neutron.conf.plugins.ml2.drivers.ovn import ovn_conf
+from neutron.plugins.ml2.drivers.ovn.agent import neutron_agent
 from neutron.tests import base as neutron_base
+from neutron.tests.unit import fake_resources as fakes
 
 from networking_cisco.ml2_drivers.ndfc import constants as ndfc_const
 from networking_cisco.ml2_drivers.ovn_hpb import mech_ovn_hpb
+
+from oslo_utils import timeutils
+
+
+DEFAULT_DP_TYPE = 'system'  # For testing, we define "system" as default.
 
 
 class TestOVNHPBHelpers(neutron_base.BaseTestCase):
@@ -305,12 +315,68 @@ class TestOVNHPBMechanismDriver(neutron_base.BaseTestCase):
     def setUp(self):
         super().setUp()
         self.driver = object.__new__(mech_ovn_hpb.OVNHPBMechanismDriver)
+        self.ovs_patch = mock.patch.object(ovn_conf, 'is_ovs_create_tap',
+            return_value=False)
+        self.ovs_patch.start()
+        self.addCleanup(self.ovs_patch.stop)
+        self.driver.sg_enabled = False
+        self.driver._nb_ovn = fakes.FakeOvsdbNbOvnIdl()
+        self.driver._sb_ovn = fakes.FakeOvsdbSbOvnIdl()
+        self.driver._post_fork_event = mock.Mock()
+        self.driver._agent_cache = neutron_agent.AgentCache(self.driver)
+        agent1 = self._add_agent('agent1')
+        neutron_agent.AgentCache().get_agents = mock.Mock()
+        neutron_agent.AgentCache().get_agents.return_value = [agent1]
+        self.driver._setup_vif_port_bindings()
         self.ovn_client = mock.Mock()
         self.ovn_client_p = mock.patch.object(
             mech_ovn_hpb.OVNHPBMechanismDriver, '_ovn_client',
             new_callable=mock.PropertyMock, return_value=self.ovn_client)
         self.ovn_client_p.start()
         self.addCleanup(self.ovn_client_p.stop)
+
+    def _add_chassis_private(self, nb_cfg, name=None):
+        chassis_private = mock.Mock()
+        chassis_private.nb_cfg = nb_cfg
+        chassis_private.uuid = uuid.uuid4()
+        chassis_private.name = name if name else str(uuid.uuid4())
+        chassis_private.nb_cfg_timestamp = timeutils.utcnow_ts() * 1000
+        return chassis_private
+
+    def _add_chassis(self, name, hostname, external_ids=None,
+                     other_config=None):
+        external_ids = external_ids or {}
+        other_config = other_config or {}
+        return mock.Mock(name=name, hostname=hostname,
+                         external_ids=external_ids, other_config=other_config)
+
+    def _add_chassis_agent(self, nb_cfg, agent_type, chassis_private=None,
+                           hostname=None):
+        chassis_private = chassis_private or self._add_chassis_private(nb_cfg)
+        hostname = hostname or chassis_private.name + '_host'
+        if hasattr(chassis_private, 'nb_cfg_timestamp') and isinstance(
+                chassis_private.nb_cfg_timestamp, mock.Mock):
+            del chassis_private.nb_cfg_timestamp
+        chassis_private.external_ids = {
+            ovn_const.OVN_AGENT_OVN_BRIDGE: n_const.DEFAULT_BR_INT,
+            ovn_const.OVN_DATAPATH_TYPE: DEFAULT_DP_TYPE,
+        }
+        if agent_type == ovn_const.OVN_METADATA_AGENT:
+            chassis_private.external_ids.update({
+                ovn_const.OVN_AGENT_METADATA_SB_CFG_KEY: nb_cfg,
+                ovn_const.OVN_AGENT_METADATA_ID_KEY: str(uuid.uuid4())})
+        chassis_private.chassis = [self._add_chassis(chassis_private.name,
+                                                     hostname)]
+        return neutron_agent.AgentCache().update(agent_type, chassis_private)
+
+    def _add_agent(self, name, nb_cfg_offset=0, hostname=None):
+        hostname = hostname or name + '_host'
+        nb_cfg = 5
+        self.driver.nb_ovn.nb_global.nb_cfg = nb_cfg + nb_cfg_offset
+        chassis_private = self._add_chassis_private(nb_cfg, name=name)
+        return self._add_chassis_agent(
+            nb_cfg, ovn_const.OVN_CONTROLLER_AGENT,
+            chassis_private=chassis_private, hostname=hostname)
 
     def test_validate_network_segments_filters_nd_segments(self):
         super_driver = mech_ovn_hpb.OVNHPBMechanismDriver.__mro__[1]
@@ -376,3 +442,16 @@ class TestOVNHPBMechanismDriver(neutron_base.BaseTestCase):
 
         self.ovn_client.delete_provnet_port.assert_called_once_with(
             'net-id', segment)
+
+    def test_bind_nd_segment_fail(self):
+        segment_attrs = {'network_type': 'nd',
+                         'physical_network': 'unknown-physnet',
+                         'segmentation_id': None}
+        fake_segments = [fakes.FakeSegment.create_one_segment(
+                attrs=segment_attrs).info()]
+        fake_port = fakes.FakePort.create_one_port(
+            attrs={'binding:vnic_type': 'normal'}).info()
+        fake_port_context = fakes.FakePortContext(fake_port,
+                                                  'host', fake_segments)
+        self.driver.bind_port(fake_port_context)
+        fake_port_context.set_binding.assert_not_called()
