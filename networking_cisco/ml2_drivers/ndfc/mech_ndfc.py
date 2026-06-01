@@ -29,6 +29,7 @@ from networking_cisco.ml2_drivers.ovn_hpb import mech_ovn_hpb
 from networking_cisco.rpc import topo_rpc_handler
 from neutron.db import models_v2
 from neutron.db import segments_db
+from neutron.objects import network as network_obj
 from neutron.plugins.ml2.drivers.ovn.mech_driver import mech_driver as ovn_mech
 from neutron.plugins.ml2 import models
 from neutron_lib.api.definitions import portbindings
@@ -634,6 +635,116 @@ class NDFCMechanismDriver(api.MechanismDriver,
                   {'host': host, 'topo': topology})
         return topology
 
+    def _merge_topology(self, attachments, topology, leaf_filter=None):
+        for leaf_snum, leaf_info in topology.items():
+            if leaf_filter is not None and leaf_snum not in leaf_filter:
+                continue
+            leaf_attach = attachments.setdefault(leaf_snum, {})
+            peer_serial = leaf_info.get('peer_serial')
+            if peer_serial:
+                leaf_attach['peer_serial'] = peer_serial
+
+            interfaces = leaf_info.get('interfaces') or []
+            if interfaces:
+                attach_interfaces = leaf_attach.setdefault('interfaces', [])
+                for intf in interfaces:
+                    if intf not in attach_interfaces:
+                        attach_interfaces.append(intf)
+
+            tor_map = leaf_info.get('tor_sw_intf_map') or {}
+            if not tor_map:
+                continue
+            attach_tor_map = leaf_attach.setdefault('tor_sw_intf_map', {})
+            for tor_snum, tor_info in tor_map.items():
+                tor_name = tor_info.get('tor_name')
+                tor_key = "SN_" + tor_name if tor_name else tor_snum
+                attach_tor_info = attach_tor_map.setdefault(
+                    tor_key, {'tor_interfaces': []})
+                if tor_name:
+                    attach_tor_info['tor_name'] = tor_name
+                attach_tor_interfaces = attach_tor_info.setdefault(
+                    'tor_interfaces', [])
+                for intf in tor_info.get('tor_interfaces') or []:
+                    if intf not in attach_tor_interfaces:
+                        attach_tor_interfaces.append(intf)
+
+    def _get_network_attachment_rows(self, session, network_id, leaf_filter):
+        leaf_filter = sorted(leaf_filter)
+        if not leaf_filter:
+            return []
+
+        network_segment = network_obj.NetworkSegment.db_model
+        segment_host_mapping = network_obj.SegmentHostMapping.db_model
+        query = session.query(nc_ml2_db.NxosHostLink, nc_ml2_db.NxosTors)
+        query = query.join(
+            segment_host_mapping,
+            segment_host_mapping.host == nc_ml2_db.NxosHostLink.host_name)
+        query = query.join(
+            network_segment,
+            network_segment.id == segment_host_mapping.segment_id)
+        query = query.outerjoin(
+            nc_ml2_db.NxosTors,
+            nc_ml2_db.NxosTors.tor_serial_number ==
+            nc_ml2_db.NxosHostLink.serial_number)
+        query = query.filter(network_segment.network_id == network_id)
+        query = query.filter(sa.or_(
+            nc_ml2_db.NxosHostLink.serial_number.in_(leaf_filter),
+            nc_ml2_db.NxosTors.leaf_serial_number.in_(leaf_filter)))
+        return query.distinct().all()
+
+    def _merge_attachment_rows(self, attachments, attachment_rows):
+        vpc_peer_map = self.vpc_peer_map or {}
+        for host_link, tor in attachment_rows:
+            interface_name = host_link.switch_port
+            if tor:
+                leaf_serial_number = tor.leaf_serial_number
+                leaf_map = attachments.setdefault(leaf_serial_number, {})
+                peer_serial = vpc_peer_map.get(leaf_serial_number)
+                if peer_serial:
+                    leaf_map['peer_serial'] = peer_serial
+                tor_name = tor.tor_name
+                tor_key = "SN_" + tor_name if tor_name else (
+                    tor.tor_serial_number)
+                tor_map = leaf_map.setdefault(
+                    'tor_sw_intf_map', {}).setdefault(
+                    tor_key, {'tor_interfaces': []})
+                if tor_name:
+                    tor_map['tor_name'] = tor_name
+                tor_interfaces = tor_map['tor_interfaces']
+                if interface_name not in tor_interfaces:
+                    tor_interfaces.append(interface_name)
+            else:
+                leaf_map = attachments.setdefault(host_link.serial_number, {})
+                peer_serial = vpc_peer_map.get(host_link.serial_number)
+                if peer_serial:
+                    leaf_map['peer_serial'] = peer_serial
+                interfaces = leaf_map.setdefault('interfaces', [])
+                if interface_name not in interfaces:
+                    interfaces.append(interface_name)
+
+    def _get_network_attachments_from_neutron_db(
+            self, context, network_id, host, host_topology):
+        attachments = {}
+        leaf_filter = set(host_topology)
+        for leaf_info in host_topology.values():
+            peer_serial = leaf_info.get('peer_serial')
+            if peer_serial:
+                leaf_filter.add(peer_serial)
+        self._merge_topology(attachments, host_topology)
+
+        with db_api.CONTEXT_READER.using(
+                context._plugin_context) as session:
+            attachment_rows = self._get_network_attachment_rows(
+                session, network_id, leaf_filter)
+            self._merge_attachment_rows(attachments, attachment_rows)
+
+        LOG.debug(
+            "Built network attachments from Neutron DB for network "
+            "%(network)s host %(host)s: %(attachments)s",
+            {'network': network_id, 'host': host,
+             'attachments': attachments})
+        return attachments
+
     def get_topology(self, context, network, host, detach=False):
         LOG.debug("Get topology for network %s, host %s", network, host)
         with db_api.CONTEXT_READER.using(
@@ -767,8 +878,12 @@ class NDFCMechanismDriver(api.MechanismDriver,
             vrf_name = prj_details[0]
             if vlan_id is None:
                 vlan_id = network.get('provider:segmentation_id')
-            res = self.ndfc.attach_network(vrf_name, network['name'],
-                vlan_id, topology_result)
+            existing_attachments = (
+                self._get_network_attachments_from_neutron_db(
+                    context, network['id'], host, topology_result))
+            res = self.ndfc.attach_network(
+                vrf_name, network['name'], vlan_id, topology_result,
+                existing_attachments=existing_attachments)
             if res:
                 self.allocate_vrf_segment(context, vrf_name)
                 LOG.info("NDFC Network %s attached successfully",
@@ -787,10 +902,14 @@ class NDFCMechanismDriver(api.MechanismDriver,
             vrf_name = prj_details[0]
             if vlan_id is None:
                 vlan_id = network.get('provider:segmentation_id')
+            existing_attachments = (
+                self._get_network_attachments_from_neutron_db(
+                    context, network['id'], host, topology_result))
             remaining_ports = self._count_bound_ports_on_network(
                 context._plugin_context, network['id'])
-            res = self.ndfc.detach_network(vrf_name, network['name'],
-                vlan_id, topology_result,
+            res = self.ndfc.detach_network(
+                vrf_name, network['name'], vlan_id, topology_result,
+                existing_attachments=existing_attachments,
                 network_has_other_ports=(remaining_ports > 0))
             if res:
                 LOG.info("NDFC Network %s detached successfully",
