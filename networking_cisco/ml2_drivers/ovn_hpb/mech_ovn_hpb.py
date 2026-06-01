@@ -18,8 +18,11 @@
 # validation for NDFC-specific ND networks, allowing them to coexist
 # with OVN in ML2.
 
+import copy
+
 from contextlib import nullcontext
 from datetime import datetime
+from neutron_lib.api.definitions import portbindings
 from neutron_lib.api.definitions import segment as segment_def
 from neutron_lib.callbacks import events
 from neutron_lib.callbacks import registry
@@ -28,12 +31,15 @@ from neutron_lib import constants as const
 from neutron_lib import context as n_context
 from neutron_lib.db import api as db_api
 from neutron_lib import exceptions as n_exc
+from neutron_lib.plugins.ml2 import api
 
 from neutron.common.ovn import constants as ovn_const
 from neutron.common.ovn import utils
+from neutron.conf.plugins.ml2.drivers.ovn import ovn_conf
 from neutron.db import ovn_revision_numbers_db as db_rev
 from neutron.db import segments_db
 from neutron.objects import network as nw
+from neutron.plugins.ml2.drivers.ovn.agent import neutron_agent as n_agent
 from neutron.plugins.ml2.drivers.ovn.mech_driver import mech_driver as ovn_mech
 from neutron.plugins.ml2.drivers.ovn.mech_driver.ovsdb import ovn_client as oc
 from neutron.plugins.ml2.drivers.ovn.mech_driver.ovsdb import ovn_db_sync as od
@@ -468,3 +474,167 @@ class OVNHPBMechanismDriver(ovn_mech.OVNMechanismDriver):
                 is_provider_segment_supported(segment)):
             self._ovn_client.delete_provnet_port(
                 segment['network_id'], segment)
+
+    def bind_port(self, context):
+        """Attempt to bind a port.
+
+        :param context: PortContext instance describing the port
+
+        This method is called outside any transaction to attempt to
+        establish a port binding using this mechanism driver. Bindings
+        may be created at each of multiple levels of a hierarchical
+        network, and are established from the top level downward. At
+        each level, the mechanism driver determines whether it can
+        bind to any of the network segments in the
+        context.segments_to_bind property, based on the value of the
+        context.host property, any relevant port or network
+        attributes, and its own knowledge of the network topology. At
+        the top level, context.segments_to_bind contains the static
+        segments of the port's network. At each lower level of
+        binding, it contains static or dynamic segments supplied by
+        the driver that bound at the level above. If the driver is
+        able to complete the binding of the port to any segment in
+        context.segments_to_bind, it must call context.set_binding
+        with the binding details. If it can partially bind the port,
+        it must call context.continue_binding with the network
+        segments to be used to bind at the next lower level.
+
+        If the binding results are committed after bind_port returns,
+        they will be seen by all mechanism drivers as
+        update_port_precommit and update_port_postcommit calls. But if
+        some other thread or process concurrently binds or updates the
+        port, these binding results will not be committed, and
+        update_port_precommit and update_port_postcommit will not be
+        called on the mechanism drivers with these results. Because
+        binding results can be discarded rather than committed,
+        drivers should avoid making persistent state changes in
+        bind_port, or else must ensure that such state changes are
+        eventually cleaned up.
+
+        Implementing this method explicitly declares the mechanism
+        driver as having the intention to bind ports. This is inspected
+        by the QoS service to identify the available QoS rules you
+        can use with ports.
+        """
+        port = context.current
+        vnic_type = port.get(portbindings.VNIC_TYPE, portbindings.VNIC_NORMAL)
+        if vnic_type not in self.supported_vnic_types:
+            LOG.debug('Refusing to bind port %(port_id)s due to unsupported '
+                      'vnic_type: %(vnic_type)s',
+                      {'port_id': port['id'], 'vnic_type': vnic_type})
+            return
+
+        if utils.is_port_external(port):
+            LOG.debug("Refusing to bind port due to unsupported vnic_type: %s "
+                      "with no switchdev capability", vnic_type)
+            return
+
+        # OVN chassis information is needed to ensure a valid port bind.
+        # Collect port binding data and refuse binding if the OVN chassis
+        # cannot be found or is dead.
+        try:
+            # The PortContext host property contains special handling that
+            # we need to take into account, thus passing both the port Dict
+            # and the PortContext instance so that the helper can decide
+            # which to use.
+            bind_host = utils.determine_bind_host(self._sb_ovn, port,
+                                                  port_context=context)
+        except n_exc.InvalidInput as e:
+            # The port binding profile is validated both on port creation and
+            # update.  The new rules apply to a VNIC type previously not
+            # consumed by the OVN mechanism driver, so this should never
+            # happen.
+            LOG.error('Validation of binding profile unexpectedly failed '
+                      'while attempting to bind port %s', port['id'])
+            raise e
+        agents = n_agent.AgentCache().get_agents(
+            {'host': bind_host,
+             'agent_type': ovn_const.OVN_CONTROLLER_TYPES})
+        if not agents:
+            LOG.warning('Refusing to bind port %(port_id)s due to '
+                        'no OVN chassis for host: %(host)s',
+                        {'port_id': port['id'], 'host': bind_host})
+            return
+        agent = agents[0]
+        if not agent.alive:
+            LOG.warning("Refusing to bind port %(pid)s to dead agent:  "
+                        "%(agent)s", {'pid': context.current['id'],
+                                      'agent': agent})
+            return
+        chassis = agent.chassis
+        other_config = chassis.other_config
+        datapath_type = other_config.get(ovn_const.OVN_DATAPATH_TYPE, '')
+        iface_types = other_config.get('iface-types', '')
+        iface_types = iface_types.split(',') if iface_types else []
+        chassis_physnets = self.sb_ovn._get_chassis_physnets(chassis)
+        for segment_to_bind in context.segments_to_bind:
+            network_type = segment_to_bind['network_type']
+            segmentation_id = segment_to_bind['segmentation_id']
+            physical_network = segment_to_bind['physical_network']
+            LOG.debug('Attempting to bind port %(port_id)s on host %(host)s '
+                      'for network segment with type %(network_type)s, '
+                      'segmentation ID %(segmentation_id)s, '
+                      'physical network %(physical_network)s',
+                      {'port_id': port['id'],
+                       'host': bind_host,
+                       'network_type': network_type,
+                       'segmentation_id': segmentation_id,
+                       'physical_network': physical_network})
+            # TODO(rtheis): This scenario is only valid on an upgrade from
+            # neutron ML2 OVS since invalid network types are prevented during
+            # network creation and update. The upgrade should convert invalid
+            # network types. Once bug/1621879 is fixed, refuse to bind
+            # ports with unsupported network types.
+            if not self._is_network_type_supported(network_type):
+                LOG.info('Upgrade allowing bind port %(port_id)s with '
+                         'unsupported network type: %(network_type)s',
+                         {'port_id': port['id'],
+                          'network_type': network_type})
+
+            elif ((network_type in [const.TYPE_FLAT, const.TYPE_VLAN]) and
+                    (physical_network not in chassis_physnets)):
+                LOG.info('Refusing to bind port %(port_id)s on '
+                         'host %(host)s due to the OVN chassis '
+                         'bridge mapping physical networks '
+                         '%(chassis_physnets)s not supporting '
+                         'physical network: %(physical_network)s',
+                         {'port_id': port['id'],
+                          'host': bind_host,
+                          'chassis_physnets': chassis_physnets,
+                          'physical_network': physical_network})
+            else:
+                if (datapath_type == ovn_const.CHASSIS_DATAPATH_NETDEV and
+                        ovn_const.CHASSIS_IFACE_DPDKVHOSTUSER in iface_types):
+                    vhost_user_socket = utils.ovn_vhu_sockpath(
+                        ovn_conf.get_ovn_vhost_sock_dir(), port['id'])
+                    vif_type = portbindings.VIF_TYPE_VHOST_USER
+                    port[portbindings.VIF_DETAILS].update({
+                        portbindings.VHOST_USER_SOCKET: vhost_user_socket})
+                    vif_details = copy.deepcopy(self.vif_details[vif_type])
+                    vif_details[portbindings.VHOST_USER_SOCKET] = (
+                        vhost_user_socket)
+                elif (vnic_type == portbindings.VNIC_VIRTIO_FORWARDER):
+                    vhost_user_socket = utils.ovn_vhu_sockpath(
+                        ovn_conf.get_ovn_vhost_sock_dir(), port['id'])
+                    vif_type = portbindings.VIF_TYPE_AGILIO_OVS
+                    port[portbindings.VIF_DETAILS].update({
+                        portbindings.VHOST_USER_SOCKET: vhost_user_socket})
+                    vif_details = copy.deepcopy(self.vif_details[vif_type])
+                    vif_details[portbindings.VHOST_USER_SOCKET] = (
+                        vhost_user_socket)
+                    vif_details[portbindings.VHOST_USER_MODE] = (
+                        portbindings.VHOST_USER_MODE_CLIENT)
+                else:
+                    vif_type = portbindings.VIF_TYPE_OVS
+                    vif_details = copy.deepcopy(self.vif_details[vif_type])
+
+                ovn_bridge = utils.get_ovn_bridge_from_chassis_private(
+                    agent.chassis_private)
+                dp_type = utils.get_datapath_type(bind_host, self.sb_ovn)
+                vif_details.update({
+                    portbindings.VIF_DETAILS_BRIDGE_NAME: ovn_bridge,
+                    portbindings.OVS_DATAPATH_TYPE: dp_type,
+                })
+                context.set_binding(segment_to_bind[api.ID], vif_type,
+                                    vif_details)
+                break
