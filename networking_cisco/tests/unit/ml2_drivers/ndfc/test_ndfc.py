@@ -429,6 +429,42 @@ class TestNDFC(TestNDFCBase, test_plugin.Ml2PluginV2TestCase):
                 vlan, leaf_attachments)
         self.assertFalse(ret)
 
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'attach_deploy_network')
+    def test_attach_network_uses_supplied_attachment_map(
+            self, mock_attach_deploy_network):
+        vrf_name = 'test_vrf'
+        network_name = 'test_network'
+        vlan = '100'
+        existing_attachments = {}
+        leaf_attachments = test_ndfc_mech.TEST_LEAF_ATTACHMENTS
+        self.mock_exist_attach.reset_mock()
+        mock_attach_deploy_network.return_value = True
+
+        ret = self.ndfc_instance.attach_network(
+                vrf_name, network_name, vlan, leaf_attachments,
+                existing_attachments=existing_attachments)
+
+        self.assertTrue(ret)
+        self.mock_exist_attach.assert_not_called()
+
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'attach_deploy_network')
+    def test_detach_network_uses_supplied_attachment_map(
+            self, mock_attach_deploy_network):
+        vrf_name = 'test_vrf'
+        network_name = 'test_network'
+        vlan = '100'
+        existing_attachments = {'leaf1': {'interfaces': ['Ethernet1/1']}}
+        leaf_attachments = {'leaf1': {'interfaces': ['Ethernet1/1']}}
+        self.mock_exist_attach.reset_mock()
+        mock_attach_deploy_network.return_value = True
+
+        ret = self.ndfc_instance.detach_network(
+                vrf_name, network_name, vlan, leaf_attachments,
+                existing_attachments=existing_attachments)
+
+        self.assertTrue(ret)
+        self.mock_exist_attach.assert_not_called()
+
     @mock.patch.object(ndfc_helper.NdfcHelper,
             'get_network_switch_interface_map', return_value=None)
     def test_network_attach_detach_none_guard_v2(self, mock_get_map):
