@@ -64,7 +64,13 @@ ndfc_opts = [
     cfg.IntOpt('nd_sync_poll_interval',
                default=600,
                help=("Interval in seconds to poll NDFC for ND network "
-                     "deploy status."))
+                     "deploy status.")),
+    cfg.IntOpt('attach_max_retries',
+               default=3,
+               help=("Maximum number of retries for NDFC network "
+                     "attach/detach API calls when a transient error "
+                     "(e.g. VRF deployment in progress) is encountered. "
+                     "Uses exponential backoff starting at 5 seconds."))
 ]
 
 

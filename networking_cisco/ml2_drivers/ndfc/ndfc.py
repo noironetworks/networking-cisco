@@ -56,6 +56,7 @@ def get_ndfc_conf():
         ndfc_conf.fabric_name,
         ndfc_conf.force_old_api,
         ndfc_conf.enable_l3_on_border,
+        ndfc_conf.attach_max_retries,
     )
 
 
@@ -64,7 +65,7 @@ class Ndfc:
     NDFC class.
     '''
     def __init__(self, ndfc_ip, user, pwd, fabric, force_old_api,
-                 enable_l3_on_border):
+                 enable_l3_on_border, attach_max_retries):
         '''
         Init routine.
         '''
@@ -75,7 +76,8 @@ class Ndfc:
         self.fabric = fabric
         self.enable_l3_on_border = enable_l3_on_border
         self.ndfc_obj = NdfcHelper(ip=self.ip, user=self.user, pwd=self.pwd,
-                                   force_old_api=force_old_api)
+                                   force_old_api=force_old_api,
+                                   attach_max_retries=attach_max_retries)
 
     def _get_create_vrf_payload(self, vrf_name):
         fabric = self.fabric
