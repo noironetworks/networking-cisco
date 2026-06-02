@@ -1278,3 +1278,34 @@ class TestNDFCHelper(TestNDFCHelperBase, test_plugin.Ml2PluginV2TestCase):
 
         self.assertEqual(result, {})
         mock_vpc.assert_not_called()
+
+    def test_attach_max_retries_default(self):
+        helper = ndfc_helper.NdfcHelper(ip='192.168.1.1',
+                user='admin', pwd='password')
+        self.assertEqual(helper.attach_max_retries, 3)
+
+    def test_attach_max_retries_configurable(self):
+        helper = ndfc_helper.NdfcHelper(ip='192.168.1.1',
+                user='admin', pwd='password', attach_max_retries=5)
+        self.assertEqual(helper.attach_max_retries, 5)
+
+    @mock.patch('time.sleep')
+    @mock.patch('requests.post')
+    def test_attach_network_retries_on_transient_error(self, mock_post,
+                                                       mock_sleep):
+        self.helper.attach_max_retries = 2
+        fail_response = mock.MagicMock()
+        fail_response.status_code = 200
+        fail_response.json.return_value = {
+            'status': 'Failed: VRF deployment in progress'}
+        ok_response = mock.MagicMock()
+        ok_response.status_code = 200
+        ok_response.json.return_value = {'status': 'success'}
+        mock_post.side_effect = [fail_response, ok_response]
+
+        result = self.helper._attach_network('fabric-test',
+                                             {'some': 'payload'})
+
+        self.assertTrue(result)
+        self.assertEqual(mock_post.call_count, 2)
+        mock_sleep.assert_called_once()
