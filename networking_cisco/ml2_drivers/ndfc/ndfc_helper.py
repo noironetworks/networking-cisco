@@ -144,6 +144,9 @@ class NdfcHelper:
         self.force_old_api = False
         if 'force_old_api' in kwargs:
             self.force_old_api = kwargs['force_old_api']
+        self.attach_max_retries = 3
+        if 'attach_max_retries' in kwargs:
+            self.attach_max_retries = kwargs['attach_max_retries']
 
         self._ip = kwargs['ip']
         # TODO(sanaval): add support for other auth types
@@ -673,7 +676,6 @@ class NdfcHelper:
         except (ValueError, AttributeError):
             return False
 
-    _ATTACH_MAX_RETRIES = 3
     _ATTACH_INITIAL_DELAY = 5
 
     @http_exc_handler
@@ -689,7 +691,7 @@ class NdfcHelper:
                 "/networks/attachments")
 
         delay = self._ATTACH_INITIAL_DELAY
-        for attempt in range(self._ATTACH_MAX_RETRIES + 1):
+        for attempt in range(self.attach_max_retries + 1):
             res = requests.post(url, headers=self._req_headers,
                     data=jsonutils.dumps(payload),
                     timeout=self._timeout_resp, verify=False)
@@ -708,12 +710,12 @@ class NdfcHelper:
             if self._response_body_indicates_failure(
                 res, '_attach_network',
                 payload=jsonutils.dumps(payload)):
-                if (attempt < self._ATTACH_MAX_RETRIES and
+                if (attempt < self.attach_max_retries and
                         self._is_retryable_attach_error(res)):
                     LOG.warning(
                         "Attach/detach attempt %d/%d hit a transient "
                         "error, retrying in %d seconds.",
-                        attempt + 1, self._ATTACH_MAX_RETRIES + 1, delay)
+                        attempt + 1, self.attach_max_retries + 1, delay)
                     time.sleep(delay)
                     delay *= 2
                     continue

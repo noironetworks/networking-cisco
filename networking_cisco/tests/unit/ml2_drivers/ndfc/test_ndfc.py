@@ -54,7 +54,8 @@ class TestNDFC(TestNDFCBase, test_plugin.Ml2PluginV2TestCase):
 
         self.ndfc_instance = ndfc.Ndfc(ndfc_ip='192.168.1.1', user='admin',
                 pwd='password', fabric='fabric_name',
-                force_old_api=False, enable_l3_on_border=False)
+                force_old_api=False, enable_l3_on_border=False,
+                attach_max_retries=3)
         self.mock_exist_attach = mock.patch.object(
             ndfc_helper.NdfcHelper, 'get_network_switch_interface_map',
             return_value=None).start()
