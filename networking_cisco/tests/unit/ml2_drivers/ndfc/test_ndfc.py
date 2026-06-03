@@ -467,6 +467,110 @@ class TestNDFC(TestNDFCBase, test_plugin.Ml2PluginV2TestCase):
         self.mock_exist_attach.assert_not_called()
 
     @mock.patch.object(ndfc_helper.NdfcHelper,
+            'get_network_switch_interface_map')
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'attach_deploy_network')
+    def test_attach_network_preserves_nd_direct_attachments(
+            self, mock_attach_deploy_network, mock_get_nd_attachments):
+        vrf_name = 'test_vrf'
+        network_name = 'test_network'
+        vlan = '100'
+        leaf_attachments = {'leaf1': {'interfaces': ['eth-new']}}
+        existing_attachments = {
+            'leaf1': {'interfaces': ['eth-os-current']}
+        }
+        openstack_attachments = {
+            'leaf1': {'interfaces': ['eth-os-current', 'eth-os-other']}
+        }
+        mock_get_nd_attachments.return_value = {
+            'leaf1': {
+                'interfaces': ['eth-os-current', 'eth-os-other', 'eth-nd']
+            }
+        }
+        mock_attach_deploy_network.return_value = True
+
+        ret = self.ndfc_instance.attach_network(
+            vrf_name, network_name, vlan, leaf_attachments,
+            existing_attachments=existing_attachments,
+            openstack_attachments=openstack_attachments)
+
+        self.assertTrue(ret)
+        mock_get_nd_attachments.assert_called_once_with(
+            self.ndfc_instance.fabric, network_name)
+        attach_payload = mock_attach_deploy_network.call_args[0][1]
+        lan_attach = attach_payload[0]['lanAttachList'][0]
+        self.assertEqual(
+            'eth-nd,eth-os-current,eth-new',
+            lan_attach['switchPorts'])
+
+    @mock.patch.object(ndfc_helper.NdfcHelper,
+            'get_network_switch_interface_map')
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'attach_deploy_network')
+    def test_detach_network_preserves_nd_direct_attachments(
+            self, mock_attach_deploy_network, mock_get_nd_attachments):
+        vrf_name = 'test_vrf'
+        network_name = 'test_network'
+        vlan = '100'
+        leaf_attachments = {'leaf1': {'interfaces': ['eth-os-current']}}
+        existing_attachments = {
+            'leaf1': {'interfaces': ['eth-os-current']}
+        }
+        openstack_attachments = {
+            'leaf1': {'interfaces': ['eth-os-current']}
+        }
+        mock_get_nd_attachments.return_value = {
+            'leaf1': {'interfaces': ['eth-os-current', 'eth-nd']}
+        }
+        mock_attach_deploy_network.return_value = True
+
+        ret = self.ndfc_instance.detach_network(
+            vrf_name, network_name, vlan, leaf_attachments,
+            existing_attachments=existing_attachments,
+            openstack_attachments=openstack_attachments,
+            network_has_other_ports=False)
+
+        self.assertTrue(ret)
+        detach_payload = mock_attach_deploy_network.call_args[0][1]
+        lan_attach = detach_payload[0]['lanAttachList'][0]
+        self.assertEqual('eth-os-current', lan_attach['detachSwitchPorts'])
+        self.assertEqual('eth-nd', lan_attach['switchPorts'])
+        self.assertEqual('true', lan_attach['deployment'])
+
+    @mock.patch.object(ndfc_helper.NdfcHelper,
+            'get_network_switch_interface_map')
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'attach_deploy_network')
+    def test_detach_network_v2_preserves_nd_direct_with_partial_detach(
+            self, mock_attach_deploy_network, mock_get_nd_attachments):
+        vrf_name = 'test_vrf'
+        network_name = 'test_network'
+        vlan = '100'
+        leaf_attachments = {'leaf1': {'interfaces': ['eth-os-current']}}
+        existing_attachments = {
+            'leaf1': {'interfaces': ['eth-os-current']}
+        }
+        openstack_attachments = {
+            'leaf1': {'interfaces': ['eth-os-current']}
+        }
+        mock_get_nd_attachments.return_value = {
+            'leaf1': {'interfaces': ['eth-os-current', 'eth-nd']}
+        }
+        mock_attach_deploy_network.return_value = True
+        self.ndfc_instance.ndfc_obj.nd_new_version = True
+
+        ret = self.ndfc_instance.detach_network(
+            vrf_name, network_name, vlan, leaf_attachments,
+            existing_attachments=existing_attachments,
+            openstack_attachments=openstack_attachments,
+            network_has_other_ports=False)
+
+        self.assertTrue(ret)
+        detach_payload = mock_attach_deploy_network.call_args[0][1]
+        attachment = detach_payload['attachments'][0]
+        self.assertFalse(attachment['attach'])
+        interfaces = attachment['interfaces']
+        self.assertEqual(1, len(interfaces))
+        self.assertEqual('eth-os-current', interfaces[0]['interfaceRange'])
+
+    @mock.patch.object(ndfc_helper.NdfcHelper,
             'get_network_switch_interface_map', return_value=None)
     def test_network_attach_detach_none_guard_v2(self, mock_get_map):
         vrf_name = 'test_vrf'
