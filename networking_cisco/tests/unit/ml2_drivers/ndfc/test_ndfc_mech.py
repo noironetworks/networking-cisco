@@ -884,6 +884,92 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
                 fake_network_context.current, 'host1')
         self.assertIsNotNone(topology)
 
+    def test_get_network_attachment_rows_uses_one_joined_query(self):
+        session = mock.Mock()
+        query = mock.Mock()
+        query.join.return_value = query
+        query.outerjoin.return_value = query
+        query.filter.return_value = query
+        query.distinct.return_value.all.return_value = [('row', None)]
+        session.query.return_value = query
+
+        rows = self.ndfc_mech._get_network_attachment_rows(
+            session, 'network-id', {'leaf-b', 'leaf-a'})
+
+        self.assertEqual([('row', None)], rows)
+        session.query.assert_called_once_with(
+            nc_ml2_db.NxosHostLink, nc_ml2_db.NxosTors)
+        self.assertEqual(2, query.join.call_count)
+        query.outerjoin.assert_called_once()
+        self.assertEqual(2, query.filter.call_count)
+        query.distinct.assert_called_once_with()
+        query.distinct.return_value.all.assert_called_once_with()
+
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver, '_get_topology')
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver,
+            '_get_segment_hosts_for_network', create=True)
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver,
+            '_get_network_attachment_rows', create=True)
+    @mock.patch.object(mech_ndfc.db_api.CONTEXT_READER, 'using')
+    def test_get_network_attachments_from_neutron_db_uses_joined_rows(
+            self, mock_db_reader, mock_get_rows, mock_get_segment_hosts,
+            mock_get_topology):
+        session = mock_db_reader.return_value.__enter__.return_value
+        mock_get_segment_hosts.side_effect = AssertionError(
+            'segment hosts should be joined in the attachment row query')
+        mock_get_topology.side_effect = AssertionError(
+            'network attachment collection should not query per host')
+        self.ndfc_mech.vpc_peer_map = {
+            'leaf-a': 'leaf-a-peer',
+            'leaf-a-peer': 'leaf-a'}
+        current_topology = {
+            'leaf-a': {
+                'interfaces': ['Ethernet1/1'],
+                'peer_serial': 'leaf-a-peer'},
+            'leaf-b': {
+                'tor_sw_intf_map': {
+                    'SN_tor-a-name': {
+                        'tor_interfaces': ['Port-channel10'],
+                        'tor_name': 'tor-a-name'}}}}
+        mock_get_rows.return_value = [
+            (mock.Mock(serial_number='leaf-a', switch_port='Ethernet1/2'),
+             None),
+            (mock.Mock(serial_number='tor-b', switch_port='Port-channel11'),
+             mock.Mock(leaf_serial_number='leaf-b',
+                       tor_serial_number='tor-b', tor_name='tor-b-name')),
+            (mock.Mock(serial_number='leaf-b', switch_port='Ethernet1/5'),
+             None),
+            (mock.Mock(serial_number='leaf-a-peer',
+                       switch_port='Ethernet1/4'),
+             None)]
+
+        attachments = (
+            self.ndfc_mech._get_network_attachments_from_neutron_db(
+                self.context, 'network-id', 'host1', current_topology))
+
+        self.assertEqual(
+            {
+                'leaf-a': {
+                    'interfaces': ['Ethernet1/1', 'Ethernet1/2'],
+                    'peer_serial': 'leaf-a-peer'},
+                'leaf-b': {
+                    'interfaces': ['Ethernet1/5'],
+                    'tor_sw_intf_map': {
+                        'SN_tor-a-name': {
+                            'tor_interfaces': ['Port-channel10'],
+                            'tor_name': 'tor-a-name'},
+                        'SN_tor-b-name': {
+                            'tor_interfaces': ['Port-channel11'],
+                            'tor_name': 'tor-b-name'}}},
+                'leaf-a-peer': {
+                    'interfaces': ['Ethernet1/4'],
+                    'peer_serial': 'leaf-a'}},
+            attachments)
+        mock_get_rows.assert_called_once_with(
+            session, 'network-id', {'leaf-a', 'leaf-b', 'leaf-a-peer'})
+        mock_get_segment_hosts.assert_not_called()
+        mock_get_topology.assert_not_called()
+
     @mock.patch.object(mech_ndfc.NDFCMechanismDriver,
             '_get_topology', return_value={'host': 'host1'})
     def test_get_topology_detach(self, mock_get_topology):
@@ -892,6 +978,62 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
         topology = self.ndfc_mech.get_topology(self.context,
                 fake_network_context.current, 'host1', detach=True)
         self.assertEqual(topology, {'host': 'host1'})
+
+    @mock.patch.object(ProjectDetailsCache, 'ensure_project')
+    @mock.patch.object(ProjectDetailsCache, 'get_project_details',
+            return_value=['mock_vrf'])
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver,
+            '_get_network_attachments_from_neutron_db',
+            return_value={'leaf-a': {'interfaces': ['Ethernet1/1']}})
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver, 'get_topology',
+            return_value={'leaf-a': {'interfaces': ['Ethernet1/1']}})
+    @mock.patch.object(ndfc.Ndfc, 'attach_network', return_value=True)
+    def test_attach_network_passes_neutron_db_attachments(
+            self, mock_attach_network, mock_get_topology,
+            mock_get_db_attachments, mock_get_project_details,
+            mock_ensure_project):
+        fake_network_context = self._create_fake_network_context(
+                'local', 'physnet1', '10')
+        network = fake_network_context.current
+
+        self.ndfc_mech.attach_network(self.context, 'host1', network)
+
+        mock_get_db_attachments.assert_called_once_with(
+                self.context, network['id'], 'host1',
+                {'leaf-a': {'interfaces': ['Ethernet1/1']}})
+        mock_attach_network.assert_called_once_with(
+                'mock_vrf', network['name'], '10',
+                {'leaf-a': {'interfaces': ['Ethernet1/1']}},
+                existing_attachments={
+                    'leaf-a': {'interfaces': ['Ethernet1/1']}})
+
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver,
+            '_count_bound_ports_on_network', return_value=0)
+    @mock.patch.object(ProjectDetailsCache, 'ensure_project')
+    @mock.patch.object(ProjectDetailsCache, 'get_project_details',
+            return_value=['mock_vrf'])
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver,
+            '_get_network_attachments_from_neutron_db',
+            return_value={'leaf-a': {'interfaces': ['Ethernet1/1']}})
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver, 'get_topology',
+            return_value={'leaf-a': {'interfaces': ['Ethernet1/1']}})
+    @mock.patch.object(ndfc.Ndfc, 'detach_network', return_value=True)
+    def test_detach_network_passes_neutron_db_attachments(
+            self, mock_detach_network, mock_get_topology,
+            mock_get_db_attachments, mock_get_project_details,
+            mock_ensure_project, mock_count_bound_ports):
+        fake_network_context = self._create_fake_network_context(
+                'local', 'physnet1', '10')
+        network = fake_network_context.current
+
+        self.ndfc_mech.detach_network(self.context, 'host1', network)
+
+        mock_detach_network.assert_called_once_with(
+                'mock_vrf', network['name'], '10',
+                {'leaf-a': {'interfaces': ['Ethernet1/1']}},
+                existing_attachments={
+                    'leaf-a': {'interfaces': ['Ethernet1/1']}},
+                network_has_other_ports=False)
 
     @mock.patch.object(ndfc.Ndfc, 'get_vrf_vlan')
     @mock.patch(
