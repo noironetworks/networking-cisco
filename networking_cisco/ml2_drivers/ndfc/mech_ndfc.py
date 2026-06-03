@@ -692,6 +692,21 @@ class NDFCMechanismDriver(api.MechanismDriver,
             nc_ml2_db.NxosTors.leaf_serial_number.in_(leaf_filter)))
         return query.distinct().all()
 
+    def _get_topology_attachment_rows(self, session, leaf_filter):
+        leaf_filter = sorted(leaf_filter)
+        if not leaf_filter:
+            return []
+
+        query = session.query(nc_ml2_db.NxosHostLink, nc_ml2_db.NxosTors)
+        query = query.outerjoin(
+            nc_ml2_db.NxosTors,
+            nc_ml2_db.NxosTors.tor_serial_number ==
+            nc_ml2_db.NxosHostLink.serial_number)
+        query = query.filter(sa.or_(
+            nc_ml2_db.NxosHostLink.serial_number.in_(leaf_filter),
+            nc_ml2_db.NxosTors.leaf_serial_number.in_(leaf_filter)))
+        return query.distinct().all()
+
     def _merge_attachment_rows(self, attachments, attachment_rows):
         vpc_peer_map = self.vpc_peer_map or {}
         for host_link, tor in attachment_rows:
@@ -743,6 +758,27 @@ class NDFCMechanismDriver(api.MechanismDriver,
             "%(network)s host %(host)s: %(attachments)s",
             {'network': network_id, 'host': host,
              'attachments': attachments})
+        return attachments
+
+    def _get_topology_attachments_from_neutron_db(
+            self, context, host, host_topology):
+        attachments = {}
+        leaf_filter = set(host_topology)
+        for leaf_info in host_topology.values():
+            peer_serial = leaf_info.get('peer_serial')
+            if peer_serial:
+                leaf_filter.add(peer_serial)
+
+        with db_api.CONTEXT_READER.using(
+                context._plugin_context) as session:
+            attachment_rows = self._get_topology_attachment_rows(
+                session, leaf_filter)
+            self._merge_attachment_rows(attachments, attachment_rows)
+
+        LOG.debug(
+            "Built topology attachments from Neutron DB for host "
+            "%(host)s: %(attachments)s",
+            {'host': host, 'attachments': attachments})
         return attachments
 
     def get_topology(self, context, network, host, detach=False):
@@ -881,9 +917,13 @@ class NDFCMechanismDriver(api.MechanismDriver,
             existing_attachments = (
                 self._get_network_attachments_from_neutron_db(
                     context, network['id'], host, topology_result))
+            openstack_attachments = (
+                self._get_topology_attachments_from_neutron_db(
+                    context, host, topology_result))
             res = self.ndfc.attach_network(
                 vrf_name, network['name'], vlan_id, topology_result,
-                existing_attachments=existing_attachments)
+                existing_attachments=existing_attachments,
+                openstack_attachments=openstack_attachments)
             if res:
                 self.allocate_vrf_segment(context, vrf_name)
                 LOG.info("NDFC Network %s attached successfully",
@@ -905,11 +945,15 @@ class NDFCMechanismDriver(api.MechanismDriver,
             existing_attachments = (
                 self._get_network_attachments_from_neutron_db(
                     context, network['id'], host, topology_result))
+            openstack_attachments = (
+                self._get_topology_attachments_from_neutron_db(
+                    context, host, topology_result))
             remaining_ports = self._count_bound_ports_on_network(
                 context._plugin_context, network['id'])
             res = self.ndfc.detach_network(
                 vrf_name, network['name'], vlan_id, topology_result,
                 existing_attachments=existing_attachments,
+                openstack_attachments=openstack_attachments,
                 network_has_other_ports=(remaining_ports > 0))
             if res:
                 LOG.info("NDFC Network %s detached successfully",

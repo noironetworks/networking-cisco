@@ -14,6 +14,7 @@
 #    under the License.
 #
 
+import copy
 import time
 
 import tenacity
@@ -514,7 +515,9 @@ class Ndfc:
         our_tors = leaf_info_to_detach.get('tor_sw_intf_map') or {}
         for tor_key, tor_info in nd_tors.items():
             nd_tor_intfs = set(tor_info.get('tor_interfaces') or [])
-            our_tor_info = our_tors.get(tor_key, {})
+            our_tor_key = self._get_matching_tor_key(
+                our_tors, tor_key, tor_info)
+            our_tor_info = our_tors.get(our_tor_key, {})
             our_tor_intfs = set(our_tor_info.get('tor_interfaces') or [])
             if nd_tor_intfs - our_tor_intfs:
                 return True
@@ -594,10 +597,133 @@ class Ndfc:
 
     def _get_exist_attach_copy(self, exist_attach, new_attach):
         exist_attach_copy = {}
+        leaf_scope = self._get_attachment_leaf_scope(new_attach)
         for snum, info in exist_attach.items():
-            if snum in new_attach:
-                exist_attach_copy[snum] = info
+            if snum in leaf_scope:
+                exist_attach_copy[snum] = copy.deepcopy(info)
         return exist_attach_copy
+
+    def _get_attachment_leaf_scope(self, attachments):
+        leaf_scope = set((attachments or {}).keys())
+        for leaf_info in (attachments or {}).values():
+            peer_serial = leaf_info.get('peer_serial')
+            if peer_serial:
+                leaf_scope.add(peer_serial)
+        return leaf_scope
+
+    def _get_matching_tor_key(self, tor_info_map, tor_snum, tor_info):
+        if tor_snum in tor_info_map:
+            return tor_snum
+        tor_name = tor_info.get('tor_name')
+        if tor_name:
+            tor_key = "SN_" + tor_name
+            if tor_key in tor_info_map:
+                return tor_key
+            for key, map_tor_info in tor_info_map.items():
+                if map_tor_info.get('tor_name') == tor_name:
+                    return key
+        return None
+
+    def _get_tor_key(self, tor_snum, tor_info, tor_info_map=None):
+        tor_info_map = tor_info_map or {}
+        tor_key = self._get_matching_tor_key(
+            tor_info_map, tor_snum, tor_info)
+        if tor_key:
+            return tor_key
+        tor_name = tor_info.get('tor_name')
+        if tor_name:
+            return "SN_" + tor_name
+        return tor_snum
+
+    def _leaf_info_has_interfaces(self, leaf_info):
+        if leaf_info.get('interfaces'):
+            return True
+        for tor_info in leaf_info.get('tor_sw_intf_map', {}).values():
+            if tor_info.get('tor_interfaces'):
+                return True
+        return False
+
+    def _attachments_have_interfaces(self, attachments):
+        for leaf_info in (attachments or {}).values():
+            if self._leaf_info_has_interfaces(leaf_info):
+                return True
+        return False
+
+    def _remove_topology_attachments(self, base_attach, remove_attach):
+        remaining_attach = copy.deepcopy(base_attach)
+        for leaf_snum, leaf_info in remove_attach.items():
+            if leaf_snum not in remaining_attach:
+                continue
+            remaining_leaf_info = remaining_attach[leaf_snum]
+
+            if remaining_leaf_info.get('interfaces') is not None and (
+                    leaf_info.get('interfaces') is not None):
+                remaining_leaf_intf = remaining_leaf_info.get('interfaces')
+                for intf in leaf_info.get('interfaces'):
+                    if intf in remaining_leaf_intf:
+                        remaining_leaf_intf.remove(intf)
+
+            if 'tor_sw_intf_map' not in leaf_info:
+                continue
+            if 'tor_sw_intf_map' not in remaining_leaf_info:
+                continue
+            remaining_tor_info_map = remaining_leaf_info.get(
+                'tor_sw_intf_map')
+            for tor_snum, tor_info in leaf_info.get(
+                    'tor_sw_intf_map').items():
+                tor_key = self._get_matching_tor_key(
+                    remaining_tor_info_map, tor_snum, tor_info)
+                if tor_key is None:
+                    continue
+                remaining_tor_info = remaining_tor_info_map.get(tor_key)
+                if 'tor_interfaces' not in remaining_tor_info:
+                    continue
+                remaining_tor_intfs = remaining_tor_info.get(
+                    'tor_interfaces')
+                for tor_intf in tor_info.get('tor_interfaces'):
+                    if tor_intf in remaining_tor_intfs:
+                        remaining_tor_intfs.remove(tor_intf)
+
+        for leaf_snum in list(remaining_attach.keys()):
+            if not self._leaf_info_has_interfaces(remaining_attach[leaf_snum]):
+                remaining_attach.pop(leaf_snum)
+        return remaining_attach
+
+    def _get_nd_direct_attachments(self, nd_attach, leaf_attachments,
+                                   openstack_attachments=None):
+        scoped_nd_attach = self._get_exist_attach_copy(
+            nd_attach, leaf_attachments)
+        if openstack_attachments is None:
+            return scoped_nd_attach
+        scoped_openstack_attach = self._get_exist_attach_copy(
+            openstack_attachments, leaf_attachments)
+        nd_direct_attach = self._remove_topology_attachments(
+            scoped_nd_attach, scoped_openstack_attach)
+        LOG.debug("ND direct attachments %s", nd_direct_attach)
+        return nd_direct_attach
+
+    def _get_attachment_base(self, network_name, leaf_attachments,
+                             existing_attachments=None,
+                             openstack_attachments=None):
+        if openstack_attachments is None:
+            if existing_attachments is not None:
+                return existing_attachments, {}
+            nd_attach = self.ndfc_obj.get_network_switch_interface_map(
+                self.fabric, network_name)
+            return nd_attach, {}
+
+        nd_attach = self.ndfc_obj.get_network_switch_interface_map(
+            self.fabric, network_name)
+        if nd_attach is None:
+            return None, None
+
+        nd_direct_attach = self._get_nd_direct_attachments(
+            nd_attach, leaf_attachments, openstack_attachments)
+        if not existing_attachments:
+            return nd_direct_attach, nd_direct_attach
+        base_attach = self._merge_attachments(
+            nd_direct_attach, existing_attachments)
+        return base_attach, nd_direct_attach
 
     def _merge_attachments(self, exist_attach, new_attach):
         exist_attach_copy = self._get_exist_attach_copy(
@@ -634,7 +760,8 @@ class Ndfc:
                 continue
             exist_tor_info_map = exist_leaf_info.get('tor_sw_intf_map')
             for tor_snum, tor_info in leaf_info.get('tor_sw_intf_map').items():
-                tor_key = "SN_" + tor_info.get('tor_name')
+                tor_key = self._get_tor_key(
+                    tor_snum, tor_info, exist_tor_info_map)
                 if tor_key not in exist_tor_info_map:
                     exist_attach_copy[leaf_snum][
                             'tor_sw_intf_map'][
@@ -690,11 +817,12 @@ class Ndfc:
                 continue
             exist_tor_info_map = exist_leaf_info.get('tor_sw_intf_map')
             for tor_snum, tor_info in leaf_info.get('tor_sw_intf_map').items():
-                tor_key = "SN_" + tor_info.get('tor_name')
-                if tor_key not in exist_tor_info_map:
+                tor_key = self._get_matching_tor_key(
+                    exist_tor_info_map, tor_snum, tor_info)
+                if tor_key is None:
                     LOG.error(
                         "For %s, TOR %s not found for existing attachment",
-                        leaf_snum, tor_key)
+                        leaf_snum, tor_snum)
                 else:
                     exist_tor_info = exist_tor_info_map.get(tor_key)
                     if 'tor_interfaces' not in exist_tor_info:
@@ -732,18 +860,18 @@ class Ndfc:
         return vlan_id
 
     def attach_network(self, vrf_name, network_name, vlan, leaf_attachments,
-                       existing_attachments=None):
+                       existing_attachments=None,
+                       openstack_attachments=None):
         # leaf_attachments is a map of snums
         # map[leaf_snums] -> {leaf_name, interface, map[tors]}
         # map[tors] -> {tor_name, tor_interface}
         LOG.debug("attach network called for vrf %s network %s vlan %s with "
                   "new attachment %s", vrf_name, network_name, vlan,
                   leaf_attachments)
-        if existing_attachments is None:
-            exist_attach = self.ndfc_obj.get_network_switch_interface_map(
-                self.fabric, network_name)
-        else:
-            exist_attach = existing_attachments
+        exist_attach, _nd_direct_attach = self._get_attachment_base(
+            network_name, leaf_attachments,
+            existing_attachments=existing_attachments,
+            openstack_attachments=openstack_attachments)
         LOG.debug("existing attachments %s", exist_attach)
         if exist_attach is None:
             LOG.warning("Unable to retrieve existing attachments for "
@@ -776,29 +904,32 @@ class Ndfc:
 
     def detach_network(self, vrf_name, network_name, vlan, leaf_attachments,
                        network_has_other_ports=True,
-                       existing_attachments=None):
+                       existing_attachments=None,
+                       openstack_attachments=None):
         # leaf_attachments is a map of snums
         # map[leaf_snums] -> {leaf_name, interface, map[tors]}
         # map[tors] -> {tor_name, tor_interface}
         LOG.debug("detach network called for vrf %s network %s vlan %s with "
                   "new attachment %s", vrf_name, network_name, vlan,
                   leaf_attachments)
-        if existing_attachments is None:
-            exist_attach = self.ndfc_obj.get_network_switch_interface_map(
-                self.fabric, network_name)
-        else:
-            exist_attach = existing_attachments
+        exist_attach, nd_direct_attach = self._get_attachment_base(
+            network_name, leaf_attachments,
+            existing_attachments=existing_attachments,
+            openstack_attachments=openstack_attachments)
         LOG.debug("existing attachments %s", exist_attach)
         if exist_attach is None:
             LOG.warning("Unable to retrieve existing attachments for "
                         "network %s from NDFC — skipping detach",
                         network_name)
             return False
+        effective_has_other_ports = (
+            network_has_other_ports or
+            self._attachments_have_interfaces(nd_direct_attach))
         if self.ndfc_obj.nd_new_version:
             detach_payload = self._create_detach_payload_v2(
                 leaf_attachments, vrf_name, network_name, vlan,
                 exist_attach=exist_attach,
-                network_has_other_ports=network_has_other_ports)
+                network_has_other_ports=effective_has_other_ports)
             deploy_payload = self._get_deploy_payload_attach_v2(
                 leaf_attachments, network_name)
         else:
@@ -808,7 +939,7 @@ class Ndfc:
             detach_payload = self._create_detach_payload(
                 leaf_attachments, removed_attach, vrf_name, network_name,
                 vlan, exist_attach=exist_attach,
-                network_has_other_ports=network_has_other_ports)
+                network_has_other_ports=effective_has_other_ports)
             deploy_payload = self._get_deploy_payload_attach(
                 leaf_attachments, network_name)
         LOG.debug("detach payload is %s", detach_payload)
