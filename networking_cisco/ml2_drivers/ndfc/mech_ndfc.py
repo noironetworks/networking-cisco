@@ -27,9 +27,9 @@ from networking_cisco.ml2_drivers.ndfc import extension_db
 from networking_cisco.ml2_drivers.ndfc.ndfc import get_ndfc_conf
 from networking_cisco.ml2_drivers.ovn_hpb import mech_ovn_hpb
 from networking_cisco.rpc import topo_rpc_handler
+from neutron.db.models import segment as seg_db
 from neutron.db import models_v2
 from neutron.db import segments_db
-from neutron.objects import network as network_obj
 from neutron.plugins.ml2.drivers.ovn.mech_driver import mech_driver as ovn_mech
 from neutron.plugins.ml2 import models
 from neutron_lib.api.definitions import portbindings
@@ -671,20 +671,18 @@ class NDFCMechanismDriver(api.MechanismDriver,
         if not leaf_filter:
             return []
 
-        network_segment = network_obj.NetworkSegment.db_model
-        segment_host_mapping = network_obj.SegmentHostMapping.db_model
         query = session.query(nc_ml2_db.NxosHostLink, nc_ml2_db.NxosTors)
         query = query.join(
-            segment_host_mapping,
-            segment_host_mapping.host == nc_ml2_db.NxosHostLink.host_name)
+            models.PortBindingLevel,
+            models.PortBindingLevel.host == nc_ml2_db.NxosHostLink.host_name)
         query = query.join(
-            network_segment,
-            network_segment.id == segment_host_mapping.segment_id)
+            seg_db.NetworkSegment,
+            seg_db.NetworkSegment.id == models.PortBindingLevel.segment)
         query = query.outerjoin(
             nc_ml2_db.NxosTors,
             nc_ml2_db.NxosTors.tor_serial_number ==
             nc_ml2_db.NxosHostLink.serial_number)
-        query = query.filter(network_segment.network_id == network_id)
+        query = query.filter(seg_db.NetworkSegment.network_id == network_id)
         query = query.filter(sa.or_(
             nc_ml2_db.NxosHostLink.serial_number.in_(leaf_filter),
             nc_ml2_db.NxosTors.leaf_serial_number.in_(leaf_filter)))
