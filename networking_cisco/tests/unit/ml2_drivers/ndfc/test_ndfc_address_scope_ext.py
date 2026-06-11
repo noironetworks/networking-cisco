@@ -127,13 +127,13 @@ class TestNdExtensionDriver(testlib_api.SqlTestCase):
         mock_ndfc.create_vrf.return_value = False
         mock_get_ndfc_conf.return_value = mock_ndfc
 
-        self.driver.process_create_address_scope(ctx, data, result)
+        from neutron_lib import exceptions as n_exc
+        self.assertRaises(n_exc.InvalidInput,
+                          self.driver.process_create_address_scope,
+                          ctx, data, result)
 
         mock_ndfc.create_vrf.assert_called_once_with('ndfc-scope')
-        added = ctx.session.add.call_args[0][0]
-        self.assertIsInstance(added, extension_db.NdAddressScopeExtension)
-        self.assertEqual('scope-id', added.address_scope_id)
-        self.assertEqual('ndfc-scope', added.nd_vrf_name)
+        ctx.session.add.assert_not_called()
         mock_log.error.assert_any_call(
             'ND create_vrf failed for address scope nd-vrf-name '
             '%s (address_scope_id=%s)', 'ndfc-scope', 'scope-id')

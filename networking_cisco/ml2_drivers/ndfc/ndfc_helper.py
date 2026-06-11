@@ -38,6 +38,11 @@ NETWORK_ID_ALREADY_ALLOCATED_RE = re.compile(
     r'\bid\s*\[(?P<network_id>\d+)\]\s*is\s+already\s+allocated',
     re.IGNORECASE)
 
+VRF_ID_ALREADY_ALLOCATED_RE = re.compile(
+    r'(?:id\s*\[(?P<vrf_id>\d+)\]\s*is\s+already\s+allocated|'
+    r'vrf\s+with\s+id\s+(?P<vrf_id2>\d+)\s+already\s+exists)',
+    re.IGNORECASE)
+
 
 def _find_fail_recursively(data):
     '''
@@ -74,6 +79,28 @@ def _find_allocated_network_id_recursively(data):
     return None
 
 
+def _find_allocated_vrf_id_recursively(data):
+    '''
+    Return the first VRF id found in an NDFC "already allocated" message.
+    '''
+    if isinstance(data, dict):
+        for value in data.values():
+            vrf_id = _find_allocated_vrf_id_recursively(value)
+            if vrf_id is not None:
+                return vrf_id
+    if isinstance(data, list):
+        for item in data:
+            vrf_id = _find_allocated_vrf_id_recursively(item)
+            if vrf_id is not None:
+                return vrf_id
+    if isinstance(data, str):
+        match = VRF_ID_ALREADY_ALLOCATED_RE.search(data)
+        if match:
+            vrf_id = match.group('vrf_id') or match.group('vrf_id2')
+            return int(vrf_id)
+    return None
+
+
 class NdfcNetworkIdAlreadyAllocated(Exception):
     '''
     Raised when NDFC reports that a generated network id is already in use.
@@ -83,6 +110,17 @@ class NdfcNetworkIdAlreadyAllocated(Exception):
         self.network_id = network_id
         super(NdfcNetworkIdAlreadyAllocated, self).__init__(
             "NDFC network id %s is already allocated" % network_id)
+
+
+class NdfcVrfIdAlreadyAllocated(Exception):
+    '''
+    Raised when NDFC reports that a generated VRF id is already in use.
+    '''
+
+    def __init__(self, vrf_id):
+        self.vrf_id = vrf_id
+        super(NdfcVrfIdAlreadyAllocated, self).__init__(
+            "NDFC VRF id %s is already allocated" % vrf_id)
 
 
 class NdfcHelper:
@@ -198,6 +236,15 @@ class NdfcHelper:
         '''
         try:
             return _find_allocated_network_id_recursively(res.json())
+        except ValueError:
+            return None
+
+    def _response_allocated_vrf_id(self, res):
+        '''
+        Return the allocated VRF id from an NDFC allocation failure body.
+        '''
+        try:
+            return _find_allocated_vrf_id_recursively(res.json())
         except ValueError:
             return None
 
@@ -926,6 +973,17 @@ class NdfcHelper:
                 res.status_code, res.reason, res.text, jsonutils.dumps(payload)
             )
             return False
+
+        allocated_vrf_id = self._response_allocated_vrf_id(res)
+        if allocated_vrf_id is not None:
+            LOG.warning(
+                "create vrf failed because NDFC reported allocated "
+                "VRF id %(vrf_id)s. payload: %(payload)s",
+                {'vrf_id': allocated_vrf_id,
+                 'payload': jsonutils.dumps(payload)}
+            )
+            raise NdfcVrfIdAlreadyAllocated(allocated_vrf_id)
+
         if self._response_body_indicates_failure(
             res, '_create_vrf', payload=jsonutils.dumps(payload)):
             return False
@@ -937,20 +995,26 @@ class NdfcHelper:
         '''
         Top level function to create the VRF.
         '''
+        logged_in = False
         try:
             ret = self.login()
             if not ret:
                 LOG.error("Failed to login to NDFC")
                 return False
+            logged_in = True
             ret = self._create_vrf(fabric, payload)
             if not ret:
                 return False
-            self.logout()
+            return bool(ret)
+        except NdfcVrfIdAlreadyAllocated:
+            raise
         except Exception as exc:
             LOG.error("create vrf failed with exception %(exc)s",
                       {'exc': exc})
             return False
-        return True
+        finally:
+            if logged_in:
+                self.logout()
 
     @http_exc_handler
     def _delete_vrf(self, fabric, vrf):
