@@ -194,13 +194,22 @@ class NdExtensionDriver(api.ExtensionDriver):
                 LOG.error("ND create_vrf failed for address scope nd-vrf-name "
                           "%s (address_scope_id=%s)",
                           nd_vrf_name, result['id'])
+                raise n_exc.InvalidInput(
+                    error_message=(
+                        'Failed to create VRF %s in NDFC' % nd_vrf_name))
             else:
                 LOG.debug(
                     "ND create_vrf succeeded for address scope nd-vrf-name "
                     "%s (address_scope_id=%s)", nd_vrf_name, result['id'])
+        except n_exc.InvalidInput:
+            raise
         except Exception as exc:
             LOG.error("Failed to create VRF %(vrf)s in ND: %(exc)s",
                       {"vrf": nd_vrf_name, "exc": exc})
+            raise n_exc.InvalidInput(
+                error_message=(
+                    'Failed to create VRF %s in NDFC: %s' %
+                    (nd_vrf_name, str(exc))))
 
         with db_api.CONTEXT_WRITER.using(plugin_context):
             session = plugin_context.session
