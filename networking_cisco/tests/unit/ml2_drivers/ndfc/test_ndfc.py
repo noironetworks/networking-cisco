@@ -397,6 +397,47 @@ class TestNDFC(TestNDFCBase, test_plugin.Ml2PluginV2TestCase):
         self.assertEqual(1, mock_create_network.call_count)
         mock_sleep.assert_not_called()
 
+    @mock.patch.object(ndfc.time, 'sleep')
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'create_vrf')
+    def test_create_vrf_retries_auto_alloc_vrf_id(
+            self, mock_create_vrf, mock_sleep):
+        vrf_name = 'test_vrf'
+        payloads = []
+
+        def create_vrf_side_effect(fabric, payload):
+            payloads.append(jsonutils.loads(jsonutils.dumps(payload)))
+            if len(payloads) == 1:
+                raise ndfc_helper.NdfcVrfIdAlreadyAllocated(50003)
+            return True
+
+        mock_create_vrf.side_effect = create_vrf_side_effect
+        self.ndfc_instance.ndfc_obj.nd_new_version = True
+
+        ret = self.ndfc_instance.create_vrf(vrf_name)
+
+        self.assertTrue(ret)
+        self.assertEqual(2, mock_create_vrf.call_count)
+        self.assertEqual(payloads[0], payloads[1])
+        mock_sleep.assert_called_once_with(
+            ndfc.VRF_CREATE_ID_RETRY_INTERVAL)
+
+    @mock.patch.object(ndfc.time, 'sleep')
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'create_vrf')
+    def test_create_vrf_exhausts_retries_on_repeated_collision(
+            self, mock_create_vrf, mock_sleep):
+        vrf_name = 'test_vrf'
+        mock_create_vrf.side_effect = ndfc_helper.NdfcVrfIdAlreadyAllocated(
+            50003)
+        self.ndfc_instance.ndfc_obj.nd_new_version = True
+
+        self.assertRaises(ndfc_helper.NdfcVrfIdAlreadyAllocated,
+            self.ndfc_instance.create_vrf, vrf_name)
+
+        self.assertEqual(ndfc.VRF_CREATE_ID_RETRY_ATTEMPTS,
+                         mock_create_vrf.call_count)
+        self.assertEqual(ndfc.VRF_CREATE_ID_RETRY_ATTEMPTS - 1,
+                         mock_sleep.call_count)
+
     @mock.patch.object(ndfc_helper.NdfcHelper, 'attach_deploy_network')
     @mock.patch.object(ndfc_helper.NdfcHelper,
             'get_network_switch_interface_map')

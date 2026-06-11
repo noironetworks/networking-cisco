@@ -33,8 +33,15 @@ glob_nwk_map = {}
 NETWORK_CREATE_ID_RETRY_ATTEMPTS = 5
 NETWORK_CREATE_ID_RETRY_INTERVAL = 0.5
 
+VRF_CREATE_ID_RETRY_ATTEMPTS = 5
+VRF_CREATE_ID_RETRY_INTERVAL = 0.5
+
 
 def _network_create_retry_sleep(delay):
+    time.sleep(delay)
+
+
+def _vrf_create_retry_sleep(delay):
     time.sleep(delay)
 
 
@@ -46,6 +53,16 @@ def _log_network_create_id_retry(retry_state):
         "with auto-allocated networkId (attempt %s/%s)",
         network_name, exc.network_id, retry_state.attempt_number + 1,
         NETWORK_CREATE_ID_RETRY_ATTEMPTS)
+
+
+def _log_vrf_create_id_retry(retry_state):
+    exc = retry_state.outcome.exception()
+    vrf_name = retry_state.args[1]
+    LOG.warning(
+        "NDFC VRF %s hit allocated vrfId %s; retrying "
+        "with auto-allocated vrfId (attempt %s/%s)",
+        vrf_name, exc.vrf_id, retry_state.attempt_number + 1,
+        VRF_CREATE_ID_RETRY_ATTEMPTS)
 
 
 def get_ndfc_conf():
@@ -122,13 +139,21 @@ class Ndfc:
         final_payload = {"vrfs": [vrf_config]}
         return final_payload
 
+    @tenacity.retry(
+        retry=tenacity.retry_if_exception_type(
+            ndfc_helper.NdfcVrfIdAlreadyAllocated),
+        stop=tenacity.stop_after_attempt(VRF_CREATE_ID_RETRY_ATTEMPTS),
+        wait=tenacity.wait_fixed(VRF_CREATE_ID_RETRY_INTERVAL),
+        before_sleep=_log_vrf_create_id_retry,
+        sleep=_vrf_create_retry_sleep,
+        reraise=True)
     def create_vrf(self, vrf_name):
         if self.ndfc_obj.nd_new_version:
             payload = self._get_create_vrf_payload_v2(vrf_name)
         else:
             payload = self._get_create_vrf_payload(vrf_name)
-        ret = self.ndfc_obj.create_vrf(self.fabric, payload)
         LOG.debug("create vrf payload is %s", payload)
+        ret = self.ndfc_obj.create_vrf(self.fabric, payload)
         LOG.info("For fabric %s, vrf %s, create vrf returned %s", self.fabric,
                 vrf_name, ret)
         return ret
