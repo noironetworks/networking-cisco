@@ -96,6 +96,51 @@ class TestNDFCHelper(TestNDFCHelperBase, test_plugin.Ml2PluginV2TestCase):
         self.assertFalse(result)
 
     @mock.patch('requests.post')
+    def test_create_vrf_v2_raises_vrf_id_collision(
+            self, mock_post):
+        failed_response = mock.MagicMock()
+        failed_response.status_code = 207
+        failed_response.json.return_value = {
+            'results': [{
+                'message': 'Id[50003]is already allocated to other-vrf',
+                'vrfName': 'test_vrf',
+                'status': 'failed'
+            }]
+        }
+        mock_post.return_value = failed_response
+
+        fabric = 'test_fabric'
+        payload = {'vrfs': [{'vrfName': 'test_vrf'}]}
+        self.helper.nd_new_version = True
+
+        self.assertRaises(ndfc_helper.NdfcVrfIdAlreadyAllocated,
+            self.helper.create_vrf, fabric, payload)
+        self.assertEqual(1, mock_post.call_count)
+
+    @mock.patch('requests.post')
+    def test_create_vrf_v2_raises_vrf_id_collision_alternate_format(
+            self, mock_post):
+        failed_response = mock.MagicMock()
+        failed_response.status_code = 207
+        failed_response.json.return_value = {
+            'results': [{
+                'message': 'VRF with ID 50010 already exists',
+                'vrfName': 'test_vrf',
+                'status': 'failed',
+                'vrfId': 50010
+            }]
+        }
+        mock_post.return_value = failed_response
+
+        fabric = 'test_fabric'
+        payload = {'vrfs': [{'vrfName': 'test_vrf'}]}
+        self.helper.nd_new_version = True
+
+        self.assertRaises(ndfc_helper.NdfcVrfIdAlreadyAllocated,
+            self.helper.create_vrf, fabric, payload)
+        self.assertEqual(1, mock_post.call_count)
+
+    @mock.patch('requests.post')
     @mock.patch('requests.delete')
     def test_delete_vrf(self, mock_post, mock_delete):
         mock_response = mock.MagicMock()
