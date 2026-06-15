@@ -20,6 +20,7 @@ import sqlalchemy as sa
 from unittest import mock
 
 from networking_cisco.ml2_drivers.ndfc.db import NxosHostLink
+from networking_cisco.ml2_drivers.ndfc.db import NxosHostNetworkLabel
 from networking_cisco.ml2_drivers.ndfc.db import NxosTors
 from networking_cisco.ml2_drivers.ndfc import db_tool
 from neutron.common import config
@@ -194,4 +195,76 @@ class TestDBTool(TestDBToolBase, test_plugin.Ml2PluginV2TestCase):
                 synchronize_session=False)
         mock_log_debug.assert_called_once_with(
             "Successfully deleted %d rows from table: %s", 1, "nxos_tors")
+        mock_exit.assert_not_called()
+
+    @mock.patch('networking_cisco.ml2_drivers.ndfc.db_tool.get_session')
+    @mock.patch('networking_cisco.ml2_drivers.ndfc.db_tool.setup')
+    @mock.patch('sys.argv', ['db_tool.py',
+        '--config-file', '/etc/neutron/neutron.conf',
+        'list-network-labels'])
+    @mock.patch('sys.exit')
+    @mock.patch('sys.stdout', new_callable=io.StringIO)
+    @mock.patch('networking_cisco.ml2_drivers.ndfc.db_tool.BAKERY')
+    def test_list_network_labels(self, mock_bakery, mock_stdout, mock_exit,
+                                 mock_setup, mock_get_session):
+        """Test the 'list-network-labels' command."""
+        mock_session = mock.MagicMock()
+        mock_get_session.return_value.__enter__.return_value = mock_session
+        mock_get_session.return_value.__exit__.return_value = None
+
+        mock_label1 = mock.Mock(spec=NxosHostNetworkLabel)
+        mock_label1.__str__ = mock.MagicMock(
+            return_value="NetworkLabel(compute-1, physnet1, eth0)")
+        mock_label2 = mock.Mock(spec=NxosHostNetworkLabel)
+        mock_label2.__str__ = mock.MagicMock(
+            return_value="NetworkLabel(compute-2, physnet2, eth1)")
+
+        mock_baked_query_result_obj = mock.MagicMock()
+        mock_baked_query_result_obj.all.return_value = [
+            mock_label1, mock_label2]
+        mock_bakery.return_value = mock.MagicMock(
+            return_value=mock_baked_query_result_obj)
+
+        db_tool.main()
+
+        mock_bakery.assert_called_once()
+        mock_bakery.return_value.assert_called_once_with(mock_session)
+        mock_baked_query_result_obj.all.assert_called_once()
+        self.assertEqual(mock_stdout.getvalue(),
+            "NetworkLabel(compute-1, physnet1, eth0)\n"
+            "NetworkLabel(compute-2, physnet2, eth1)\n")
+        mock_exit.assert_not_called()
+
+    @mock.patch('networking_cisco.ml2_drivers.ndfc.db_tool.get_session')
+    @mock.patch('networking_cisco.ml2_drivers.ndfc.db_tool.setup')
+    @mock.patch('sys.argv', ['db_tool.py',
+        '--config-file', '/etc/neutron/neutron.conf',
+        'delete-network-labels',
+        '--condition', "host_name='compute-1'"])
+    @mock.patch('sys.exit')
+    @mock.patch.object(LOG, 'debug')
+    def test_delete_network_labels(self, mock_log_debug, mock_exit,
+                                   mock_setup, mock_get_session):
+        """Test the 'delete-network-labels' command."""
+        mock_session = mock.MagicMock()
+        mock_get_session.return_value.__enter__.return_value = mock_session
+        mock_get_session.return_value.__exit__.return_value = None
+
+        mock_query_obj = mock.MagicMock()
+        mock_session.query.return_value = mock_query_obj
+        mock_query_obj.filter.return_value = mock_query_obj
+        mock_query_obj.delete.return_value = 3
+
+        db_tool.main()
+
+        mock_session.query.assert_called_once_with(NxosHostNetworkLabel)
+        mock_query_obj.filter.assert_called_once()
+        filter_arg = mock_query_obj.filter.call_args[0][0]
+        self.assertIsInstance(filter_arg, sa.sql.elements.TextClause)
+        self.assertEqual(str(filter_arg), "host_name='compute-1'")
+        mock_query_obj.delete.assert_called_once_with(
+            synchronize_session=False)
+        mock_log_debug.assert_called_once_with(
+            "Successfully deleted %d rows from table: %s",
+            3, "nxos_host_network_labels")
         mock_exit.assert_not_called()
