@@ -44,3 +44,13 @@ class NxosTors(model_base.BASEV2):
     leaf_serial_number = sa.Column(sa.String(length=16), default='',
                                    server_default='', primary_key=True)
     tor_name = sa.Column(sa.String(32), default='', server_default='')
+
+
+class NxosHostNetworkLabel(model_base.BASEV2):
+    """Maps network labels (physnets) to host interfaces."""
+
+    __tablename__ = 'nxos_host_network_labels'
+
+    host_name = sa.Column(sa.String(128), nullable=False, primary_key=True)
+    network_label = sa.Column(sa.String(64), nullable=False, primary_key=True)
+    interface_name = sa.Column(sa.String(32), nullable=False, primary_key=True)

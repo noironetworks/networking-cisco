@@ -47,3 +47,8 @@ class LldpTopologyServiceApi(object):
         return cctxt.call(context, 'delete_link', host=host,
                           interface=interface,
                           mac=None, switch=0, module=0, port=0)
+
+    def update_network_labels(self, context, host, network_labels):
+        cctxt = self.client.prepare(version=VERSION)
+        return cctxt.call(context, 'update_network_labels',
+                         host=host, network_labels=network_labels)

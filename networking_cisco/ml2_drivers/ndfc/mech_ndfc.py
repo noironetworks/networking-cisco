@@ -635,6 +635,61 @@ class NDFCMechanismDriver(api.MechanismDriver,
                   {'host': host, 'topo': topology})
         return topology
 
+    def _filter_topology_by_physnet(self, session, host, topology, physnet):
+        if not physnet:
+            return topology
+
+        query = session.query(nc_ml2_db.NxosHostNetworkLabel)
+        query = query.filter(
+            nc_ml2_db.NxosHostNetworkLabel.host_name == host,
+            nc_ml2_db.NxosHostNetworkLabel.network_label == physnet)
+        label_rows = query.all()
+
+        if not label_rows:
+            LOG.debug(
+                "No network label mapping found for host %s physnet %s, "
+                "using full topology", host, physnet)
+            return topology
+
+        mapped_interfaces = {row.interface_name for row in label_rows}
+        LOG.debug(
+            "Network label mapping for host %s physnet %s: interfaces %s",
+            host, physnet, mapped_interfaces)
+
+        link_query = session.query(nc_ml2_db.NxosHostLink)
+        link_query = link_query.filter(
+            nc_ml2_db.NxosHostLink.host_name == host,
+            nc_ml2_db.NxosHostLink.interface_name.in_(mapped_interfaces))
+        link_rows = link_query.all()
+
+        if not link_rows:
+            LOG.debug(
+                "No LLDP links found for host %s interfaces %s, "
+                "using full topology", host, mapped_interfaces)
+            return topology
+
+        mapped_switches = {row.serial_number for row in link_rows}
+        LOG.debug(
+            "Host %s interfaces %s map to switches %s",
+            host, mapped_interfaces, mapped_switches)
+
+        filtered_topology = {}
+        for leaf_snum in topology:
+            if leaf_snum in mapped_switches:
+                filtered_topology[leaf_snum] = topology[leaf_snum]
+
+        if filtered_topology:
+            LOG.debug(
+                "Filtered topology for host %s physnet %s: %s",
+                host, physnet, filtered_topology)
+            return filtered_topology
+        else:
+            LOG.warning(
+                "Network label mapping for host %s physnet %s resulted in "
+                "empty topology, falling back to full topology",
+                host, physnet)
+            return topology
+
     def _merge_topology(self, attachments, topology, leaf_filter=None):
         for leaf_snum, leaf_info in topology.items():
             if leaf_filter is not None and leaf_snum not in leaf_filter:
@@ -781,8 +836,14 @@ class NDFCMechanismDriver(api.MechanismDriver,
 
     def get_topology(self, context, network, host, detach=False):
         LOG.debug("Get topology for network %s, host %s", network, host)
+        physnet = network.get('provider:physical_network')
+
         with db_api.CONTEXT_READER.using(
             context._plugin_context) as session:
+            current_topology = self._get_topology(session, host)
+            filtered_topology = self._filter_topology_by_physnet(
+                session, host, current_topology, physnet)
+
             query = BAKERY(lambda s: s.query(
                 func.count(sa.distinct(models.PortBindingLevel.port_id))))
             query += lambda q: q.outerjoin(
@@ -797,14 +858,28 @@ class NDFCMechanismDriver(api.MechanismDriver,
                 host=host).scalar() or 0
 
             if not detach and count > 1:
-                LOG.debug("More hosts attached to network %s, "
-                        "no network detach required", network)
-                return
+                network_attachments = (
+                    self._get_network_attachments_from_neutron_db(
+                        context, network['id'], host, current_topology))
+                current_switches = set(filtered_topology.keys())
+                attached_switches = set(network_attachments.keys())
+                if current_switches.issubset(attached_switches):
+                    LOG.debug(
+                        "Switches %s already attached to network %s, "
+                        "no attach required", current_switches, network)
+                    return
             if detach and count > 0:
-                LOG.debug("Some host already attached to network %s, "
-                        "No attach network required", network)
-                return
-            return self._get_topology(session, host)
+                network_attachments = (
+                    self._get_network_attachments_from_neutron_db(
+                        context, network['id'], host, current_topology))
+                current_switches = set(filtered_topology.keys())
+                attached_switches = set(network_attachments.keys())
+                if current_switches.issubset(attached_switches):
+                    LOG.debug(
+                        "Switches %s still attached to network %s, "
+                        "no detach required", current_switches, network)
+                    return
+            return filtered_topology
 
     def allocate_vrf_segment(self, context, vrf_name):
         vrf_vlan_id = self.ndfc.get_vrf_vlan(vrf_name)
@@ -1313,3 +1388,19 @@ class NDFCMechanismDriver(api.MechanismDriver,
                     switch_port=switch_interface))
                 LOG.debug("Added NxosHostLink for host %s interface %s",
                         host, interface)
+
+    def update_network_labels(self, context, host, network_labels):
+        LOG.info("Updating network labels for host %s: %d mappings",
+                host, len(network_labels))
+
+        with db_api.CONTEXT_WRITER.using(context) as session:
+            session.query(nc_ml2_db.NxosHostNetworkLabel).filter(
+                nc_ml2_db.NxosHostNetworkLabel.host_name == host).delete()
+
+            for network_label, interface_name in network_labels:
+                session.add(nc_ml2_db.NxosHostNetworkLabel(
+                    host_name=host,
+                    network_label=network_label,
+                    interface_name=interface_name))
+                LOG.debug("Added network label mapping: host=%s physnet=%s "
+                         "interface=%s", host, network_label, interface_name)
