@@ -45,6 +45,13 @@ lldp_topology_opts = [
     cfg.ListOpt('topology_handlers',
                 default=[],
                 help=_("An ordered list of topology handlers to be loaded.")),
+    cfg.ListOpt('topology_excluded_bridges',
+                default=['br-int'],
+                help=_('OVS bridges to exclude from network label discovery')),
+    cfg.StrOpt('topology_excluded_port_types_regex',
+               default='^(patch|internal)$',
+               help=_('Regex pattern for OVS port types to exclude from '
+                      'network label discovery (e.g., patch, internal)')),
 ]
 
 cfg.CONF.register_opts(lldp_topology_opts, "lldp_topology_agent")
@@ -86,6 +93,7 @@ class LldpTopologyAgent(manager.Manager):
         self.lldpcmd = None
         self.state_agent = None
         self._unknown_tlv = None
+        self.network_labels_sent = False
 
         self.topic = TOPIC_LLDP_SERVICE
         self.service_agent = lldp_topology.LldpTopologyServiceApi()
@@ -271,6 +279,31 @@ class LldpTopologyAgent(manager.Manager):
 
         self.invalid_peers = invalid_peers
         return valid_peers
+
+    @periodic_task.periodic_task(spacing=300, run_immediately=True)
+    def _send_network_labels(self, context):
+        if self.network_labels_sent:
+            return
+
+        try:
+            all_labels = []
+            for handler in self.handlers:
+                if hasattr(handler, 'get_network_labels'):
+                    labels = handler.get_network_labels()
+                    all_labels.extend(labels)
+
+            if all_labels:
+                LOG.info("Sending %d network label mappings for host %s",
+                        len(all_labels), self.host)
+                self.service_agent.update_network_labels(
+                    context, self.host, all_labels)
+                self.network_labels_sent = True
+            else:
+                LOG.debug("No network labels discovered for host %s",
+                         self.host)
+                self.network_labels_sent = True
+        except Exception as e:
+            LOG.exception("Failed to send network labels: %s", e)
 
     @periodic_task.periodic_task(
         spacing=cfg.CONF.lldp_topology_agent.topology_agent_poll_interval,
