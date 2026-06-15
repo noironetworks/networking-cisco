@@ -1041,6 +1041,203 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
                 fake_network_context.current, 'host1', detach=True)
         self.assertEqual(topology, {'host': 'host1'})
 
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver,
+            '_filter_topology_by_physnet')
+    @mock.patch('networking_cisco.ml2_drivers.ndfc.mech_ndfc.BAKERY')
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver, '_get_topology')
+    @mock.patch('neutron_lib.db.api.CONTEXT_READER.using')
+    def test_get_topology_attach_first_port_proceeds(self,
+            mock_db_reader, mock_get_topology, mock_bakery, mock_filter):
+        mock_db_reader.return_value.__enter__.return_value
+        mock_result = mock.Mock()
+        mock_result.params.return_value.scalar.return_value = 1
+        mock_query = mock.Mock()
+        mock_query.__iadd__ = mock.Mock(return_value=mock_query)
+        mock_query.return_value = mock_result
+        mock_bakery.return_value = mock_query
+        mock_get_topology.return_value = {'leaf-a': {'interfaces': []}}
+        mock_filter.side_effect = lambda sess, host, topo, phys: topo
+
+        fake_network = self._create_fake_network_context(
+                'vlan', 'physnet1', 10).current
+        result = self.ndfc_mech.get_topology(
+                self.context, fake_network, 'host1', detach=False)
+
+        self.assertEqual({'leaf-a': {'interfaces': []}}, result)
+
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver,
+            '_filter_topology_by_physnet')
+    @mock.patch('networking_cisco.ml2_drivers.ndfc.mech_ndfc.BAKERY')
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver, '_get_topology')
+    @mock.patch('neutron_lib.db.api.CONTEXT_READER.using')
+    def test_get_topology_detach_last_port_proceeds(self,
+            mock_db_reader, mock_get_topology, mock_bakery, mock_filter):
+        mock_db_reader.return_value.__enter__.return_value
+        mock_result = mock.Mock()
+        mock_result.params.return_value.scalar.return_value = 0
+        mock_query = mock.Mock()
+        mock_query.__iadd__ = mock.Mock(return_value=mock_query)
+        mock_query.return_value = mock_result
+        mock_bakery.return_value = mock_query
+        mock_get_topology.return_value = {'leaf-a': {}}
+        mock_filter.side_effect = lambda sess, host, topo, phys: topo
+
+        fake_network = self._create_fake_network_context(
+                'vlan', 'physnet1', 10).current
+        result = self.ndfc_mech.get_topology(
+                self.context, fake_network, 'host1', detach=True)
+
+        self.assertEqual({'leaf-a': {}}, result)
+
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver,
+            '_filter_topology_by_physnet')
+    @mock.patch('networking_cisco.ml2_drivers.ndfc.mech_ndfc.BAKERY')
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver, '_get_topology')
+    @mock.patch('neutron_lib.db.api.CONTEXT_READER.using')
+    def test_get_topology_detach_with_other_ports_skips(
+            self, mock_db_reader, mock_get_topology, mock_bakery, mock_filter):
+        mock_db_reader.return_value.__enter__.return_value
+        mock_result = mock.Mock()
+        mock_result.params.return_value.scalar.return_value = 1
+        mock_query = mock.Mock()
+        mock_query.__iadd__ = mock.Mock(return_value=mock_query)
+        mock_query.return_value = mock_result
+        mock_bakery.return_value = mock_query
+        mock_get_topology.return_value = {'leaf-a': {}, 'leaf-b': {}}
+        mock_filter.side_effect = lambda sess, host, topo, phys: topo
+
+        fake_network = self._create_fake_network_context(
+                'vlan', 'physnet1', 10).current
+        result = self.ndfc_mech.get_topology(
+                self.context, fake_network, 'host1', detach=True)
+
+        self.assertIsNone(result)
+
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver,
+            '_get_network_attachments_from_neutron_db')
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver,
+            '_filter_topology_by_physnet')
+    @mock.patch('networking_cisco.ml2_drivers.ndfc.mech_ndfc.BAKERY')
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver, '_get_topology')
+    @mock.patch('neutron_lib.db.api.CONTEXT_READER.using')
+    def test_get_topology_attach_same_switches_already_attached_skips(
+            self, mock_db_reader, mock_get_topology, mock_bakery,
+            mock_filter, mock_get_db_attachments):
+        mock_db_reader.return_value.__enter__.return_value
+        mock_result = mock.Mock()
+        mock_result.params.return_value.scalar.return_value = 2
+        mock_query = mock.Mock()
+        mock_query.__iadd__ = mock.Mock(return_value=mock_query)
+        mock_query.return_value = mock_result
+        mock_bakery.return_value = mock_query
+        mock_get_topology.return_value = {
+            'leaf-a': {}, 'leaf-b': {}, 'leaf-c': {}, 'leaf-d': {}}
+        mock_filter.side_effect = lambda sess, host, topo, phys: {
+            'leaf-a': {}, 'leaf-b': {}}
+        mock_get_db_attachments.return_value = {'leaf-a': {}, 'leaf-b': {}}
+
+        fake_network = self._create_fake_network_context(
+                'vlan', 'physnet1', 10).current
+        result = self.ndfc_mech.get_topology(
+                self.context, fake_network, 'host1', detach=False)
+
+        self.assertIsNone(result)
+        mock_get_db_attachments.assert_called_once()
+
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver,
+            '_get_network_attachments_from_neutron_db')
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver,
+            '_filter_topology_by_physnet')
+    @mock.patch('networking_cisco.ml2_drivers.ndfc.mech_ndfc.BAKERY')
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver, '_get_topology')
+    @mock.patch('neutron_lib.db.api.CONTEXT_READER.using')
+    def test_get_topology_attach_different_switches_proceeds(
+            self, mock_db_reader, mock_get_topology, mock_bakery,
+            mock_filter, mock_get_db_attachments):
+        mock_db_reader.return_value.__enter__.return_value
+        mock_result = mock.Mock()
+        mock_result.params.return_value.scalar.return_value = 2
+        mock_query = mock.Mock()
+        mock_query.__iadd__ = mock.Mock(return_value=mock_query)
+        mock_query.return_value = mock_result
+        mock_bakery.return_value = mock_query
+        mock_get_topology.return_value = {
+            'leaf-a': {}, 'leaf-b': {}, 'leaf-c': {}, 'leaf-d': {}}
+        mock_filter.side_effect = lambda sess, host, topo, phys: {
+            'leaf-c': {}, 'leaf-d': {}}
+        mock_get_db_attachments.return_value = {'leaf-a': {}, 'leaf-b': {}}
+
+        fake_network = self._create_fake_network_context(
+                'vlan', 'physnet3', 10).current
+        result = self.ndfc_mech.get_topology(
+                self.context, fake_network, 'host1', detach=False)
+
+        self.assertEqual({'leaf-c': {}, 'leaf-d': {}}, result)
+        mock_get_db_attachments.assert_called_once()
+
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver,
+            '_get_network_attachments_from_neutron_db')
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver,
+            '_filter_topology_by_physnet')
+    @mock.patch('networking_cisco.ml2_drivers.ndfc.mech_ndfc.BAKERY')
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver, '_get_topology')
+    @mock.patch('neutron_lib.db.api.CONTEXT_READER.using')
+    def test_get_topology_detach_same_switches_still_in_use_skips(
+            self, mock_db_reader, mock_get_topology, mock_bakery,
+            mock_filter, mock_get_db_attachments):
+        mock_db_reader.return_value.__enter__.return_value
+        mock_result = mock.Mock()
+        mock_result.params.return_value.scalar.return_value = 1
+        mock_query = mock.Mock()
+        mock_query.__iadd__ = mock.Mock(return_value=mock_query)
+        mock_query.return_value = mock_result
+        mock_bakery.return_value = mock_query
+        mock_get_topology.return_value = {
+            'leaf-a': {}, 'leaf-b': {}, 'leaf-c': {}, 'leaf-d': {}}
+        mock_filter.side_effect = lambda sess, host, topo, phys: {
+            'leaf-a': {}, 'leaf-b': {}}
+        mock_get_db_attachments.return_value = {
+            'leaf-a': {}, 'leaf-b': {}, 'leaf-c': {}, 'leaf-d': {}}
+
+        fake_network = self._create_fake_network_context(
+                'vlan', 'physnet1', 10).current
+        result = self.ndfc_mech.get_topology(
+                self.context, fake_network, 'host1', detach=True)
+
+        self.assertIsNone(result)
+        mock_get_db_attachments.assert_called_once()
+
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver,
+            '_get_network_attachments_from_neutron_db')
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver,
+            '_filter_topology_by_physnet')
+    @mock.patch('networking_cisco.ml2_drivers.ndfc.mech_ndfc.BAKERY')
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver, '_get_topology')
+    @mock.patch('neutron_lib.db.api.CONTEXT_READER.using')
+    def test_get_topology_detach_different_switches_proceeds(
+            self, mock_db_reader, mock_get_topology, mock_bakery,
+            mock_filter, mock_get_db_attachments):
+        mock_db_reader.return_value.__enter__.return_value
+        mock_result = mock.Mock()
+        mock_result.params.return_value.scalar.return_value = 1
+        mock_query = mock.Mock()
+        mock_query.__iadd__ = mock.Mock(return_value=mock_query)
+        mock_query.return_value = mock_result
+        mock_bakery.return_value = mock_query
+        mock_get_topology.return_value = {
+            'leaf-a': {}, 'leaf-b': {}, 'leaf-c': {}, 'leaf-d': {}}
+        mock_filter.side_effect = lambda sess, host, topo, phys: {
+            'leaf-c': {}, 'leaf-d': {}}
+        mock_get_db_attachments.return_value = {'leaf-a': {}, 'leaf-b': {}}
+
+        fake_network = self._create_fake_network_context(
+                'vlan', 'physnet3', 10).current
+        result = self.ndfc_mech.get_topology(
+                self.context, fake_network, 'host1', detach=True)
+
+        self.assertEqual({'leaf-c': {}, 'leaf-d': {}}, result)
+        mock_get_db_attachments.assert_called_once()
+
     @mock.patch.object(ProjectDetailsCache, 'ensure_project')
     @mock.patch.object(ProjectDetailsCache, 'get_project_details',
             return_value=['mock_vrf'])
@@ -1317,3 +1514,152 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
         mock_query_delete.filter.return_value.delete.assert_called_once_with(
             synchronize_session='fetch'
         )
+
+    @mock.patch('neutron_lib.db.api.CONTEXT_READER.using')
+    def test_filter_topology_by_physnet_with_mapping(self, mock_db_reader):
+        session_mock = mock.Mock()
+        mock_db_reader.return_value.__enter__.return_value = session_mock
+
+        mock_label = mock.Mock()
+        mock_label.interface_name = 'bond0'
+
+        mock_link1 = mock.Mock()
+        mock_link1.serial_number = 'LEAF1'
+        mock_link2 = mock.Mock()
+        mock_link2.serial_number = 'LEAF2'
+
+        def query_side_effect(model):
+            query_mock = mock.Mock()
+            filter_mock = mock.Mock()
+            if 'NxosHostNetworkLabel' in str(model):
+                filter_mock.all.return_value = [mock_label]
+            else:
+                filter_mock.all.return_value = [mock_link1, mock_link2]
+            query_mock.filter.return_value = filter_mock
+            return query_mock
+
+        session_mock.query.side_effect = query_side_effect
+
+        topology = {
+            'LEAF1': {'interfaces': ['bond0', 'bond1']},
+            'LEAF2': {'interfaces': ['bond0']},
+            'LEAF3': {'interfaces': ['bond1']}
+        }
+
+        result = self.ndfc_mech._filter_topology_by_physnet(
+            session_mock, 'host1', topology, 'physnet1')
+
+        self.assertEqual(2, len(result))
+        self.assertIn('LEAF1', result)
+        self.assertIn('LEAF2', result)
+        self.assertNotIn('LEAF3', result)
+
+    @mock.patch('neutron_lib.db.api.CONTEXT_READER.using')
+    def test_filter_topology_by_physnet_without_mapping(self, mock_db_reader):
+        session_mock = mock.Mock()
+        mock_db_reader.return_value.__enter__.return_value = session_mock
+
+        query_result = session_mock.query.return_value.filter.return_value
+        query_result.all.return_value = []
+
+        topology = {
+            'LEAF1': {'interfaces': ['bond0', 'bond1']},
+            'LEAF2': {'interfaces': ['bond0']}
+        }
+
+        result = self.ndfc_mech._filter_topology_by_physnet(
+            session_mock, 'host1', topology, 'physnet1')
+
+        self.assertEqual(topology, result)
+
+    @mock.patch('neutron_lib.db.api.CONTEXT_READER.using')
+    def test_filter_topology_by_physnet_no_physnet(self, mock_db_reader):
+        session_mock = mock.Mock()
+
+        topology = {
+            'LEAF1': {'interfaces': ['bond0']},
+        }
+
+        result = self.ndfc_mech._filter_topology_by_physnet(
+            session_mock, 'host1', topology, None)
+
+        self.assertEqual(topology, result)
+        session_mock.query.assert_not_called()
+
+    @mock.patch('neutron_lib.db.api.CONTEXT_READER.using')
+    def test_filter_topology_by_physnet_tor_interfaces(self, mock_db_reader):
+        session_mock = mock.Mock()
+        mock_db_reader.return_value.__enter__.return_value = session_mock
+
+        mock_label = mock.Mock()
+        mock_label.interface_name = 'bond0'
+        query_result = session_mock.query.return_value.filter.return_value
+        query_result.all.return_value = [mock_label]
+
+        topology = {
+            'LEAF1': {
+                'tor_sw_intf_map': {
+                    'TOR1': {
+                        'tor_interfaces': ['Port-channel11'],
+                        'tor_name': 'tor1'
+                    }
+                }
+            }
+        }
+
+        result = self.ndfc_mech._filter_topology_by_physnet(
+            session_mock, 'host1', topology, 'physnet1')
+
+        self.assertEqual(topology, result)
+
+    @mock.patch('neutron_lib.db.api.CONTEXT_READER.using')
+    def test_filter_topology_by_physnet_preserves_peer_serial(
+            self, mock_db_reader):
+        session_mock = mock.Mock()
+        mock_db_reader.return_value.__enter__.return_value = session_mock
+
+        mock_label = mock.Mock()
+        mock_label.interface_name = 'bond0'
+        query_result = session_mock.query.return_value.filter.return_value
+        query_result.all.return_value = [mock_label]
+
+        topology = {
+            'LEAF1': {
+                'interfaces': ['bond0'],
+                'peer_serial': 'LEAF2_SERIAL'
+            }
+        }
+
+        result = self.ndfc_mech._filter_topology_by_physnet(
+            session_mock, 'host1', topology, 'physnet1')
+
+        self.assertIn('LEAF1', result)
+        self.assertEqual('LEAF2_SERIAL', result['LEAF1']['peer_serial'])
+
+    @mock.patch('neutron_lib.db.api.CONTEXT_WRITER.using')
+    def test_update_network_labels(self, mock_db_writer):
+        session_mock = mock.Mock()
+        mock_db_writer.return_value.__enter__.return_value = session_mock
+
+        mock_query = mock.Mock()
+        session_mock.query.return_value = mock_query
+
+        network_labels = [
+            ('physnet1', 'bond0'),
+            ('physnet3', 'bond1')
+        ]
+
+        self.ndfc_mech.update_network_labels(
+            self.context, 'host1', network_labels)
+
+        mock_query.filter.return_value.delete.assert_called_once()
+
+        self.assertEqual(2, session_mock.add.call_count)
+
+        added_labels = [call[0][0] for call in session_mock.add.call_args_list]
+        self.assertEqual('host1', added_labels[0].host_name)
+        self.assertEqual('physnet1', added_labels[0].network_label)
+        self.assertEqual('bond0', added_labels[0].interface_name)
+        self.assertEqual('host1', added_labels[1].host_name)
+        self.assertEqual('physnet3', added_labels[1].network_label)
+        self.assertEqual('bond1', added_labels[1].interface_name)

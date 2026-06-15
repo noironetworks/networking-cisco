@@ -18,6 +18,7 @@ import argparse
 import sys
 
 from networking_cisco.ml2_drivers.ndfc.db import NxosHostLink
+from networking_cisco.ml2_drivers.ndfc.db import NxosHostNetworkLabel
 from networking_cisco.ml2_drivers.ndfc.db import NxosTors
 from neutron.common import config as common_cfg
 from oslo_config import cfg
@@ -125,6 +126,20 @@ def main():
         help="Condition to filter which ToRs to delete (optional)"
     )
 
+    subparsers.add_parser(
+        'list-network-labels',
+        help="List all network labels"
+    )
+
+    delete_labels_parser = subparsers.add_parser(
+        'delete-network-labels',
+        help="Delete network labels"
+    )
+    delete_labels_parser.add_argument(
+        '--condition',
+        help="Condition to filter which labels to delete (optional)"
+    )
+
     args = parser.parse_args()
 
     if not args.command:
@@ -140,6 +155,8 @@ def main():
         'delete-nxos-links': (NxosHostLink, delete_table),
         'list-nxos-tors': (NxosTors, list_table),
         'delete-nxos-tors': (NxosTors, delete_table),
+        'list-network-labels': (NxosHostNetworkLabel, list_table),
+        'delete-network-labels': (NxosHostNetworkLabel, delete_table),
     }
 
     if args.command in command_map:
