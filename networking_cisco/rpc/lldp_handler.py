@@ -45,3 +45,8 @@ class LldpTopologyRpcEndpoint(object):
         # situations like fabric upgrade or flapping links. Old links
         # are removed once a specific host is attached somewhere else.
         return
+
+    @db_api.retry_if_session_inactive()
+    def update_network_labels(self, context, *args, **kwargs):
+        context._session = db_api.get_writer_session()
+        return self.cb_ctx.update_network_labels(context, *args, **kwargs)

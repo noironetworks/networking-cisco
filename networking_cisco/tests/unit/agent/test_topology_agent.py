@@ -275,3 +275,304 @@ class TestNxosTopologyHandler(base.BaseTestCase):
 
         self.agent.service_agent.update_link.assert_has_calls(
                 expected_calls, any_order=False)
+
+
+class TestNxosNetworkLabelDiscovery(base.BaseTestCase):
+
+    def setUp(self):
+        super(TestNxosNetworkLabelDiscovery, self).setUp()
+        self.handler = nxos_topology.NxosTopologyHandler()
+        self.handler.host = 'compute5'
+
+    @mock.patch('neutron.agent.linux.utils.execute')
+    def test_get_bridge_mappings_from_ovsdb(self, mock_execute):
+        mock_execute.return_value = 'physnet1:br-ex,physnet3:br-nfs'
+
+        result = self.handler._get_bridge_mappings_from_ovsdb()
+
+        self.assertEqual('physnet1:br-ex,physnet3:br-nfs', result)
+        mock_execute.assert_called_once_with(
+            ['ovs-vsctl', 'get', 'Open_vSwitch', '.',
+                'external_ids:ovn-bridge-mappings'],
+            run_as_root=True)
+
+    @mock.patch('neutron.agent.linux.utils.execute')
+    def test_get_bridge_mappings_from_ovsdb_cached(self, mock_execute):
+        self.handler.bridge_mappings_cache = 'cached_value'
+
+        result = self.handler._get_bridge_mappings_from_ovsdb()
+
+        self.assertEqual('cached_value', result)
+        mock_execute.assert_not_called()
+
+    @mock.patch('neutron.agent.linux.utils.execute')
+    def test_get_bridge_mappings_from_ovsdb_error(self, mock_execute):
+        mock_execute.side_effect = Exception('OVSDB error')
+
+        result = self.handler._get_bridge_mappings_from_ovsdb()
+
+        self.assertIsNone(result)
+
+    @mock.patch.object(nxos_topology.NxosTopologyHandler, '_get_port_type')
+    @mock.patch('neutron.agent.linux.utils.execute')
+    def test_discover_ovs_bridge_ports(self, mock_execute, mock_get_port_type):
+        mock_execute.side_effect = [
+            'br-ex\nbr-nfs',
+            'bond0',
+            'bond1'
+        ]
+        mock_get_port_type.return_value = 'system'
+
+        result = self.handler._discover_ovs_bridge_ports()
+
+        self.assertEqual(2, len(result))
+        self.assertEqual(['bond0'], result['br-ex'])
+        self.assertEqual(['bond1'], result['br-nfs'])
+
+    @mock.patch('neutron.agent.linux.utils.execute')
+    def test_discover_ovs_bridge_ports_no_bridges(self, mock_execute):
+        mock_execute.return_value = ''
+
+        result = self.handler._discover_ovs_bridge_ports()
+
+        self.assertEqual({}, result)
+
+    @mock.patch.object(nxos_topology.NxosTopologyHandler, '_get_port_type')
+    @mock.patch('neutron.agent.linux.utils.execute')
+    def test_get_network_labels_full_flow(self, mock_execute,
+            mock_get_port_type):
+        mock_execute.side_effect = [
+            'physnet1:br-ex,physnet3:br-nfs',
+            'br-ex\nbr-nfs',
+            'bond0',
+            'bond1'
+        ]
+        mock_get_port_type.return_value = 'system'
+
+        result = self.handler.get_network_labels()
+
+        self.assertEqual(2, len(result))
+        self.assertIn(('physnet1', 'bond0'), result)
+        self.assertIn(('physnet3', 'bond1'), result)
+
+    @mock.patch('neutron.agent.linux.utils.execute')
+    def test_get_network_labels_no_ovsdb_mappings(self, mock_execute):
+        mock_execute.return_value = ''
+
+        result = self.handler.get_network_labels()
+
+        self.assertEqual([], result)
+
+    @mock.patch.object(nxos_topology.NxosTopologyHandler, '_get_port_type')
+    @mock.patch('neutron.agent.linux.utils.execute')
+    def test_get_network_labels_multiple_interfaces_per_bridge(
+            self, mock_execute, mock_get_port_type):
+        mock_execute.side_effect = [
+            'physnet1:br-ex',
+            'br-ex',
+            'bond0\nbond1'
+        ]
+        mock_get_port_type.return_value = 'system'
+
+        result = self.handler.get_network_labels()
+
+        self.assertEqual(2, len(result))
+        self.assertIn(('physnet1', 'bond0'), result)
+        self.assertIn(('physnet1', 'bond1'), result)
+
+    @mock.patch.object(nxos_topology.NxosTopologyHandler, '_get_port_type')
+    @mock.patch('neutron.agent.linux.utils.execute')
+    def test_get_network_labels_bridge_not_found(self, mock_execute,
+            mock_get_port_type):
+        mock_execute.side_effect = [
+            'physnet1:br-nonexistent',
+            'br-ex',
+            'bond0'
+        ]
+        mock_get_port_type.return_value = 'system'
+
+        result = self.handler.get_network_labels()
+
+        self.assertEqual([], result)
+
+    @mock.patch.object(nxos_topology.NxosTopologyHandler, '_get_port_type')
+    @mock.patch('neutron.agent.linux.utils.execute')
+    def test_discover_ovs_bridge_ports_excludes_br_int(
+            self, mock_execute, mock_get_port_type):
+        mock_execute.side_effect = [
+            'br-ex\nbr-int\nbr-nfs',
+            'bond0',
+            'bond1'
+        ]
+        mock_get_port_type.return_value = 'system'
+
+        result = self.handler._discover_ovs_bridge_ports()
+
+        self.assertEqual(2, len(result))
+        self.assertIn('br-ex', result)
+        self.assertIn('br-nfs', result)
+        self.assertNotIn('br-int', result)
+
+    @mock.patch.object(nxos_topology.NxosTopologyHandler, '_get_port_type')
+    @mock.patch('neutron.agent.linux.utils.execute')
+    def test_discover_ovs_bridge_ports_filters_patch_ports(
+            self, mock_execute, mock_get_port_type):
+        mock_execute.side_effect = [
+            'br-ex',
+            'bond0\npatch-provnet-to-br-int'
+        ]
+        mock_get_port_type.side_effect = ['system', 'patch']
+
+        result = self.handler._discover_ovs_bridge_ports()
+
+        self.assertEqual(1, len(result))
+        self.assertEqual(['bond0'], result['br-ex'])
+
+    @mock.patch.object(nxos_topology.NxosTopologyHandler, '_get_port_type')
+    @mock.patch('neutron.agent.linux.utils.execute')
+    def test_discover_ovs_bridge_ports_filters_internal_ports(
+            self, mock_execute, mock_get_port_type):
+        mock_execute.side_effect = [
+            'br-ex',
+            'bond0\novn-comput-0'
+        ]
+        mock_get_port_type.side_effect = ['system', 'internal']
+
+        result = self.handler._discover_ovs_bridge_ports()
+
+        self.assertEqual(1, len(result))
+        self.assertEqual(['bond0'], result['br-ex'])
+
+    @mock.patch('neutron.agent.linux.utils.execute')
+    def test_get_port_type_system(self, mock_execute):
+        mock_execute.return_value = ''
+
+        result = self.handler._get_port_type('bond0')
+
+        self.assertEqual('system', result)
+        mock_execute.assert_called_once_with(
+            ['ovs-vsctl', 'get', 'Interface', 'bond0', 'type'],
+            run_as_root=True)
+
+    @mock.patch('neutron.agent.linux.utils.execute')
+    def test_get_port_type_patch(self, mock_execute):
+        mock_execute.return_value = '"patch"'
+
+        result = self.handler._get_port_type('patch-port')
+
+        self.assertEqual('patch', result)
+
+    @mock.patch('neutron.agent.linux.utils.execute')
+    def test_get_port_type_internal(self, mock_execute):
+        mock_execute.return_value = 'internal'
+
+        result = self.handler._get_port_type('ovn-port')
+
+        self.assertEqual('internal', result)
+
+    @mock.patch('neutron.agent.linux.utils.execute')
+    def test_get_port_type_error_defaults_to_system(self, mock_execute):
+        mock_execute.side_effect = Exception('Port not found')
+
+        result = self.handler._get_port_type('unknown-port')
+
+        self.assertEqual('system', result)
+
+    @mock.patch('os.path.isdir')
+    def test_is_bond_interface_true(self, mock_isdir):
+        mock_isdir.return_value = True
+
+        result = self.handler._is_bond_interface('bond0')
+
+        self.assertTrue(result)
+        mock_isdir.assert_called_once_with('/sys/class/net/bond0/bonding')
+
+    @mock.patch('os.path.isdir')
+    def test_is_bond_interface_false(self, mock_isdir):
+        mock_isdir.return_value = False
+
+        result = self.handler._is_bond_interface('enp1s0f0')
+
+        self.assertFalse(result)
+
+    @mock.patch('builtins.open', new_callable=mock.mock_open,
+                read_data='enp4s0f0 enp4s0f1')
+    def test_get_bond_slaves(self, mock_file):
+        result = self.handler._get_bond_slaves('bond0')
+
+        self.assertEqual(['enp4s0f0', 'enp4s0f1'], result)
+        mock_file.assert_called_once_with(
+            '/sys/class/net/bond0/bonding/slaves', 'r')
+
+    @mock.patch('builtins.open')
+    def test_get_bond_slaves_error_returns_empty_list(self, mock_file):
+        mock_file.side_effect = Exception('File not found')
+
+        result = self.handler._get_bond_slaves('bond0')
+
+        self.assertEqual([], result)
+
+    @mock.patch.object(nxos_topology.NxosTopologyHandler,
+            '_is_bond_interface')
+    @mock.patch.object(nxos_topology.NxosTopologyHandler,
+            '_get_bond_slaves')
+    @mock.patch.object(nxos_topology.NxosTopologyHandler, '_get_port_type')
+    @mock.patch('neutron.agent.linux.utils.execute')
+    def test_get_network_labels_expands_bond_interfaces(
+            self, mock_execute, mock_get_port_type, mock_get_bond_slaves,
+            mock_is_bond):
+        mock_execute.side_effect = [
+            'physnet1:br-ex',
+            'br-ex',
+            'bond0'
+        ]
+        mock_get_port_type.return_value = 'system'
+        mock_is_bond.return_value = True
+        mock_get_bond_slaves.return_value = ['enp4s0f0', 'enp4s0f1']
+
+        result = self.handler.get_network_labels()
+
+        self.assertEqual(2, len(result))
+        self.assertIn(('physnet1', 'enp4s0f0'), result)
+        self.assertIn(('physnet1', 'enp4s0f1'), result)
+        mock_get_bond_slaves.assert_called_once_with('bond0')
+
+    @mock.patch.object(nxos_topology.NxosTopologyHandler,
+            '_is_bond_interface')
+    @mock.patch.object(nxos_topology.NxosTopologyHandler, '_get_port_type')
+    @mock.patch('neutron.agent.linux.utils.execute')
+    def test_get_network_labels_non_bond_interface(
+            self, mock_execute, mock_get_port_type, mock_is_bond):
+        mock_execute.side_effect = [
+            'physnet1:br-ex',
+            'br-ex',
+            'enp1s0f0'
+        ]
+        mock_get_port_type.return_value = 'system'
+        mock_is_bond.return_value = False
+
+        result = self.handler.get_network_labels()
+
+        self.assertEqual(1, len(result))
+        self.assertIn(('physnet1', 'enp1s0f0'), result)
+
+    @mock.patch.object(nxos_topology.NxosTopologyHandler, '_get_port_type')
+    @mock.patch('neutron.agent.linux.utils.execute')
+    def test_discover_ovs_bridge_ports_custom_exclusion_regex(
+            self, mock_execute, mock_get_port_type):
+        mock_execute.side_effect = [
+            'br-ex',
+            'bond0\nmy-tunnel-port'
+        ]
+        mock_get_port_type.side_effect = ['system', 'tunnel']
+
+        with mock.patch('oslo_config.cfg.CONF') as mock_conf:
+            mock_conf.lldp_topology_agent.topology_excluded_bridges = []
+            regex_pattern = '^(patch|internal|tunnel)$'
+            mock_lldp = mock_conf.lldp_topology_agent
+            mock_lldp.topology_excluded_port_types_regex = regex_pattern
+
+            result = self.handler._discover_ovs_bridge_ports()
+
+        self.assertEqual(1, len(result))
+        self.assertEqual(['bond0'], result['br-ex'])
