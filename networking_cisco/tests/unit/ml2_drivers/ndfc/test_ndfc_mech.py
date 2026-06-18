@@ -18,6 +18,8 @@ import os
 from unittest import mock
 
 from keystoneclient.v3 import client as ksc_client
+from neutron.db.models import segment as seg_db
+from neutron.plugins.ml2 import models
 from neutron.tests.unit.db import test_db_base_plugin_v2 as test_pluginV2
 from neutron_lib.api.definitions import portbindings
 from neutron_lib.api.definitions import segment
@@ -900,6 +902,21 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
         session.query.assert_called_once_with(
             nc_ml2_db.NxosHostLink, nc_ml2_db.NxosTors)
         self.assertEqual(2, query.join.call_count)
+
+        first_join, second_join = query.join.call_args_list
+
+        self.assertIs(models.PortBindingLevel, first_join.args[0])
+        self.assertEqual(
+            str(models.PortBindingLevel.host ==
+                nc_ml2_db.NxosHostLink.host_name),
+            str(first_join.args[1]))
+
+        self.assertIs(seg_db.NetworkSegment, second_join.args[0])
+        self.assertEqual(
+            str(seg_db.NetworkSegment.id ==
+                models.PortBindingLevel.segment_id),
+            str(second_join.args[1]))
+
         query.outerjoin.assert_called_once()
         self.assertEqual(2, query.filter.call_count)
         query.distinct.assert_called_once_with()
@@ -1510,6 +1527,37 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
         mock_query_delete.filter.return_value.delete.assert_called_once_with(
             synchronize_session='fetch'
         )
+
+    def test_network_attachments_includes_interfaces_from_all_hosts(self):
+        host_topology = {
+            'BORDER001': {'interfaces': ['Port-channel11'],
+                         'peer_serial': 'BORDER002'},
+            'BORDER002': {'interfaces': ['Port-channel11'],
+                         'peer_serial': 'BORDER001'},
+        }
+
+        mock_rows = [
+            (mock.Mock(serial_number='BORDER001',
+                      switch_port='Port-channel11',
+                      host_name='kkolla05'), None),
+            (mock.Mock(serial_number='BORDER001',
+                      switch_port='Port-channel1',
+                      host_name='kkolla03'), None),
+        ]
+
+        with mock.patch.object(self.ndfc_mech,
+                              '_get_network_attachment_rows',
+                              return_value=mock_rows):
+            with mock.patch('neutron_lib.db.api.CONTEXT_READER.using'):
+                mock_context = mock.Mock()
+                result = self.ndfc_mech.\
+                    _get_network_attachments_from_neutron_db(
+                        mock_context, 'network-id', 'kkolla05',
+                        host_topology)
+
+        self.assertIn('BORDER001', result)
+        self.assertIn('Port-channel11', result['BORDER001']['interfaces'])
+        self.assertIn('Port-channel1', result['BORDER001']['interfaces'])
 
     @mock.patch('neutron_lib.db.api.CONTEXT_READER.using')
     def test_filter_topology_by_physnet_with_mapping(self, mock_db_reader):
