@@ -342,7 +342,7 @@ class NdfcHelper:
         for nwk_data in ret:
             for lan_attach in nwk_data.get('lanAttachList'):
                 if lan_attach.get('portNames') and (
-                        lan_attach.get('switchRole') == 'leaf'):
+                        lan_attach.get('switchRole') in ('leaf', 'border')):
                     dct[lan_attach.get('switchSerialNo')] = lan_attach.get(
                             'networkName')
                     if lan_attach.get('peerSerialNo') != '':
@@ -356,8 +356,8 @@ class NdfcHelper:
             return dct
         attachments_list = ret.get('attachments', [])
         for lan_attach in attachments_list:
-            if lan_attach.get('attached') and (
-                    lan_attach.get('switchRole') == 'leaf'):
+            if lan_attach.get('attach') and (
+                    lan_attach.get('switchRole') in ('leaf', 'border')):
                 snum = lan_attach.get('switchId')
                 network_name = lan_attach.get('networkName')
                 if snum:
@@ -405,7 +405,7 @@ class NdfcHelper:
         for nwk_data in ret:
             for lan_attach in nwk_data.get('lanAttachList'):
                 if lan_attach.get('portNames') and (
-                        lan_attach.get('switchRole') == 'leaf'):
+                        lan_attach.get('switchRole') in ('leaf', 'border')):
                     snum = lan_attach.get('switchSerialNo')
                     switch_map[snum] = {}
                     if "(" in lan_attach.get('portNames'):
@@ -426,8 +426,8 @@ class NdfcHelper:
         switch_map = {}
         attachments_list = ret.get('attachments', [])
         for lan_attach in attachments_list:
-            if lan_attach.get('attach') and (
-                    lan_attach.get('switchRole') == 'leaf'):
+            if (lan_attach.get('attach') and
+                    lan_attach.get('switchRole') in ('leaf', 'border')):
                 snum = lan_attach.get('switchId')
                 switch_name = lan_attach.get('switchName')
                 if snum not in switch_map:

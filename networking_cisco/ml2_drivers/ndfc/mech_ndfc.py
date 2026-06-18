@@ -732,7 +732,7 @@ class NDFCMechanismDriver(api.MechanismDriver,
             models.PortBindingLevel.host == nc_ml2_db.NxosHostLink.host_name)
         query = query.join(
             seg_db.NetworkSegment,
-            seg_db.NetworkSegment.id == models.PortBindingLevel.segment)
+            seg_db.NetworkSegment.id == models.PortBindingLevel.segment_id)
         query = query.outerjoin(
             nc_ml2_db.NxosTors,
             nc_ml2_db.NxosTors.tor_serial_number ==

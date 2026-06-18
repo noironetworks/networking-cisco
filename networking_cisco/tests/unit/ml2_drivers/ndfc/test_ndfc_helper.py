@@ -664,14 +664,14 @@ class TestNDFCHelper(TestNDFCHelperBase, test_plugin.Ml2PluginV2TestCase):
         mock_get_attachments.return_value = {
             "attachments": [
                 {
-                    "attached": True,
+                    "attach": True,
                     "switchRole": "leaf",
                     "switchId": "SN123",
                     "networkName": "Network1",
                     "peerSwitchId": ""
                 },
                 {
-                    "attached": True,
+                    "attach": True,
                     "switchRole": "leaf",
                     "switchId": "SN124",
                     "networkName": "Network1",
@@ -1351,3 +1351,156 @@ class TestNDFCHelper(TestNDFCHelperBase, test_plugin.Ml2PluginV2TestCase):
         self.assertTrue(result)
         self.assertEqual(mock_post.call_count, 2)
         mock_sleep.assert_called_once()
+
+    def test_get_switch_interface_map_v2_includes_border_switches(self):
+        ndfc_response = {
+            'attachments': [
+                {
+                    'attach': True,
+                    'switchId': 'LEAF001',
+                    'switchName': 'leaf-1',
+                    'switchRole': 'leaf',
+                    'interfaces': [{'interfaceRange': 'Port-channel11'}]
+                },
+                {
+                    'attach': True,
+                    'switchId': 'BORDER001',
+                    'switchName': 'border-1',
+                    'switchRole': 'border',
+                    'interfaces': [
+                        {'interfaceRange': 'Port-channel11'},
+                        {'interfaceRange': 'Port-channel1'}
+                    ]
+                },
+                {
+                    'attach': True,
+                    'switchId': 'SPINE001',
+                    'switchName': 'spine-1',
+                    'switchRole': 'borderGatewaySpine',
+                    'interfaces': []
+                }
+            ]
+        }
+
+        result = self.helper._get_switch_interface_map_v2(ndfc_response)
+
+        self.assertIn('BORDER001', result)
+        self.assertEqual(result['BORDER001']['switch_name'], 'border-1')
+        self.assertIn('Port-channel11', result['BORDER001']['interfaces'])
+        self.assertIn('Port-channel1', result['BORDER001']['interfaces'])
+        self.assertIn('LEAF001', result)
+        self.assertNotIn('SPINE001', result)
+
+    def test_get_switch_interface_map_v2_excludes_non_attached(self):
+        ndfc_response = {
+            'attachments': [
+                {
+                    'attach': False,
+                    'switchId': 'BORDER001',
+                    'switchName': 'border-1',
+                    'switchRole': 'border',
+                    'interfaces': []
+                }
+            ]
+        }
+
+        result = self.helper._get_switch_interface_map_v2(ndfc_response)
+
+        self.assertNotIn('BORDER001', result)
+
+    def test_get_network_switch_map_v2_includes_borders(self):
+        ndfc_response = {
+            'attachments': [
+                {
+                    'attach': True,
+                    'switchId': 'BORDER001',
+                    'switchRole': 'border',
+                    'networkName': 'test-network'
+                },
+                {
+                    'attach': True,
+                    'switchId': 'LEAF001',
+                    'switchRole': 'leaf',
+                    'networkName': 'test-network'
+                }
+            ]
+        }
+
+        result = self.helper._get_leaf_switch_map_v2(ndfc_response)
+
+        self.assertEqual(result['BORDER001'], 'test-network')
+        self.assertEqual(result['LEAF001'], 'test-network')
+
+    def test_get_network_switch_map_v2_requires_attach_true(self):
+        ndfc_response = {
+            'attachments': [
+                {
+                    'attach': True,
+                    'switchId': 'BORDER001',
+                    'switchRole': 'border',
+                    'networkName': 'test-network-1'
+                },
+                {
+                    'attach': False,
+                    'switchId': 'BORDER002',
+                    'switchRole': 'border',
+                    'networkName': 'test-network-2'
+                }
+            ]
+        }
+
+        result = self.helper._get_leaf_switch_map_v2(ndfc_response)
+
+        self.assertEqual(result['BORDER001'], 'test-network-1')
+        self.assertNotIn('BORDER002', result)
+
+    def test_get_switch_interface_map_v1_includes_borders(self):
+        ndfc_response = [{
+            'lanAttachList': [
+                {
+                    'portNames': 'Port-channel11',
+                    'switchSerialNo': 'BORDER001',
+                    'switchName': 'border-1',
+                    'switchRole': 'border',
+                    'peerSerialNo': ''
+                },
+                {
+                    'portNames': 'Port-channel11',
+                    'switchSerialNo': 'LEAF001',
+                    'switchName': 'leaf-1',
+                    'switchRole': 'leaf',
+                    'peerSerialNo': ''
+                }
+            ]
+        }]
+
+        result = self.helper._get_switch_interface_map(ndfc_response)
+
+        self.assertIn('BORDER001', result)
+        self.assertIn('LEAF001', result)
+        self.assertIn('Port-channel11', result['BORDER001']['interfaces'])
+
+    def test_get_network_switch_map_v1_includes_borders(self):
+        ndfc_response = [{
+            'lanAttachList': [
+                {
+                    'portNames': 'Port-channel11',
+                    'switchSerialNo': 'BORDER001',
+                    'switchRole': 'border',
+                    'networkName': 'test-network',
+                    'peerSerialNo': ''
+                },
+                {
+                    'portNames': 'Port-channel11',
+                    'switchSerialNo': 'LEAF001',
+                    'switchRole': 'leaf',
+                    'networkName': 'test-network',
+                    'peerSerialNo': ''
+                }
+            ]
+        }]
+
+        result = self.helper._get_leaf_switch_map(ndfc_response)
+
+        self.assertEqual(result['BORDER001'], 'test-network')
+        self.assertEqual(result['LEAF001'], 'test-network')
