@@ -18,14 +18,19 @@ import os
 from unittest import mock
 
 from keystoneclient.v3 import client as ksc_client
+import netaddr
 from neutron.db.models import segment as seg_db
+from neutron.objects import network as network_obj
+from neutron.objects import ports as port_obj
 from neutron.plugins.ml2 import models
 from neutron.tests.common import test_db_base_plugin_v2 as test_pluginV2
 from neutron_lib.api.definitions import portbindings
 from neutron_lib.api.definitions import segment
 from neutron_lib import constants
 from neutron_lib import context as n_ctx
+from neutron_lib.db import api as db_api
 from neutron_lib.plugins import directory
+from oslo_utils import uuidutils
 
 from networking_cisco.ml2_drivers.ndfc.cache import ProjectDetailsCache
 from networking_cisco.ml2_drivers.ndfc import config as ndfc_conf
@@ -918,7 +923,7 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
             str(second_join.args[1]))
 
         query.outerjoin.assert_called_once()
-        self.assertEqual(2, query.filter.call_count)
+        self.assertEqual(3, query.filter.call_count)
         query.distinct.assert_called_once_with()
         query.distinct.return_value.all.assert_called_once_with()
 
@@ -1047,7 +1052,7 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
                     'peer_serial': 'leaf-a'}},
             attachments)
         mock_get_rows.assert_called_once_with(
-            session, {'leaf-a', 'leaf-a-peer'})
+            session, {'leaf-a', 'leaf-a-peer'}, physnet=None)
 
     @mock.patch.object(mech_ndfc.NDFCMechanismDriver,
             '_get_topology', return_value={'host': 'host1'})
@@ -1282,7 +1287,8 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
                 {'leaf-a': {'interfaces': ['Ethernet1/1']}})
         mock_get_topology_attachments.assert_called_once_with(
                 self.context, 'host1',
-                {'leaf-a': {'interfaces': ['Ethernet1/1']}})
+                {'leaf-a': {'interfaces': ['Ethernet1/1']}},
+                physnet='physnet1')
         mock_attach_network.assert_called_once_with(
                 'mock_vrf', network['name'], '10',
                 {'leaf-a': {'interfaces': ['Ethernet1/1']}},
@@ -1316,6 +1322,10 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
 
         self.ndfc_mech.detach_network(self.context, 'host1', network)
 
+        mock_get_topology_attachments.assert_called_once_with(
+                self.context, 'host1',
+                {'leaf-a': {'interfaces': ['Ethernet1/1']}},
+                physnet='physnet1')
         mock_detach_network.assert_called_once_with(
                 'mock_vrf', network['name'], '10',
                 {'leaf-a': {'interfaces': ['Ethernet1/1']}},
@@ -1563,44 +1573,158 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
         self.assertIn('Port-channel11', result['BORDER001']['interfaces'])
         self.assertIn('Port-channel1', result['BORDER001']['interfaces'])
 
+    def _create_bound_vlan_network(self, ctx, physnet, host,
+                                   segmentation_id=2001):
+        network_id = uuidutils.generate_uuid()
+        segment_id = uuidutils.generate_uuid()
+        port_id = uuidutils.generate_uuid()
+        mac_tail = port_id.replace('-', '')[:6]
+        mac = 'fa:16:3e:%s:%s:%s' % (
+            mac_tail[0:2], mac_tail[2:4], mac_tail[4:6])
+
+        network_obj.Network(
+            ctx, id=network_id, project_id='project-id', name=network_id,
+            status='ACTIVE', admin_state_up=True, shared=False,
+            mtu=1500).create()
+        network_obj.NetworkSegment(
+            ctx, id=segment_id, network_id=network_id,
+            network_type=constants.TYPE_VLAN, physical_network=physnet,
+            segmentation_id=segmentation_id, is_dynamic=False,
+            segment_index=0).create()
+        port_obj.Port(
+            ctx, id=port_id, project_id='project-id',
+            network_id=network_id, mac_address=netaddr.EUI(mac),
+            admin_state_up=True, status='ACTIVE', device_id='device-id',
+            device_owner='compute:nova').create()
+        port_obj.PortBindingLevel(
+            ctx, port_id=port_id, host=host, level=0, driver='ovn',
+            segment_id=segment_id).create()
+        return network_id
+
+    def _add_host_labels_and_links(self, ctx, labels, links):
+        with db_api.CONTEXT_WRITER.using(ctx) as session:
+            for host, physnet, interface in labels:
+                session.add(nc_ml2_db.NxosHostNetworkLabel(
+                    host_name=host, network_label=physnet,
+                    interface_name=interface))
+            for host, interface, serial, switch_port in links:
+                session.add(nc_ml2_db.NxosHostLink(
+                    host_name=host, interface_name=interface,
+                    serial_number=serial, switch_ip='10.0.0.1',
+                    switch_mac='aa:bb:cc:dd:ee:ff',
+                    switch_port=switch_port))
+
+    def test_network_attachment_rows_filters_host_links_by_physnet(self):
+        ctx = n_ctx.get_admin_context()
+        network_id = self._create_bound_vlan_network(
+            ctx, 'physnet1', 'host-same-vpc')
+        self._add_host_labels_and_links(
+            ctx,
+            [
+                ('host-same-vpc', 'physnet1', 'eno5'),
+                ('host-same-vpc', 'physnet1', 'eno6'),
+                ('host-same-vpc', 'physnet3', 'eno7'),
+                ('host-same-vpc', 'physnet3', 'eno8'),
+            ],
+            [
+                ('host-same-vpc', 'eno5', 'LEAF53', 'Port-channel13'),
+                ('host-same-vpc', 'eno6', 'LEAF54', 'Port-channel13'),
+                ('host-same-vpc', 'eno7', 'LEAF53', 'Port-channel14'),
+                ('host-same-vpc', 'eno8', 'LEAF54', 'Port-channel14'),
+            ])
+
+        with db_api.CONTEXT_READER.using(ctx) as session:
+            rows = self.ndfc_mech._get_network_attachment_rows(
+                session, network_id, {'LEAF53', 'LEAF54'})
+
+        switch_ports = sorted(row[0].switch_port for row in rows)
+        self.assertEqual(['Port-channel13', 'Port-channel13'], switch_ports)
+
+    def test_network_attachment_rows_excludes_wrong_physnet_on_peer_leaf(self):
+        ctx = n_ctx.get_admin_context()
+        network_id = self._create_bound_vlan_network(
+            ctx, 'physnet1', 'host-other-pair')
+        self._add_host_labels_and_links(
+            ctx,
+            [
+                ('host-other-pair', 'physnet1', 'eno5'),
+                ('host-other-pair', 'physnet1', 'eno6'),
+                ('host-other-pair', 'physnet3', 'eno7'),
+                ('host-other-pair', 'physnet3', 'eno8'),
+            ],
+            [
+                ('host-other-pair', 'eno5', 'LEAF51', 'Port-channel11'),
+                ('host-other-pair', 'eno6', 'LEAF52', 'Port-channel11'),
+                ('host-other-pair', 'eno7', 'LEAF53', 'Port-channel12'),
+                ('host-other-pair', 'eno8', 'LEAF54', 'Port-channel12'),
+            ])
+
+        with db_api.CONTEXT_READER.using(ctx) as session:
+            rows = self.ndfc_mech._get_network_attachment_rows(
+                session, network_id, {'LEAF53', 'LEAF54'})
+
+        self.assertEqual([], rows)
+
+    def test_network_attachment_rows_falls_back_without_physnet_labels(self):
+        ctx = n_ctx.get_admin_context()
+        network_id = self._create_bound_vlan_network(
+            ctx, 'physnet1', 'host-without-labels')
+        self._add_host_labels_and_links(
+            ctx, [], [
+                ('host-without-labels', 'eno5', 'LEAF53',
+                 'Port-channel99')])
+
+        with db_api.CONTEXT_READER.using(ctx) as session:
+            rows = self.ndfc_mech._get_network_attachment_rows(
+                session, network_id, {'LEAF53'})
+
+        self.assertEqual(['Port-channel99'],
+                         [row[0].switch_port for row in rows])
+
     @mock.patch('neutron_lib.db.api.CONTEXT_READER.using')
     def test_filter_topology_by_physnet_with_mapping(self, mock_db_reader):
         session_mock = mock.Mock()
         mock_db_reader.return_value.__enter__.return_value = session_mock
 
         mock_label = mock.Mock()
-        mock_label.interface_name = 'bond0'
+        mock_label.interface_name = 'eno5'
 
         mock_link1 = mock.Mock()
         mock_link1.serial_number = 'LEAF1'
+        mock_link1.switch_port = 'Port-channel13'
         mock_link2 = mock.Mock()
         mock_link2.serial_number = 'LEAF2'
+        mock_link2.switch_port = 'Port-channel13'
 
-        def query_side_effect(model):
+        def query_side_effect(*models):
             query_mock = mock.Mock()
             filter_mock = mock.Mock()
-            if 'NxosHostNetworkLabel' in str(model):
+            query_mock.filter.return_value = filter_mock
+            query_mock.outerjoin.return_value = query_mock
+            if models == (nc_ml2_db.NxosHostNetworkLabel,):
                 filter_mock.all.return_value = [mock_label]
             else:
-                filter_mock.all.return_value = [mock_link1, mock_link2]
-            query_mock.filter.return_value = filter_mock
+                filter_mock.all.return_value = [
+                    (mock_link1, None), (mock_link2, None)]
             return query_mock
 
         session_mock.query.side_effect = query_side_effect
 
         topology = {
-            'LEAF1': {'interfaces': ['bond0', 'bond1']},
-            'LEAF2': {'interfaces': ['bond0']},
-            'LEAF3': {'interfaces': ['bond1']}
+            'LEAF1': {'interfaces': ['Port-channel13', 'Port-channel14']},
+            'LEAF2': {'interfaces': ['Port-channel13', 'Port-channel14']},
+            'LEAF3': {'interfaces': ['Port-channel15']}
         }
 
         result = self.ndfc_mech._filter_topology_by_physnet(
             session_mock, 'host1', topology, 'physnet1')
 
-        self.assertEqual(2, len(result))
-        self.assertIn('LEAF1', result)
-        self.assertIn('LEAF2', result)
-        self.assertNotIn('LEAF3', result)
+        self.assertEqual(
+            {
+                'LEAF1': {'interfaces': ['Port-channel13']},
+                'LEAF2': {'interfaces': ['Port-channel13']}
+            },
+            result)
 
     @mock.patch('neutron_lib.db.api.CONTEXT_READER.using')
     def test_filter_topology_by_physnet_without_mapping(self, mock_db_reader):
@@ -1640,15 +1764,34 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
         mock_db_reader.return_value.__enter__.return_value = session_mock
 
         mock_label = mock.Mock()
-        mock_label.interface_name = 'bond0'
-        query_result = session_mock.query.return_value.filter.return_value
-        query_result.all.return_value = [mock_label]
+        mock_label.interface_name = 'eno5'
+        mock_link = mock.Mock()
+        mock_link.serial_number = 'TOR1'
+        mock_link.switch_port = 'Port-channel11'
+        mock_tor = mock.Mock()
+        mock_tor.leaf_serial_number = 'LEAF1'
+        mock_tor.tor_serial_number = 'TOR1'
+        mock_tor.tor_name = 'tor1'
+
+        def query_side_effect(*models):
+            query_mock = mock.Mock()
+            filter_mock = mock.Mock()
+            query_mock.filter.return_value = filter_mock
+            query_mock.outerjoin.return_value = query_mock
+            if models == (nc_ml2_db.NxosHostNetworkLabel,):
+                filter_mock.all.return_value = [mock_label]
+            else:
+                filter_mock.all.return_value = [(mock_link, mock_tor)]
+            return query_mock
+
+        session_mock.query.side_effect = query_side_effect
 
         topology = {
             'LEAF1': {
                 'tor_sw_intf_map': {
-                    'TOR1': {
-                        'tor_interfaces': ['Port-channel11'],
+                    'SN_tor1': {
+                        'tor_interfaces': ['Port-channel11',
+                                           'Port-channel12'],
                         'tor_name': 'tor1'
                     }
                 }
@@ -1658,7 +1801,15 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
         result = self.ndfc_mech._filter_topology_by_physnet(
             session_mock, 'host1', topology, 'physnet1')
 
-        self.assertEqual(topology, result)
+        self.assertEqual(
+            {
+                'LEAF1': {
+                    'tor_sw_intf_map': {
+                        'SN_tor1': {
+                            'tor_interfaces': ['Port-channel11'],
+                            'tor_name': 'tor1'}}}
+            },
+            result)
 
     @mock.patch('neutron_lib.db.api.CONTEXT_READER.using')
     def test_filter_topology_by_physnet_preserves_peer_serial(
@@ -1667,13 +1818,28 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
         mock_db_reader.return_value.__enter__.return_value = session_mock
 
         mock_label = mock.Mock()
-        mock_label.interface_name = 'bond0'
-        query_result = session_mock.query.return_value.filter.return_value
-        query_result.all.return_value = [mock_label]
+        mock_label.interface_name = 'eno5'
+        mock_link = mock.Mock()
+        mock_link.serial_number = 'LEAF1'
+        mock_link.switch_port = 'Port-channel13'
+
+        def query_side_effect(*models):
+            query_mock = mock.Mock()
+            filter_mock = mock.Mock()
+            query_mock.filter.return_value = filter_mock
+            query_mock.outerjoin.return_value = query_mock
+            if models == (nc_ml2_db.NxosHostNetworkLabel,):
+                filter_mock.all.return_value = [mock_label]
+            else:
+                filter_mock.all.return_value = [(mock_link, None)]
+            return query_mock
+
+        session_mock.query.side_effect = query_side_effect
+        self.ndfc_mech.vpc_peer_map = {'LEAF1': 'LEAF2_SERIAL'}
 
         topology = {
             'LEAF1': {
-                'interfaces': ['bond0'],
+                'interfaces': ['Port-channel13', 'Port-channel14'],
                 'peer_serial': 'LEAF2_SERIAL'
             }
         }
@@ -1682,6 +1848,7 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
             session_mock, 'host1', topology, 'physnet1')
 
         self.assertIn('LEAF1', result)
+        self.assertEqual(['Port-channel13'], result['LEAF1']['interfaces'])
         self.assertEqual('LEAF2_SERIAL', result['LEAF1']['peer_serial'])
 
     @mock.patch('neutron_lib.db.api.CONTEXT_WRITER.using')
