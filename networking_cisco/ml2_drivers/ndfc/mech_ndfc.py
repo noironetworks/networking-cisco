@@ -50,6 +50,7 @@ from oslo_utils import fileutils
 import sqlalchemy as sa
 from sqlalchemy.ext import baked
 from sqlalchemy import func
+from sqlalchemy.orm import aliased
 
 
 LOG = log.getLogger(__name__)
@@ -654,7 +655,11 @@ class NDFCMechanismDriver(api.MechanismDriver,
             "Network label mapping for host %s physnet %s: interfaces %s",
             host, physnet, mapped_interfaces)
 
-        link_query = session.query(nc_ml2_db.NxosHostLink)
+        link_query = session.query(nc_ml2_db.NxosHostLink, nc_ml2_db.NxosTors)
+        link_query = link_query.outerjoin(
+            nc_ml2_db.NxosTors,
+            nc_ml2_db.NxosTors.tor_serial_number ==
+            nc_ml2_db.NxosHostLink.serial_number)
         link_query = link_query.filter(
             nc_ml2_db.NxosHostLink.host_name == host,
             nc_ml2_db.NxosHostLink.interface_name.in_(mapped_interfaces))
@@ -666,15 +671,15 @@ class NDFCMechanismDriver(api.MechanismDriver,
                 "using full topology", host, mapped_interfaces)
             return topology
 
-        mapped_switches = {row.serial_number for row in link_rows}
+        mapped_switches = {
+            tor.leaf_serial_number if tor else host_link.serial_number
+            for host_link, tor in link_rows}
         LOG.debug(
             "Host %s interfaces %s map to switches %s",
             host, mapped_interfaces, mapped_switches)
 
         filtered_topology = {}
-        for leaf_snum in topology:
-            if leaf_snum in mapped_switches:
-                filtered_topology[leaf_snum] = topology[leaf_snum]
+        self._merge_attachment_rows(filtered_topology, link_rows)
 
         if filtered_topology:
             LOG.debug(
@@ -687,6 +692,38 @@ class NDFCMechanismDriver(api.MechanismDriver,
                 "empty topology, falling back to full topology",
                 host, physnet)
             return topology
+
+    def _get_host_link_physnet_filter(self, physnet):
+        if physnet is None or (isinstance(physnet, str) and not physnet):
+            return None
+
+        matching_label = aliased(nc_ml2_db.NxosHostNetworkLabel)
+        any_label = aliased(nc_ml2_db.NxosHostNetworkLabel)
+        mapped_label = aliased(nc_ml2_db.NxosHostNetworkLabel)
+        mapped_link = aliased(nc_ml2_db.NxosHostLink)
+
+        host_link_has_label = sa.exists().where(sa.and_(
+            matching_label.host_name == nc_ml2_db.NxosHostLink.host_name,
+            matching_label.network_label == physnet,
+            matching_label.interface_name ==
+            nc_ml2_db.NxosHostLink.interface_name))
+        host_has_physnet_labels = sa.exists().where(sa.and_(
+            any_label.host_name == nc_ml2_db.NxosHostLink.host_name,
+            any_label.network_label == physnet))
+        host_has_lldp_for_physnet = sa.exists().where(sa.and_(
+            mapped_label.host_name == nc_ml2_db.NxosHostLink.host_name,
+            mapped_label.network_label == physnet,
+            mapped_link.host_name == mapped_label.host_name,
+            mapped_link.interface_name == mapped_label.interface_name))
+
+        filters = [
+            host_link_has_label,
+            ~host_has_physnet_labels,
+            ~host_has_lldp_for_physnet,
+        ]
+        if hasattr(physnet, 'is_'):
+            filters.append(physnet.is_(None))
+        return sa.or_(*filters)
 
     def _merge_topology(self, attachments, topology, leaf_filter=None):
         for leaf_snum, leaf_info in topology.items():
@@ -738,12 +775,16 @@ class NDFCMechanismDriver(api.MechanismDriver,
             nc_ml2_db.NxosTors.tor_serial_number ==
             nc_ml2_db.NxosHostLink.serial_number)
         query = query.filter(seg_db.NetworkSegment.network_id == network_id)
+        physnet_filter = self._get_host_link_physnet_filter(
+            seg_db.NetworkSegment.physical_network)
+        query = query.filter(physnet_filter)
         query = query.filter(sa.or_(
             nc_ml2_db.NxosHostLink.serial_number.in_(leaf_filter),
             nc_ml2_db.NxosTors.leaf_serial_number.in_(leaf_filter)))
         return query.distinct().all()
 
-    def _get_topology_attachment_rows(self, session, leaf_filter):
+    def _get_topology_attachment_rows(
+            self, session, leaf_filter, physnet=None):
         leaf_filter = sorted(leaf_filter)
         if not leaf_filter:
             return []
@@ -753,6 +794,9 @@ class NDFCMechanismDriver(api.MechanismDriver,
             nc_ml2_db.NxosTors,
             nc_ml2_db.NxosTors.tor_serial_number ==
             nc_ml2_db.NxosHostLink.serial_number)
+        physnet_filter = self._get_host_link_physnet_filter(physnet)
+        if physnet_filter is not None:
+            query = query.filter(physnet_filter)
         query = query.filter(sa.or_(
             nc_ml2_db.NxosHostLink.serial_number.in_(leaf_filter),
             nc_ml2_db.NxosTors.leaf_serial_number.in_(leaf_filter)))
@@ -812,7 +856,7 @@ class NDFCMechanismDriver(api.MechanismDriver,
         return attachments
 
     def _get_topology_attachments_from_neutron_db(
-            self, context, host, host_topology):
+            self, context, host, host_topology, physnet=None):
         attachments = {}
         leaf_filter = set(host_topology)
         for leaf_info in host_topology.values():
@@ -823,13 +867,13 @@ class NDFCMechanismDriver(api.MechanismDriver,
         with db_api.CONTEXT_READER.using(
                 context._plugin_context) as session:
             attachment_rows = self._get_topology_attachment_rows(
-                session, leaf_filter)
+                session, leaf_filter, physnet=physnet)
             self._merge_attachment_rows(attachments, attachment_rows)
 
         LOG.debug(
             "Built topology attachments from Neutron DB for host "
-            "%(host)s: %(attachments)s",
-            {'host': host, 'attachments': attachments})
+            "%(host)s physnet %(physnet)s: %(attachments)s",
+            {'host': host, 'physnet': physnet, 'attachments': attachments})
         return attachments
 
     def get_topology(self, context, network, host, detach=False):
@@ -990,7 +1034,8 @@ class NDFCMechanismDriver(api.MechanismDriver,
                     context, network['id'], host, topology_result))
             openstack_attachments = (
                 self._get_topology_attachments_from_neutron_db(
-                    context, host, topology_result))
+                    context, host, topology_result,
+                    physnet=network.get('provider:physical_network')))
             res = self.ndfc.attach_network(
                 vrf_name, network['name'], vlan_id, topology_result,
                 existing_attachments=existing_attachments,
@@ -1018,7 +1063,8 @@ class NDFCMechanismDriver(api.MechanismDriver,
                     context, network['id'], host, topology_result))
             openstack_attachments = (
                 self._get_topology_attachments_from_neutron_db(
-                    context, host, topology_result))
+                    context, host, topology_result,
+                    physnet=network.get('provider:physical_network')))
             remaining_ports = self._count_bound_ports_on_network(
                 context._plugin_context, network['id'])
             res = self.ndfc.detach_network(
