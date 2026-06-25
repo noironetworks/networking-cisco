@@ -129,12 +129,20 @@ class TestNdMl2PluginAddressScopeVrfCleanup(testlib_api.SqlTestCase):
         super(TestNdMl2PluginAddressScopeVrfCleanup, self).setUp()
         self.plugin = nd_ml2.NdMl2Plugin()
 
+    def _mock_context_reader(self):
+        patcher = mock.patch.object(nd_ml2.db_api.CONTEXT_READER, 'using')
+        self.addCleanup(patcher.stop)
+        mock_reader = patcher.start()
+        mock_reader.return_value = mock.MagicMock()
+        return mock_reader
+
     def _make_context_with_session(self):
         ctx = mock.Mock()
         ctx.session = mock.Mock()
         return ctx, ctx.session
 
     def test_delete_address_scope_deletes_vrf_when_last_reference(self):
+        mock_reader = self._mock_context_reader()
         ctx, session = self._make_context_with_session()
 
         ext_row = extension_db.NdAddressScopeExtension(
@@ -157,8 +165,11 @@ class TestNdMl2PluginAddressScopeVrfCleanup(testlib_api.SqlTestCase):
         nd_ext_mgr = self.plugin.nd_extension_manager
         nd_ext_mgr.delete_vrf_for_address_scope.assert_called_once_with(
             'vrf-ascope')
+        self.assertEqual([mock.call(ctx), mock.call(ctx)],
+                         mock_reader.call_args_list)
 
     def test_delete_address_scope_does_not_delete_vrf_when_others_exist(self):
+        mock_reader = self._mock_context_reader()
         ctx, session = self._make_context_with_session()
 
         ext_row = extension_db.NdAddressScopeExtension(
@@ -180,6 +191,8 @@ class TestNdMl2PluginAddressScopeVrfCleanup(testlib_api.SqlTestCase):
 
         nd_ext_mgr = self.plugin.nd_extension_manager
         nd_ext_mgr.delete_vrf_for_address_scope.assert_not_called()
+        self.assertEqual([mock.call(ctx), mock.call(ctx)],
+                         mock_reader.call_args_list)
 
 
 class TestNdMl2PluginRouterInterfaceValidation(testlib_api.SqlTestCase):
