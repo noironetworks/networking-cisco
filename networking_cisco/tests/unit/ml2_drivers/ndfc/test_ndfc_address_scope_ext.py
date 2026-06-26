@@ -267,6 +267,13 @@ class TestNdMl2PluginAddressScope(testlib_api.SqlTestCase):
 
         self.plugin = nd_ml2.NdMl2Plugin()
 
+    def _mock_context_reader(self):
+        patcher = mock.patch.object(nd_ml2.db_api.CONTEXT_READER, 'using')
+        self.addCleanup(patcher.stop)
+        mock_reader = patcher.start()
+        mock_reader.return_value = mock.MagicMock()
+        return mock_reader
+
     @mock.patch('neutron.plugins.ml2.plugin.Ml2Plugin.get_address_scope')
     def test_get_address_scope_calls_extend_hook(self, mock_get_scope):
         context = mock.Mock()
@@ -318,6 +325,7 @@ class TestNdMl2PluginAddressScope(testlib_api.SqlTestCase):
     @mock.patch('neutron.plugins.ml2.plugin.Ml2Plugin.delete_address_scope')
     def test_delete_address_scope_cleans_up_vrf(
             self, mock_base_delete, mock_delete_vrf):
+        mock_reader = self._mock_context_reader()
         context = mock.Mock()
         session = mock.Mock()
         context.session = session
@@ -333,11 +341,14 @@ class TestNdMl2PluginAddressScope(testlib_api.SqlTestCase):
 
         mock_base_delete.assert_called_once_with(context, 'scope-id')
         mock_delete_vrf.assert_called_once_with('vrf-1')
+        self.assertEqual([mock.call(context), mock.call(context)],
+                         mock_reader.call_args_list)
 
     @mock.patch.object(nd_manager.NdManager, 'delete_vrf_for_address_scope')
     @mock.patch('neutron.plugins.ml2.plugin.Ml2Plugin.delete_address_scope')
     def test_delete_address_scope_keeps_vrf_when_other_scopes_exist(
             self, mock_base_delete, mock_delete_vrf):
+        mock_reader = self._mock_context_reader()
         context = mock.Mock()
         session = mock.Mock()
         context.session = session
@@ -354,11 +365,14 @@ class TestNdMl2PluginAddressScope(testlib_api.SqlTestCase):
 
         mock_base_delete.assert_called_once_with(context, 'scope-id')
         mock_delete_vrf.assert_not_called()
+        self.assertEqual([mock.call(context), mock.call(context)],
+                         mock_reader.call_args_list)
 
     @mock.patch.object(nd_manager.NdManager, 'delete_vrf_for_address_scope')
     @mock.patch('neutron.plugins.ml2.plugin.Ml2Plugin.delete_address_scope')
     def test_delete_address_scope_skips_vrf_when_no_nd_vrf_name(
             self, mock_base_delete, mock_delete_vrf):
+        mock_reader = self._mock_context_reader()
         context = mock.Mock()
         session = mock.Mock()
         context.session = session
@@ -370,12 +384,14 @@ class TestNdMl2PluginAddressScope(testlib_api.SqlTestCase):
 
         mock_base_delete.assert_called_once_with(context, 'scope-id')
         mock_delete_vrf.assert_not_called()
+        mock_reader.assert_called_once_with(context)
 
     @mock.patch.object(nd_manager.NdManager, 'delete_vrf_for_address_scope')
     @mock.patch('neutron_lib.context.get_admin_context')
     @mock.patch('neutron.plugins.ml2.plugin.Ml2Plugin.delete_address_scope')
     def test_delete_address_scope_uses_admin_session_when_missing(
             self, mock_base_delete, mock_get_admin_ctx, mock_delete_vrf):
+        mock_reader = self._mock_context_reader()
         context = mock.Mock()
         context.session = None
 
@@ -397,12 +413,15 @@ class TestNdMl2PluginAddressScope(testlib_api.SqlTestCase):
         mock_get_admin_ctx.assert_called_once_with()
         mock_base_delete.assert_called_once_with(context, 'scope-id')
         mock_delete_vrf.assert_called_once_with('vrf-2')
+        self.assertEqual([mock.call(admin_ctx), mock.call(admin_ctx)],
+                         mock_reader.call_args_list)
 
     @mock.patch.object(nd_manager.NdManager, 'delete_vrf_for_address_scope')
     @mock.patch('networking_cisco.plugins.ml2.nd_ml2.LOG')
     @mock.patch('neutron.plugins.ml2.plugin.Ml2Plugin.delete_address_scope')
     def test_delete_address_scope_logs_on_extension_lookup_error(
             self, mock_base_delete, mock_log, mock_delete_vrf):
+        mock_reader = self._mock_context_reader()
         context = mock.Mock()
         session = mock.Mock()
         context.session = session
@@ -417,6 +436,7 @@ class TestNdMl2PluginAddressScope(testlib_api.SqlTestCase):
             'Failed to load NdAddressScopeExtension for %s', 'scope-id')
         mock_base_delete.assert_called_once_with(context, 'scope-id')
         mock_delete_vrf.assert_not_called()
+        mock_reader.assert_called_once_with(context)
 
 
 class TestNdManager(testlib_api.SqlTestCase):
