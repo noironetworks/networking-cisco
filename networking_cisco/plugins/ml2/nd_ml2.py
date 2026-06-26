@@ -148,18 +148,20 @@ class NdMl2Plugin(ml2_plugin.Ml2Plugin):
         return res_list
 
     def delete_address_scope(self, context, id):
-        session = getattr(context, 'session', None)
-        if session is None:
-            admin_ctx = n_context.get_admin_context()
-            session = admin_ctx.session
+        db_context = context
+        if getattr(db_context, 'session', None) is None:
+            db_context = n_context.get_admin_context()
         nd_vrf_name = None
         delete_vrf = False
         try:
-            ext_row = (session.query(extension_db.NdAddressScopeExtension)
-                       .filter_by(address_scope_id=id)
-                       .first())
-            if ext_row is not None:
-                nd_vrf_name = ext_row.nd_vrf_name
+            with db_api.CONTEXT_READER.using(db_context):
+                session = db_context.session
+                ext_model = extension_db.NdAddressScopeExtension
+                ext_row = (session.query(ext_model)
+                           .filter_by(address_scope_id=id)
+                           .first())
+                if ext_row is not None:
+                    nd_vrf_name = ext_row.nd_vrf_name
         except Exception:
             LOG.exception("Failed to load NdAddressScopeExtension for %s", id)
 
@@ -167,13 +169,14 @@ class NdMl2Plugin(ml2_plugin.Ml2Plugin):
 
         if nd_vrf_name:
             try:
-                others = (session.query(extension_db.NdAddressScopeExtension)
-                          .filter(extension_db.NdAddressScopeExtension.
-                                  nd_vrf_name == nd_vrf_name,
-                                  extension_db.NdAddressScopeExtension.
-                                  address_scope_id != id)
-                          .count())
-                delete_vrf = (others == 0)
+                with db_api.CONTEXT_READER.using(db_context):
+                    session = db_context.session
+                    ext_model = extension_db.NdAddressScopeExtension
+                    others = (session.query(ext_model)
+                              .filter(ext_model.nd_vrf_name == nd_vrf_name,
+                                      ext_model.address_scope_id != id)
+                              .count())
+                    delete_vrf = (others == 0)
             except Exception:
                 LOG.exception(
                     "Failed to check other NdAddressScopeExtension rows for "
