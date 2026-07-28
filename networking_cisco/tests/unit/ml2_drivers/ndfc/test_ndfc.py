@@ -988,6 +988,123 @@ class TestNDFC(TestNDFCBase, test_plugin.Ml2PluginV2TestCase):
         snums = {entry['serialNumber'] for entry in lan_list}
         self.assertEqual(snums, {'leaf1', 'leaf2'})
 
+    def test_detach_v1_partial_when_vpc_peer_has_active_interfaces(self):
+        """Use partial detach when only the vPC peer remains in use."""
+        vrf_name = 'test_vrf'
+        network_name = 'test_network'
+        vlan = '100'
+
+        leaf_attachments = {
+            'leaf1': {
+                'interfaces': ['eth1'],
+                'peer_serial': 'leaf2'
+            }
+        }
+        exist_attach = {
+            'leaf1': {
+                'interfaces': ['eth1']
+            },
+            'leaf2': {
+                'interfaces': ['eth5']
+            }
+        }
+        remaining_attach = self.ndfc_instance._remove_attachments(
+            exist_attach, leaf_attachments)
+
+        detach_payload = self.ndfc_instance._create_detach_payload(
+            leaf_attachments, remaining_attach, vrf_name, network_name, vlan,
+            exist_attach=exist_attach,
+            network_has_other_ports=True)
+
+        lan_list = detach_payload[0]['lanAttachList']
+        self.assertEqual(len(lan_list), 2)
+        entries = {entry['serialNumber']: entry for entry in lan_list}
+        self.assertEqual(entries['leaf1']['deployment'], 'true')
+        self.assertEqual(entries['leaf1']['switchPorts'], '')
+        self.assertEqual(entries['leaf1']['detachSwitchPorts'], 'eth1')
+        self.assertEqual(entries['leaf2']['deployment'], 'true')
+        self.assertEqual(entries['leaf2']['switchPorts'], 'eth5')
+
+    def test_detach_v1_full_when_all_vpc_peer_interfaces_detached(self):
+        """Fully detach when no interfaces remain on either vPC peer."""
+        vrf_name = 'test_vrf'
+        network_name = 'test_network'
+        vlan = '100'
+
+        leaf_attachments = {
+            'leaf1': {
+                'interfaces': ['eth1'],
+                'peer_serial': 'leaf2'
+            },
+            'leaf2': {
+                'interfaces': ['eth1'],
+                'peer_serial': 'leaf1'
+            }
+        }
+        exist_attach = {
+            'leaf1': {
+                'interfaces': ['eth1']
+            },
+            'leaf2': {
+                'interfaces': ['eth1']
+            }
+        }
+        remaining_attach = self.ndfc_instance._remove_attachments(
+            exist_attach, leaf_attachments)
+
+        detach_payload = self.ndfc_instance._create_detach_payload(
+            leaf_attachments, remaining_attach, vrf_name, network_name, vlan,
+            exist_attach=exist_attach,
+            network_has_other_ports=True)
+
+        lan_list = detach_payload[0]['lanAttachList']
+        self.assertEqual(len(lan_list), 2)
+        for entry in lan_list:
+            self.assertFalse(entry['deployment'])
+            self.assertEqual(entry['switchPorts'], '')
+            self.assertEqual(entry['detachSwitchPorts'], 'eth1')
+
+    def test_detach_v1_partial_when_vpc_peer_has_other_interface(self):
+        """Preserve an interface that is not being detached on the peer."""
+        vrf_name = 'test_vrf'
+        network_name = 'test_network'
+        vlan = '100'
+
+        leaf_attachments = {
+            'leaf1': {
+                'interfaces': ['eth1'],
+                'peer_serial': 'leaf2'
+            },
+            'leaf2': {
+                'interfaces': ['eth1'],
+                'peer_serial': 'leaf1'
+            }
+        }
+        exist_attach = {
+            'leaf1': {
+                'interfaces': ['eth1']
+            },
+            'leaf2': {
+                'interfaces': ['eth1', 'eth2']
+            }
+        }
+        remaining_attach = self.ndfc_instance._remove_attachments(
+            exist_attach, leaf_attachments)
+
+        detach_payload = self.ndfc_instance._create_detach_payload(
+            leaf_attachments, remaining_attach, vrf_name, network_name, vlan,
+            exist_attach=exist_attach,
+            network_has_other_ports=True)
+
+        lan_list = detach_payload[0]['lanAttachList']
+        self.assertEqual(len(lan_list), 2)
+        entries = {entry['serialNumber']: entry for entry in lan_list}
+        for entry in entries.values():
+            self.assertEqual(entry['deployment'], 'true')
+            self.assertEqual(entry['detachSwitchPorts'], 'eth1')
+        self.assertEqual(entries['leaf1']['switchPorts'], '')
+        self.assertEqual(entries['leaf2']['switchPorts'], 'eth2')
+
     def test_create_detach_payload_v2_partial_shared_switch(self):
         vrf_name = 'test_vrf'
         network_name = 'test_network'
@@ -1196,8 +1313,8 @@ class TestNDFC(TestNDFCBase, test_plugin.Ml2PluginV2TestCase):
             self.assertFalse(att['attach'])
             self.assertEqual(att['interfaces'], [])
 
-    def test_detach_v2_skips_vpc_peer_with_active_interfaces(self):
-        """vPC peer still has interfaces from another compute — skip it."""
+    def test_detach_v2_partial_when_vpc_peer_has_active_interfaces(self):
+        """Use partial detach when only the vPC peer remains in use."""
         vrf_name = 'test_vrf'
         network_name = 'test_network'
         vlan = '100'
@@ -1227,7 +1344,88 @@ class TestNDFC(TestNDFCBase, test_plugin.Ml2PluginV2TestCase):
         self.assertEqual(len(attachments), 1)
         self.assertEqual(attachments[0]['switchId'], 'leaf1')
         self.assertFalse(attachments[0]['attach'])
-        self.assertEqual(attachments[0]['interfaces'], [])
+        self.assertEqual(
+            attachments[0]['interfaces'],
+            [{'interfaceRange': 'eth1', 'mode': 'trunk'}])
+
+    def test_detach_v2_full_when_all_vpc_peer_interfaces_detached(self):
+        """Fully detach when no interfaces remain on either vPC peer."""
+        vrf_name = 'test_vrf'
+        network_name = 'test_network'
+        vlan = '100'
+
+        leaf_attachments = {
+            'leaf1': {
+                'interfaces': ['eth1'],
+                'peer_serial': 'leaf2'
+            },
+            'leaf2': {
+                'interfaces': ['eth1'],
+                'peer_serial': 'leaf1'
+            }
+        }
+        exist_attach = {
+            'leaf1': {
+                'interfaces': ['eth1']
+            },
+            'leaf2': {
+                'interfaces': ['eth1']
+            }
+        }
+
+        self.ndfc_instance.ndfc_obj.nd_new_version = True
+        detach_payload_v2 = self.ndfc_instance._create_detach_payload_v2(
+            leaf_attachments, vrf_name, network_name, vlan,
+            exist_attach=exist_attach,
+            network_has_other_ports=True)
+
+        attachments = detach_payload_v2['attachments']
+        self.assertEqual(len(attachments), 2)
+        self.assertEqual(
+            {attachment['switchId'] for attachment in attachments},
+            {'leaf1', 'leaf2'})
+        for attachment in attachments:
+            self.assertFalse(attachment['attach'])
+            self.assertEqual(attachment['interfaces'], [])
+
+    def test_detach_v2_partial_when_vpc_peer_has_other_interface(self):
+        """Preserve an interface that is not being detached on the peer."""
+        vrf_name = 'test_vrf'
+        network_name = 'test_network'
+        vlan = '100'
+
+        leaf_attachments = {
+            'leaf1': {
+                'interfaces': ['eth1'],
+                'peer_serial': 'leaf2'
+            },
+            'leaf2': {
+                'interfaces': ['eth1'],
+                'peer_serial': 'leaf1'
+            }
+        }
+        exist_attach = {
+            'leaf1': {
+                'interfaces': ['eth1']
+            },
+            'leaf2': {
+                'interfaces': ['eth1', 'eth2']
+            }
+        }
+
+        self.ndfc_instance.ndfc_obj.nd_new_version = True
+        detach_payload_v2 = self.ndfc_instance._create_detach_payload_v2(
+            leaf_attachments, vrf_name, network_name, vlan,
+            exist_attach=exist_attach,
+            network_has_other_ports=True)
+
+        attachments = detach_payload_v2['attachments']
+        self.assertEqual(len(attachments), 2)
+        for attachment in attachments:
+            self.assertFalse(attachment['attach'])
+            self.assertEqual(
+                attachment['interfaces'],
+                [{'interfaceRange': 'eth1', 'mode': 'trunk'}])
 
     def test_detach_v1_forces_full_detach_when_no_ports_remain(self):
         vrf_name = 'test_vrf'
