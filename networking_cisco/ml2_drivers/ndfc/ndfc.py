@@ -480,7 +480,15 @@ class Ndfc:
                 continue
             has_ports = (attach_snum.get("switchPorts") or
                          attach_snum.get("torPorts"))
-            if not has_ports or not network_has_other_ports:
+            peer_serial = leaf_info.get('peer_serial')
+            peer_info_to_detach = leaf_attachments.get(peer_serial, {})
+            peer_has_others = (
+                network_has_other_ports and peer_serial and
+                self._switch_has_other_interfaces(
+                    exist_attach, peer_serial, peer_info_to_detach))
+
+            if ((not has_ports and not peer_has_others) or
+                    not network_has_other_ports):
                 if has_ports and not network_has_other_ports:
                     LOG.warning(
                         "Leaf %s has remaining interfaces on ND but "
@@ -489,17 +497,18 @@ class Ndfc:
                     attach_snum["switchPorts"] = ""
                     attach_snum["torPorts"] = ""
                 attach_snum["deployment"] = False
+            elif peer_has_others and not has_ports:
+                LOG.debug(
+                    "Leaf %s: legacy partial detach — its vPC peer has "
+                    "other interfaces", leaf_snum)
             if leaf_snum in leaf_attachments:
                 if leaf_attachments[leaf_snum].get("interfaces") is not None:
                     interfaces = leaf_attachments[leaf_snum].get("interfaces")
                     attach_snum["detachSwitchPorts"] = ','.join(interfaces)
             attach_list.append(attach_snum)
 
-            peer_serial = leaf_info.get('peer_serial')
             if peer_serial and peer_serial not in collated_attach:
-                if (exist_attach and peer_serial in exist_attach and
-                        (exist_attach[peer_serial].get('interfaces') or
-                         exist_attach[peer_serial].get('tor_sw_intf_map'))):
+                if peer_has_others:
                     LOG.debug(
                         "Skipping vPC peer detach for leaf %s peer %s "
                         "— peer still has active ND interfaces",
@@ -567,11 +576,18 @@ class Ndfc:
                 network_has_other_ports and
                 self._switch_has_other_interfaces(
                     exist_attach, leaf_snum, leaf_info_to_detach))
+            peer_serial = leaf_info_to_detach.get('peer_serial')
+            peer_info_to_detach = leaf_attachments.get(peer_serial, {})
+            peer_has_others = (
+                network_has_other_ports and peer_serial and
+                self._switch_has_other_interfaces(
+                    exist_attach, peer_serial, peer_info_to_detach))
 
-            if switch_has_others:
+            if switch_has_others or peer_has_others:
                 LOG.debug(
-                    "Leaf %s: partial detach — sending specific "
-                    "interfaces to remove: %s",
+                    "Leaf %s: partial detach — this switch or its vPC peer "
+                    "has other interfaces; sending specific interfaces to "
+                    "remove: %s",
                     leaf_snum, interfaces_to_detach)
                 attachment_entry = {
                     "attach": False,
@@ -583,8 +599,9 @@ class Ndfc:
                 attach_list.append(attachment_entry)
             else:
                 LOG.debug(
-                    "Leaf %s: full detach — no other interfaces on "
-                    "this switch for network %s", leaf_snum, network_name)
+                    "Leaf %s: full detach — no other interfaces in its "
+                    "vPC attachment domain for network %s",
+                    leaf_snum, network_name)
                 attachment_entry = {
                     "attach": False,
                     "interfaces": [],
@@ -594,13 +611,7 @@ class Ndfc:
                 }
                 attach_list.append(attachment_entry)
 
-                peer_serial = leaf_info_to_detach.get('peer_serial')
                 if peer_serial and peer_serial not in leaf_attachments:
-                    peer_has_others = (
-                        network_has_other_ports and
-                        exist_attach and peer_serial in exist_attach and
-                        (exist_attach[peer_serial].get('interfaces') or
-                         exist_attach[peer_serial].get('tor_sw_intf_map')))
                     if peer_has_others:
                         LOG.debug(
                             "Skipping vPC peer detach for leaf %s "
