@@ -162,6 +162,16 @@ class Ndfc:
         data = self.ndfc_obj.get_network_switch_map(self.fabric, network)
         return data
 
+    def _get_deploy_payload_v2(self, network):
+        switch_map = self.ndfc_obj.get_network_switch_map(
+            self.fabric, network)
+        if not switch_map:
+            return {}
+        return {
+            "networkNames": [network],
+            "switchIds": list(switch_map.keys())
+        }
+
     def _get_deploy_payload_attach(self, leaf_attachments, network):
         dct = {}
         for snum in leaf_attachments:
@@ -323,7 +333,10 @@ class Ndfc:
         payload = self._get_update_network_payload(
                 fabric, network_name, gw, vrf_name)
         LOG.debug("Payload for update network is %s", payload)
-        deploy_payload = self._get_deploy_payload(network_name)
+        if self.ndfc_obj.nd_new_version:
+            deploy_payload = self._get_deploy_payload_v2(network_name)
+        else:
+            deploy_payload = self._get_deploy_payload(network_name)
         LOG.debug("Deploy payload is %s", deploy_payload)
         if len(deploy_payload) == 0:
             LOG.debug("No switches found, only doing an update network, "
@@ -991,7 +1004,10 @@ class Ndfc:
 
     def redeploy_network(self, network_name):
         fabric = self.fabric
-        deploy_payload = self._get_deploy_payload(network_name)
+        if self.ndfc_obj.nd_new_version:
+            deploy_payload = self._get_deploy_payload_v2(network_name)
+        else:
+            deploy_payload = self._get_deploy_payload(network_name)
         LOG.debug("Redeploy payload for fabric %s network %s is %s",
                   fabric, network_name, deploy_payload)
         ret = self.ndfc_obj.redeploy_network(fabric, deploy_payload)
