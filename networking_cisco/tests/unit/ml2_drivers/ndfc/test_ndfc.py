@@ -87,7 +87,7 @@ class TestNDFC(TestNDFCBase, test_plugin.Ml2PluginV2TestCase):
         self.assertTrue(ret)
 
     @mock.patch.object(ndfc_helper.NdfcHelper, 'update_network')
-    @mock.patch.object(ndfc.Ndfc, '_get_deploy_payload', return_value=[])
+    @mock.patch.object(ndfc.Ndfc, '_get_deploy_payload_v2', return_value=[])
     @mock.patch.object(ndfc_helper.NdfcHelper, 'get_network_info')
     def test_update_network_sets_ipv6_gateway_v2(
             self, mock_get_network_info, mock_get_deploy_payload,
@@ -126,7 +126,7 @@ class TestNDFC(TestNDFCBase, test_plugin.Ml2PluginV2TestCase):
         self.assertEqual(gw_v6, l3_data['gatewayIpv6Address'])
 
     @mock.patch.object(ndfc_helper.NdfcHelper, 'update_network')
-    @mock.patch.object(ndfc.Ndfc, '_get_deploy_payload', return_value=[])
+    @mock.patch.object(ndfc.Ndfc, '_get_deploy_payload_v2', return_value=[])
     @mock.patch.object(ndfc_helper.NdfcHelper, 'get_network_info')
     def test_update_network_clears_gateways_on_empty_gw_v2(
             self, mock_get_network_info, mock_get_deploy_payload,
@@ -222,7 +222,7 @@ class TestNDFC(TestNDFCBase, test_plugin.Ml2PluginV2TestCase):
         self.assertEqual('', tmpl_cfg['gatewayIpV6Address'])
 
     @mock.patch.object(ndfc_helper.NdfcHelper, 'update_network')
-    @mock.patch.object(ndfc.Ndfc, '_get_deploy_payload', return_value=[])
+    @mock.patch.object(ndfc.Ndfc, '_get_deploy_payload_v2', return_value=[])
     @mock.patch.object(ndfc_helper.NdfcHelper, 'get_network_info')
     def test_update_network_sets_vrf_in_payload_v2(
             self, mock_get_network_info, mock_get_deploy_payload,
@@ -1589,7 +1589,7 @@ class TestNDFC(TestNDFCBase, test_plugin.Ml2PluginV2TestCase):
             self.ndfc_instance.fabric, vrf_name)
 
     @mock.patch.object(ndfc_helper.NdfcHelper, 'update_network')
-    @mock.patch.object(ndfc.Ndfc, '_get_deploy_payload', return_value=[])
+    @mock.patch.object(ndfc.Ndfc, '_get_deploy_payload_v2', return_value=[])
     @mock.patch.object(ndfc_helper.NdfcHelper, 'get_network_info')
     def test_update_network_removes_stale_empty_ipv6_on_ipv4_set_v2(
             self, mock_get_network_info, mock_get_deploy_payload,
@@ -1624,7 +1624,7 @@ class TestNDFC(TestNDFCBase, test_plugin.Ml2PluginV2TestCase):
         self.assertNotIn('gatewayIpv6Address', l3_data)
 
     @mock.patch.object(ndfc_helper.NdfcHelper, 'update_network')
-    @mock.patch.object(ndfc.Ndfc, '_get_deploy_payload', return_value=[])
+    @mock.patch.object(ndfc.Ndfc, '_get_deploy_payload_v2', return_value=[])
     @mock.patch.object(ndfc_helper.NdfcHelper, 'get_network_info')
     def test_update_network_removes_stale_empty_ipv4_on_ipv6_set_v2(
             self, mock_get_network_info, mock_get_deploy_payload,
@@ -1658,18 +1658,91 @@ class TestNDFC(TestNDFCBase, test_plugin.Ml2PluginV2TestCase):
         self.assertNotIn('gatewayIpv4Address', l3_data)
         self.assertEqual(gw_v6, l3_data['gatewayIpv6Address'])
 
-    @mock.patch.object(ndfc_helper.NdfcHelper, 'redeploy_network')
-    @mock.patch.object(ndfc.Ndfc, '_get_deploy_payload')
-    def test_redeploy_network_uses_helper_with_payload(self,
-            mock_get_deploy_payload, mock_helper_redeploy):
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'get_network_switch_map')
+    def test_get_deploy_payload_v2_uses_wire_format(
+            self, mock_get_network_switch_map):
         network_name = 'nd-net-1'
-        deploy_payload = {'some': 'payload'}
-        mock_get_deploy_payload.return_value = deploy_payload
+        mock_get_network_switch_map.return_value = {
+            'FDO28440J01': network_name,
+            'FDO28440J0M': network_name,
+        }
+
+        result = self.ndfc_instance._get_deploy_payload_v2(network_name)
+
+        mock_get_network_switch_map.assert_called_once_with(
+            self.ndfc_instance.fabric, network_name)
+        self.assertEqual(
+            {
+                'networkNames': [network_name],
+                'switchIds': ['FDO28440J01', 'FDO28440J0M'],
+            }, result)
+
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'get_network_switch_map',
+                       return_value={})
+    def test_get_deploy_payload_v2_preserves_empty_payload(
+            self, mock_get_network_switch_map):
+        result = self.ndfc_instance._get_deploy_payload_v2('nd-net-1')
+
+        self.assertEqual({}, result)
+
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'update_deploy_network')
+    @mock.patch.object(ndfc.Ndfc, '_get_deploy_payload_v2')
+    @mock.patch.object(ndfc.Ndfc, '_get_update_network_payload')
+    def test_update_network_uses_v2_deploy_payload(
+            self, mock_get_update_payload, mock_get_deploy_payload_v2,
+            mock_update_deploy_network):
+        network_name = 'nd-net-1'
+        update_payload = {'networkName': network_name, 'l3Data': {}}
+        deploy_payload = {
+            'networkNames': [network_name],
+            'switchIds': ['FDO28440J01', 'FDO28440J0M'],
+        }
+        mock_get_update_payload.return_value = update_payload
+        mock_get_deploy_payload_v2.return_value = deploy_payload
+        mock_update_deploy_network.return_value = True
+        self.ndfc_instance.ndfc_obj.nd_new_version = True
+
+        result = self.ndfc_instance.update_network(
+            'nd-vrf-1', network_name, '100', '192.0.2.1/24', 'physnet1')
+
+        mock_get_deploy_payload_v2.assert_called_once_with(network_name)
+        mock_update_deploy_network.assert_called_once_with(
+            self.ndfc_instance.fabric, network_name, update_payload,
+            deploy_payload)
+        self.assertTrue(result)
+
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'redeploy_network')
+    @mock.patch.object(ndfc.Ndfc, '_get_deploy_payload_v2')
+    def test_redeploy_network_uses_v2_wire_payload(self,
+            mock_get_deploy_payload_v2, mock_helper_redeploy):
+        network_name = 'nd-net-1'
+        deploy_payload = {
+            'networkNames': [network_name],
+            'switchIds': ['FDO28440J01', 'FDO28440J0M'],
+        }
+        mock_get_deploy_payload_v2.return_value = deploy_payload
         mock_helper_redeploy.return_value = True
+        self.ndfc_instance.ndfc_obj.nd_new_version = True
 
         result = self.ndfc_instance.redeploy_network(network_name)
 
-        mock_get_deploy_payload.assert_called_once_with(network_name)
+        mock_get_deploy_payload_v2.assert_called_once_with(network_name)
+        mock_helper_redeploy.assert_called_once_with(
+            self.ndfc_instance.fabric, deploy_payload)
+        self.assertTrue(result)
+
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'redeploy_network')
+    @mock.patch.object(ndfc.Ndfc, '_get_deploy_payload')
+    def test_redeploy_network_preserves_legacy_payload(self,
+            mock_get_deploy_payload, mock_helper_redeploy):
+        network_name = 'nd-net-1'
+        deploy_payload = {'FDO28440J01': network_name}
+        mock_get_deploy_payload.return_value = deploy_payload
+        mock_helper_redeploy.return_value = True
+        self.ndfc_instance.ndfc_obj.nd_new_version = False
+
+        result = self.ndfc_instance.redeploy_network(network_name)
+
         mock_helper_redeploy.assert_called_once_with(
             self.ndfc_instance.fabric, deploy_payload)
         self.assertTrue(result)
