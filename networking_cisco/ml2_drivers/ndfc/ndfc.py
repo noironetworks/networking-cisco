@@ -245,7 +245,7 @@ class Ndfc:
         fabric_data['gatewayOnBorder'] = self.enable_l3_on_border
         l3_data['fabricData'] = fabric_data
         if tag is not None:
-            l3_data['tag'] = int(tag)
+            l3_data['routingTag'] = int(tag)
         l3_data['netflow'] = False
         l3_data['igmpVersion'] = 2
         network_config['l3Data'] = l3_data
