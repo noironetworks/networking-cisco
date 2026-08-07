@@ -639,6 +639,7 @@ class TestNDFC(TestNDFCBase, test_plugin.Ml2PluginV2TestCase):
             vrf_name, network_name, vlan)
         template_cfg = payload['networkTemplateConfig']
         self.assertFalse(template_cfg['enableL3OnBorder'])
+        self.assertEqual(12345, template_cfg['tag'])
 
         self.ndfc_instance.enable_l3_on_border = True
         payload = self.ndfc_instance._get_create_network_payload(
@@ -659,6 +660,7 @@ class TestNDFC(TestNDFCBase, test_plugin.Ml2PluginV2TestCase):
         l3_data = payload['networks'][0]['l3Data']
         self.assertIn('fabricData', l3_data)
         self.assertFalse(l3_data['fabricData']['gatewayOnBorder'])
+        self.assertEqual(12345, l3_data['routingTag'])
 
         self.ndfc_instance.enable_l3_on_border = True
         payload = self.ndfc_instance._get_create_network_payload_v2(
