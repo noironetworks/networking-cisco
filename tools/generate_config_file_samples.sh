@@ -21,10 +21,7 @@ if ! type "$GEN_CMD" > /dev/null; then
     exit 1
 fi
 
-config_files="etc/oslo-config-generator/ml2_nexus.ini
-              etc/oslo-config-generator/ml2_nexus_vxlan_type_driver.ini
-              etc/oslo-config-generator/ml2_ucsm.ini
-              etc/oslo-config-generator/cisco_router_plugin.ini"
+config_files="etc/oslo-config-generator/cisco_router_plugin.ini"
 
 for config_file in $config_files; do
     $GEN_CMD --config-file=$config_file

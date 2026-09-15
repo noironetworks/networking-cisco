@@ -27,9 +27,7 @@ apidoc_excluded_paths = [
     "ml2_drivers/n1kv",
     "plugins/cisco/db/l3/l3_router_appliance_db.py",
     "tests/unit/ml2_drivers/ncs",
-    "tests/unit/ml2_drivers/n1kv",
-    "ml2_drivers/ucsm/deprecated_network_driver.py",
-    "ml2_drivers/ucsm/ucs_urllib2.py"
+    "tests/unit/ml2_drivers/n1kv"
 ]
 apidoc_separate_modules = True
 
@@ -94,11 +92,7 @@ latex_documents = [
 
 # -- Options for oslo_config.sphinxconfiggen ---------------------------------
 
-_config_generator_config_files = [
-    'ml2_nexus.ini',
-    'ml2_nexus_vxlan_type_driver.ini',
-    'ml2_ucsm.ini'
-]
+_config_generator_config_files = []
 
 def _get_config_generator_config_definition(config_file):
     config_file_path = '../../etc/oslo-config-generator/%s' % config_file

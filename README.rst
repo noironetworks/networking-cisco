@@ -11,15 +11,6 @@ neutron to best utilise your Cisco products with OpenStack.
 Drivers for Cisco Products
 ==========================
 
-* Nexus 9000 Series Switches
-
-  * ML2 Mechanism driver - cisco_nexus
-  * ML2 VXLAN Type driver - nexus_vxlan
-
-* UCS Manager
-
-  * ML2 Mechanism driver - cisco_ucsm
-
 * ASR 1000 Series
 
   * Neutron Service Plugins - cisco_l3_routing
@@ -43,11 +34,6 @@ Drivers for Cisco Products
 
   * *No longer supported.* Removed in release 6.0.0
   * Code removed by commit 31e4880299d04ceb399aa38097fc5f2b26e30ab1
-
-* Nexus 1000v
-
-  * *No longer supported.* Removed in release 6.0.0
-  * Code removed by commit 0730ec9e6b76b3c1e75082e9dd1af55c9faeb34c
 
 * CSR 1000v series
 
