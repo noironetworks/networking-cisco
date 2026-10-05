@@ -439,12 +439,17 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
             segment.NETWORK_TYPE: ndfc_const.TYPE_ND,
             'id': 'nd-seg-id',
         }
+        dynamic_segment = {
+            segment.NETWORK_TYPE: constants.TYPE_VLAN,
+            'id': 'dynamic-vlan-id',
+        }
 
         fake_context = mock.Mock()
         fake_context.current = {'id': 'port-1', 'network_id': 'net-nd'}
         fake_context.network = mock.Mock(current=network,
-                                         segments_to_bind=[nd_segment])
-        fake_context.segments_to_bind = [nd_segment]
+                                         segments_to_bind=[dynamic_segment,
+                                                           nd_segment])
+        fake_context.segments_to_bind = [dynamic_segment, nd_segment]
         fake_context.host = 'host-1'
         fake_context.host_agents = mock.Mock(return_value=[])
         fake_context.allocate_dynamic_segment = mock.Mock(
@@ -459,7 +464,26 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
             segment.NETWORK_TYPE: constants.TYPE_VLAN,
             segment.PHYSICAL_NETWORK: 'physnet1',
         })
-        fake_context.continue_binding.assert_called_once()
+        fake_context.continue_binding.assert_called_once_with(
+            nd_segment['id'],
+            [fake_context.allocate_dynamic_segment.return_value])
+
+    def test_bind_port_nd_without_physical_network_does_not_allocate(self):
+        network = {'id': 'net-nd'}
+        nd_segment = {
+            segment.NETWORK_TYPE: ndfc_const.TYPE_ND,
+            'id': 'nd-seg-id',
+        }
+
+        fake_context = mock.Mock()
+        fake_context.current = {'id': 'port-1', 'network_id': 'net-nd'}
+        fake_context.network = mock.Mock(current=network)
+        fake_context.segments_to_bind = [nd_segment]
+
+        self.ndfc_mech.bind_port(fake_context)
+
+        fake_context.allocate_dynamic_segment.assert_not_called()
+        fake_context.continue_binding.assert_not_called()
 
     def test_bind_port_non_nd_noop(self):
         network = {
@@ -482,6 +506,32 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
         self.ndfc_mech.bind_port(fake_context)
 
         fake_context.allocate_dynamic_segment.assert_not_called()
+        fake_context.continue_binding.assert_not_called()
+
+    def test_bind_port_does_not_continue_when_vlan_allocation_fails(self):
+        network = {
+            'id': 'net-nd',
+            'provider:physical_network': 'physnet1',
+        }
+        nd_segment = {
+            segment.NETWORK_TYPE: ndfc_const.TYPE_ND,
+            'id': 'nd-seg-id',
+        }
+
+        fake_context = mock.Mock()
+        fake_context.current = {'id': 'port-1', 'network_id': 'net-nd'}
+        fake_context.network = mock.Mock(current=network)
+        fake_context.segments_to_bind = [nd_segment]
+        fake_context.host = 'host-1'
+        fake_context.host_agents = mock.Mock(return_value=[])
+        fake_context.allocate_dynamic_segment.return_value = None
+
+        self.ndfc_mech.bind_port(fake_context)
+
+        fake_context.allocate_dynamic_segment.assert_called_once_with({
+            segment.NETWORK_TYPE: constants.TYPE_VLAN,
+            segment.PHYSICAL_NETWORK: 'physnet1',
+        })
         fake_context.continue_binding.assert_not_called()
 
     @mock.patch('neutron.db.segments_db.get_dynamic_segment')

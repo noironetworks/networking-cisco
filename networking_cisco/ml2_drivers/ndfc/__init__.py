@@ -14,8 +14,28 @@
 #    under the License.
 
 from neutron.api import extensions as old_extensions
+from neutron.db import segments_db
+from neutron.plugins.ml2 import driver_context
 
 from networking_cisco.ml2_drivers.ndfc import extension_overrides
+
+
+# Existing dynamic VLANs must not bypass NDFC's initial ND binding level.
+if not getattr(driver_context.NetworkContext,
+               '_networking_cisco_compat', False):
+    _original_network_context_init = driver_context.NetworkContext.__init__
+
+    def _network_context_init(self, plugin, plugin_context, network,
+                              original_network=None, segments=None):
+        if segments is None:
+            segments = segments_db.get_network_segments(
+                plugin_context, network['id'])
+        _original_network_context_init(
+            self, plugin, plugin_context, network,
+            original_network=original_network, segments=segments)
+
+    driver_context.NetworkContext.__init__ = _network_context_init
+    driver_context.NetworkContext._networking_cisco_compat = True
 
 
 # Monkeypatch Neutron to allow overriding its own extension
