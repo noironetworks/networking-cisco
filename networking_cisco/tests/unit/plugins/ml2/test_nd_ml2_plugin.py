@@ -123,6 +123,35 @@ class TestNdMl2PluginExtensions(testlib_api.SqlTestCase):
         mech_mgr.update_network_postcommit.assert_called_once_with(mech_ctx)
 
 
+class TestNdNetworkContextSegments(testlib_api.SqlTestCase):
+
+    @mock.patch('neutron.db.segments_db.get_network_segments')
+    def test_network_context_excludes_dynamic_segments_by_default(
+            self, get_segments):
+        plugin_context = mock.Mock()
+        network = {'id': 'net-id'}
+        static_segments = [{'id': 'nd-segment'}]
+        get_segments.return_value = static_segments
+
+        context = nd_ml2.driver_context.NetworkContext(
+            mock.Mock(), plugin_context, network)
+
+        get_segments.assert_called_once_with(plugin_context, 'net-id')
+        self.assertEqual(static_segments, context.network_segments)
+
+    @mock.patch('neutron.db.segments_db.get_network_segments')
+    def test_network_context_preserves_explicit_segments(self, get_segments):
+        plugin_context = mock.Mock()
+        network = {'id': 'net-id'}
+        explicit_segments = [{'id': 'nd-segment'}]
+
+        context = nd_ml2.driver_context.NetworkContext(
+            mock.Mock(), plugin_context, network, segments=explicit_segments)
+
+        get_segments.assert_not_called()
+        self.assertEqual(explicit_segments, context.network_segments)
+
+
 class TestNdMl2PluginAddressScopeVrfCleanup(testlib_api.SqlTestCase):
 
     def setUp(self):
