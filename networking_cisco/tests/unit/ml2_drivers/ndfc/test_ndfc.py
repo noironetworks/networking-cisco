@@ -629,6 +629,179 @@ class TestNDFC(TestNDFCBase, test_plugin.Ml2PluginV2TestCase):
                 vlan, leaf_attachments)
         self.assertFalse(ret)
 
+    def _tor_topology_v2(self):
+        return {
+            'leaf1': {
+                'interfaces': ['Port-channel34'], 'peer_serial': 'leaf2',
+                'tor_sw_intf_map': {
+                    'SN_TOR1': {
+                        'tor_name': 'TOR1', 'tor_serial_number': 'tor1',
+                        'peer_serial': 'tor2',
+                        'tor_interfaces': ['Port-channel31']},
+                    'SN_TOR2': {
+                        'tor_name': 'TOR2', 'tor_serial_number': 'tor2',
+                        'peer_serial': 'tor1',
+                        'tor_interfaces': ['Port-channel31']}}},
+            'leaf2': {
+                'interfaces': ['Port-channel34'], 'peer_serial': 'leaf1',
+                'tor_sw_intf_map': {
+                    'tor1': {'tor_name': 'TOR1', 'peer_serial': 'tor2',
+                             'tor_interfaces': ['Port-channel31']},
+                    'tor2': {'tor_name': 'TOR2', 'peer_serial': 'tor1',
+                             'tor_interfaces': ['Port-channel31']}}}}
+
+    def test_mixed_topology_keeps_port_ownership_v2(self):
+        topology = self._tor_topology_v2()
+        payload = self.ndfc_instance._create_attach_payload_v2(
+            topology, 'vrf', 'network', 1133)
+        owners = {row['switchId']: [i['interfaceRange']
+                                   for i in row['interfaces']]
+                  for row in payload['attachments']}
+        self.assertEqual({'leaf1': ['Port-channel34'],
+                          'leaf2': ['Port-channel34'],
+                          'tor1': ['Port-channel31'],
+                          'tor2': ['Port-channel31']}, owners)
+        self.assertIn('tor_sw_intf_map', topology['leaf1'])
+        self.assertEqual(['Port-channel34'], topology['leaf1']['interfaces'])
+
+    def test_tor_only_attaches_parent_and_tor_peers_v2(self):
+        topology = {'leaf1': {
+            'peer_serial': 'leaf2',
+            'tor_sw_intf_map': {'tor1': {
+                'tor_name': 'TOR1', 'peer_serial': 'tor2',
+                'tor_interfaces': ['Port-channel31']}}}}
+        payload = self.ndfc_instance._create_attach_payload_v2(
+            topology, 'vrf', 'network', 1133)
+        owners = {a['switchId']: a['interfaces']
+                  for a in payload['attachments']}
+        self.assertEqual({'leaf1', 'leaf2', 'tor1', 'tor2'}, set(owners))
+        self.assertEqual([], owners['leaf1'])
+        self.assertEqual([{'interfaceRange': 'Port-channel31',
+                           'mode': 'trunk'}],
+                         owners['tor1'])
+        deploy = self.ndfc_instance._get_deploy_payload_attach_v2(
+            topology, 'network')
+        self.assertEqual(sorted(owners), deploy['switchIds'])
+
+    def test_unresolved_tor_name_blocks_attach_v2(self):
+        self.ndfc_instance.ndfc_obj.nd_new_version = True
+        topology = {'leaf1': {'tor_sw_intf_map': {
+            'SN_TOR1': {'tor_name': 'TOR1',
+                        'tor_interfaces': ['Port-channel31']}}}}
+        with mock.patch.object(self.ndfc_instance.ndfc_obj,
+                               'attach_deploy_network') as attach:
+            self.assertFalse(self.ndfc_instance.attach_network(
+                'vrf', 'network', 1133, topology))
+        attach.assert_not_called()
+
+    def test_tor_detach_preserves_leaf_and_other_tor_ports_v2(self):
+        existing = self._tor_topology_v2()
+        for leaf in existing.values():
+            for tor in leaf['tor_sw_intf_map'].values():
+                tor['tor_interfaces'].append('Port-channel33')
+        removal = self._tor_topology_v2()
+        for leaf in removal.values():
+            leaf.pop('interfaces')
+        payload = self.ndfc_instance._create_detach_payload_v2(
+            removal, 'vrf', 'network', 1133, exist_attach=existing)
+        owners = {row['switchId']: row['interfaces']
+                  for row in payload['attachments']}
+        self.assertEqual({'tor1', 'tor2'}, set(owners))
+        for interfaces in owners.values():
+            self.assertEqual([{'interfaceRange': 'Port-channel31',
+                               'mode': 'trunk'}], interfaces)
+
+    def test_last_tor_detach_cleans_parent_and_tor_peers_v2(self):
+        topology = self._tor_topology_v2()
+        for leaf in topology.values():
+            leaf.pop('interfaces')
+        payload = self.ndfc_instance._create_detach_payload_v2(
+            topology, 'vrf', 'network', 1133, exist_attach=topology,
+            network_has_other_ports=False)
+        self.assertEqual({'leaf1', 'leaf2', 'tor1', 'tor2'},
+                         {a['switchId'] for a in payload['attachments']})
+        for row in payload['attachments']:
+            self.assertFalse(row['attach'])
+            self.assertEqual([], row['interfaces'])
+
+    def test_tor_detach_preserves_parent_with_another_tor_v2(self):
+        removals = {'leaf1': {'tor_sw_intf_map': {
+            'tor1': {'tor_name': 'TOR1', 'tor_interfaces': ['Po31']}}}}
+        existing = {'leaf1': {'tor_sw_intf_map': {
+            'tor1': {'tor_name': 'TOR1', 'tor_interfaces': ['Po31']},
+            'tor3': {'tor_name': 'TOR3', 'tor_interfaces': ['Po35']}}}}
+        payload = self.ndfc_instance._create_detach_payload_v2(
+            removals, 'vrf', 'network', 1133, exist_attach=existing)
+        self.assertEqual([{'attach': False, 'interfaces': [],
+                           'networkName': 'network', 'switchId': 'tor1',
+                           'vlanId': 1133}], payload['attachments'])
+
+    def test_unresolved_nd_readback_blocks_attach_v2(self):
+        self.ndfc_instance.ndfc_obj.nd_new_version = True
+        self.ndfc_instance.ndfc_obj.get_network_switch_interface_map = (
+            mock.Mock(return_value={'leaf1': {'tor_sw_intf_map': {
+                'SN_unknown': {'tor_interfaces': ['Po31']}}}}))
+        self.ndfc_instance.ndfc_obj.attach_deploy_network = mock.Mock()
+        result = self.ndfc_instance.attach_network(
+            'vrf', 'network', 1133, {'leaf1': {'interfaces': ['Po34']}})
+        self.assertFalse(result)
+        self.ndfc_instance.ndfc_obj.attach_deploy_network.assert_not_called()
+
+    def test_leaf_detach_preserves_parent_with_active_tor_v2(self):
+        payload = self.ndfc_instance._create_detach_payload_v2(
+            {'leaf1': {'interfaces': ['Port-channel34'],
+                       'peer_serial': 'leaf2'}},
+            'vrf', 'network', 1133, exist_attach=self._tor_topology_v2())
+        self.assertEqual([{
+            'attach': False,
+            'interfaces': [{'interfaceRange': 'Port-channel34',
+                            'mode': 'trunk'}],
+            'networkName': 'network', 'switchId': 'leaf1', 'vlanId': 1133}],
+            payload['attachments'])
+
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'attach_deploy_network')
+    def test_attach_preserves_manual_tor_ports_v2(self, attach):
+        self.ndfc_instance.ndfc_obj.nd_new_version = True
+        self.mock_exist_attach.return_value = {
+            'leaf1': {'interfaces': ['Port-channel34']},
+            'tor1': {'interfaces': ['Port-channel33'], 'tor_name': 'TOR1'}}
+        topology = {'leaf1': {
+            'interfaces': ['Port-channel34'],
+            'tor_sw_intf_map': {'SN_TOR1': {
+                'tor_serial_number': 'tor1', 'tor_name': 'TOR1',
+                'tor_interfaces': ['Port-channel31']}}}}
+        self.ndfc_instance.attach_network(
+            'vrf', 'network', 1133, topology,
+            existing_attachments=topology, openstack_attachments=topology)
+        payload = attach.call_args[0][1]
+        tor = next(a for a in payload['attachments']
+                   if a['switchId'] == 'tor1')
+        self.assertEqual({'Port-channel31', 'Port-channel33'},
+                         {i['interfaceRange'] for i in tor['interfaces']})
+        self.assertEqual({'leaf1', 'tor1'},
+                         set(attach.call_args[0][2]['switchIds']))
+
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'attach_deploy_network')
+    def test_last_neutron_port_preserves_manual_tor_attachment_v2(
+            self, attach):
+        self.ndfc_instance.ndfc_obj.nd_new_version = True
+        topology = {'leaf1': {'tor_sw_intf_map': {'tor1': {
+            'tor_name': 'TOR1', 'tor_interfaces': ['Port-channel31']}}}}
+        self.mock_exist_attach.return_value = {
+            'leaf1': {'interfaces': []},
+            'tor1': {'interfaces': ['Port-channel31', 'Port-channel33'],
+                     'tor_name': 'TOR1'}}
+        self.ndfc_instance.detach_network(
+            'vrf', 'network', 1133, topology,
+            existing_attachments=topology, openstack_attachments=topology,
+            network_has_other_ports=False)
+        self.assertEqual([{
+            'attach': False,
+            'interfaces': [{'interfaceRange': 'Port-channel31',
+                            'mode': 'trunk'}],
+            'networkName': 'network', 'switchId': 'tor1', 'vlanId': 1133}],
+            attach.call_args[0][1]['attachments'])
+
     def test_create_network_payload_enable_l3_on_border(self):
         vrf_name = 'test_vrf'
         network_name = 'test_network'
@@ -1228,7 +1401,7 @@ class TestNDFC(TestNDFCBase, test_plugin.Ml2PluginV2TestCase):
 
         attachments = detach_payload_v2['attachments']
         self.assertEqual(len(attachments), 1)
-        self.assertEqual(attachments[0]['switchId'], 'leaf1')
+        self.assertEqual(attachments[0]['switchId'], 'tor1')
         self.assertFalse(attachments[0]['attach'])
         self.assertEqual(len(attachments[0]['interfaces']), 1)
         self.assertEqual(

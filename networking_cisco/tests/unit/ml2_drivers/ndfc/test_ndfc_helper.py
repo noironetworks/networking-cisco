@@ -1352,6 +1352,33 @@ class TestNDFCHelper(TestNDFCHelperBase, test_plugin.Ml2PluginV2TestCase):
         self.assertEqual(mock_post.call_count, 2)
         mock_sleep.assert_called_once()
 
+    def test_readback_and_deploy_include_tor_rows_v2(self):
+        response = {'attachments': [{
+            'attach': True, 'switchId': 'tor1', 'switchName': 'TOR1',
+            'switchRole': 'tor', 'peerSwitchId': 'tor2',
+            'networkName': 'network',
+            'interfaces': [{'interfaceRange': 'Port-channel31'}]}, {
+            'attach': False, 'switchId': 'tor3', 'switchName': 'TOR3',
+            'switchRole': 'tor', 'interfaces': []}]}
+        result = self.helper._get_switch_interface_map_v2(response)
+        self.assertEqual({
+            'tor1': {'switch_name': 'TOR1', 'tor_name': 'TOR1',
+                     'peer_serial': 'tor2',
+                     'interfaces': ['Port-channel31']}}, result)
+        self.assertEqual({'tor1': 'network', 'tor2': 'network'},
+                         self.helper._get_leaf_switch_map_v2(response))
+
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'get_vpc_peer')
+    @mock.patch.object(ndfc_helper.NdfcHelper, 'get_switches')
+    def test_build_vpc_peer_map_includes_tors(self, switches, peer):
+        switches.return_value = {
+            '10.0.0.1': {'serial': 'tor1', 'role': 'tor'},
+            '10.0.0.2': {'serial': 'tor2', 'role': 'tor'}}
+        peer.return_value = 'tor2'
+        self.assertEqual({'tor1': 'tor2', 'tor2': 'tor1'},
+                         self.helper.build_vpc_peer_map('fabric'))
+        peer.assert_called_once_with('fabric', 'tor1')
+
     def test_get_switch_interface_map_v2_includes_border_switches(self):
         ndfc_response = {
             'attachments': [
