@@ -357,7 +357,7 @@ class NdfcHelper:
         attachments_list = ret.get('attachments', [])
         for lan_attach in attachments_list:
             if lan_attach.get('attach') and (
-                    lan_attach.get('switchRole') in ('leaf', 'border')):
+                    lan_attach.get('switchRole') in ('leaf', 'border', 'tor')):
                 snum = lan_attach.get('switchId')
                 network_name = lan_attach.get('networkName')
                 if snum:
@@ -427,7 +427,7 @@ class NdfcHelper:
         attachments_list = ret.get('attachments', [])
         for lan_attach in attachments_list:
             if (lan_attach.get('attach') and
-                    lan_attach.get('switchRole') in ('leaf', 'border')):
+                    lan_attach.get('switchRole') in ('leaf', 'border', 'tor')):
                 snum = lan_attach.get('switchId')
                 switch_name = lan_attach.get('switchName')
                 if snum not in switch_map:
@@ -435,6 +435,11 @@ class NdfcHelper:
                         "switch_name": switch_name,
                         "interfaces": []
                     }
+                peer = lan_attach.get('peerSwitchId')
+                if peer:
+                    switch_map[snum]['peer_serial'] = peer
+                if lan_attach.get('switchRole') == 'tor':
+                    switch_map[snum]['tor_name'] = switch_name
                 interfaces_data = lan_attach.get('interfaces', [])
                 standard_interfaces_for_switch = []
                 tor_style_interface_strings_for_switch = []
@@ -1297,7 +1302,7 @@ class NdfcHelper:
             switches = self.get_switches(fabric)
             for sw_ip, sw_info in switches.items():
                 if not sw_info or sw_info.get('role') not in (
-                        'leaf', 'border'):
+                        'leaf', 'border', 'tor'):
                     continue
                 leaf_serial = sw_info.get('serial')
                 if not leaf_serial or leaf_serial in peer_map:
