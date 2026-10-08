@@ -605,6 +605,10 @@ class NDFCMechanismDriver(api.MechanismDriver,
                 tor_map = leaf_map['tor_sw_intf_map'].setdefault(
                         tor_serial_number, {'tor_interfaces': [],
                             'tor_name': tor_name})
+                tor_map['tor_serial_number'] = tor_serial_number
+                tor_peer = vpc_peer_map.get(tor_serial_number)
+                if tor_peer:
+                    tor_map['peer_serial'] = tor_peer
                 if interface_name not in tor_map['tor_interfaces']:
                     tor_map['tor_interfaces'].append(interface_name)
             else:
@@ -752,6 +756,13 @@ class NDFCMechanismDriver(api.MechanismDriver,
                     tor_key, {'tor_interfaces': []})
                 if tor_name:
                     attach_tor_info['tor_name'] = tor_name
+                serial = tor_info.get('tor_serial_number')
+                if not serial and not tor_snum.startswith('SN_'):
+                    serial = tor_snum
+                if serial:
+                    attach_tor_info['tor_serial_number'] = serial
+                if tor_info.get('peer_serial'):
+                    attach_tor_info['peer_serial'] = tor_info['peer_serial']
                 attach_tor_interfaces = attach_tor_info.setdefault(
                     'tor_interfaces', [])
                 for intf in tor_info.get('tor_interfaces') or []:
@@ -820,6 +831,10 @@ class NDFCMechanismDriver(api.MechanismDriver,
                     tor_key, {'tor_interfaces': []})
                 if tor_name:
                     tor_map['tor_name'] = tor_name
+                tor_map['tor_serial_number'] = tor.tor_serial_number
+                tor_peer = vpc_peer_map.get(tor.tor_serial_number)
+                if tor_peer:
+                    tor_map['peer_serial'] = tor_peer
                 tor_interfaces = tor_map['tor_interfaces']
                 if interface_name not in tor_interfaces:
                     tor_interfaces.append(interface_name)

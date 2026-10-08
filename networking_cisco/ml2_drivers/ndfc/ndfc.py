@@ -19,6 +19,7 @@ import time
 
 import tenacity
 
+from networking_cisco._i18n import _
 from networking_cisco.ml2_drivers.ndfc import constants
 from networking_cisco.ml2_drivers.ndfc import ndfc_helper
 from networking_cisco.ml2_drivers.ndfc.ndfc_helper import NdfcHelper
@@ -179,7 +180,8 @@ class Ndfc:
         return dct
 
     def _get_deploy_payload_attach_v2(self, leaf_attachments, network):
-        switch_ids_list = list(leaf_attachments.keys())
+        switches = self._get_switch_attachments_v2(leaf_attachments)
+        switch_ids_list = sorted(self._get_attachment_leaf_scope(switches))
         deploy_payload = {
             "networkNames": [network],
             "switchIds": switch_ids_list
@@ -389,15 +391,6 @@ class Ndfc:
     def _get_common_attach_payload_v2(self, fabric, network_name,
             vlan, leaf_snum, leaf_info):
         interfaces = []
-        if leaf_info.get('tor_sw_intf_map'):
-            for tor_snum, tor_info in leaf_info['tor_sw_intf_map'].items():
-                tor_interfaces = tor_info.get('tor_interfaces', [])
-                for intf_name in tor_interfaces:
-                    interfaces.append({
-                        "interfaceRange": intf_name,
-                        "mode": "trunk",
-                    })
-
         if 'interfaces' in leaf_info:
             for intf_name in leaf_info['interfaces']:
                 interfaces.append({
@@ -443,17 +436,72 @@ class Ndfc:
             "lanAttachList": attach_list}]
         return attach_dct
 
+    def _get_tor_serials_v2(self, *attachment_maps):
+        serials = {}
+        for attachments in attachment_maps:
+            for snum, info in (attachments or {}).items():
+                if info.get('tor_name'):
+                    serials['SN_' + info['tor_name']] = snum
+                for key, tor in (info.get('tor_sw_intf_map') or {}).items():
+                    serial = tor.get('tor_serial_number')
+                    if not serial and not key.startswith('SN_'):
+                        serial = key
+                    if serial:
+                        serials[key] = serial
+                        if tor.get('tor_name'):
+                            serials['SN_' + tor['tor_name']] = serial
+        return serials
+
+    def _get_switch_attachments_v2(self, attachments, tor_serials=None):
+        if attachments is None:
+            return None
+        serials = self._get_tor_serials_v2(attachments)
+        serials.update(tor_serials or {})
+        switches = {}
+
+        def merge(snum, info):
+            target = switches.setdefault(snum, {})
+            for key, value in info.items():
+                if key in ('interfaces', 'tor_serials', 'parent_serials'):
+                    values = target.setdefault(key, [])
+                    for item in value or []:
+                        if item not in values:
+                            values.append(item)
+                else:
+                    target[key] = copy.deepcopy(value)
+            return target
+
+        for leaf_snum, leaf_info in attachments.items():
+            info = copy.deepcopy(leaf_info)
+            tors = info.pop('tor_sw_intf_map', {}) or {}
+            leaf = merge(leaf_snum, info)
+            for key, tor in tors.items():
+                serial = tor.get('tor_serial_number') or serials.get(key)
+                if not serial or serial.startswith('SN_'):
+                    raise ValueError(_('Missing real ToR serial for %s') % key)
+                tor_info = {'interfaces': tor.get('tor_interfaces') or [],
+                            'tor_name': tor.get('tor_name'),
+                            'parent_serials': [leaf_snum]}
+                if tor.get('peer_serial'):
+                    tor_info['peer_serial'] = tor['peer_serial']
+                merge(serial, tor_info)
+                parents = leaf.setdefault('tor_serials', [])
+                if serial not in parents:
+                    parents.append(serial)
+        return switches
+
     def _create_attach_payload_v2(self, collated_attach,
             vrf_name, network_name, vlan):
+        collated_attach = self._get_switch_attachments_v2(collated_attach)
         attach_list = []
         for leaf_snum, leaf_info in collated_attach.items():
             interfaces = self._get_common_attach_payload_v2(
                 self.fabric, network_name, vlan, leaf_snum, leaf_info
             )
             LOG.debug("Attach interfaces: %s", interfaces)
-            if not interfaces:
+            if not interfaces and not leaf_info.get('tor_serials'):
                 LOG.error(
-                    "Leaf %s has no regular or ToR interfaces to attach.",
+                    "Switch %s has no interfaces or ToR dependencies.",
                     leaf_snum)
                 continue
             attachment_entry = {
@@ -570,83 +618,64 @@ class Ndfc:
                 return True
         return False
 
+    def _domain_has_interfaces_v2(self, remaining, snum, scope):
+        info = scope.get(snum, {})
+        domain = {snum}
+        peer = info.get('peer_serial')
+        if peer:
+            domain.add(peer)
+        domain.update(switch for switch, switch_info in scope.items()
+                      if switch_info.get('peer_serial') == snum)
+        for switch in list(domain):
+            domain.update(scope.get(switch, {}).get('tor_serials', []))
+        for switch in list(domain):
+            peer = scope.get(switch, {}).get('peer_serial')
+            if peer:
+                domain.add(peer)
+        return any(remaining.get(switch, {}).get('interfaces')
+                   for switch in domain)
+
     def _create_detach_payload_v2(self, leaf_attachments, vrf_name,
                                   network_name, vlan,
                                   exist_attach=None,
                                   network_has_other_ports=True):
-        attach_list = []
-        for leaf_snum, leaf_info_to_detach in leaf_attachments.items():
-            interfaces_to_detach = self._get_common_attach_payload_v2(
-                self.fabric, network_name, vlan, leaf_snum, leaf_info_to_detach
-            )
-            if not interfaces_to_detach:
-                LOG.warning(
-                    "Leaf %s has no interfaces specified for detachment. "
-                    "Skipping.", leaf_snum)
+        serials = self._get_tor_serials_v2(leaf_attachments, exist_attach)
+        removals = self._get_switch_attachments_v2(leaf_attachments, serials)
+        existing = self._get_switch_attachments_v2(exist_attach, serials) or {}
+        scope = self._merge_attachments(existing, removals)
+        remaining = self._remove_topology_attachments(existing, removals)
+        attach_map = {}
+        for snum, info in removals.items():
+            interfaces = self._get_common_attach_payload_v2(
+                self.fabric, network_name, vlan, snum, info)
+            if not interfaces and not info.get('tor_serials'):
                 continue
-
-            switch_has_others = (
-                network_has_other_ports and
-                self._switch_has_other_interfaces(
-                    exist_attach, leaf_snum, leaf_info_to_detach))
-            peer_serial = leaf_info_to_detach.get('peer_serial')
-            peer_info_to_detach = leaf_attachments.get(peer_serial, {})
-            peer_has_others = (
-                network_has_other_ports and peer_serial and
-                self._switch_has_other_interfaces(
-                    exist_attach, peer_serial, peer_info_to_detach))
-
-            if switch_has_others or peer_has_others:
-                LOG.debug(
-                    "Leaf %s: partial detach — this switch or its vPC peer "
-                    "has other interfaces; sending specific interfaces to "
-                    "remove: %s",
-                    leaf_snum, interfaces_to_detach)
-                attachment_entry = {
-                    "attach": False,
-                    "interfaces": interfaces_to_detach,
-                    "networkName": network_name,
-                    "switchId": leaf_snum,
-                    "vlanId": vlan
-                }
-                attach_list.append(attachment_entry)
-            else:
-                LOG.debug(
-                    "Leaf %s: full detach — no other interfaces in its "
-                    "vPC attachment domain for network %s",
-                    leaf_snum, network_name)
-                attachment_entry = {
-                    "attach": False,
-                    "interfaces": [],
-                    "networkName": network_name,
-                    "switchId": leaf_snum,
-                    "vlanId": vlan
-                }
-                attach_list.append(attachment_entry)
-
-                if peer_serial and peer_serial not in leaf_attachments:
-                    if peer_has_others:
-                        LOG.debug(
-                            "Skipping vPC peer detach for leaf %s "
-                            "peer %s — peer still has other interfaces",
-                            leaf_snum, peer_serial)
-                    else:
-                        LOG.debug(
-                            "Adding vPC peer full detach for leaf %s "
-                            "peer %s", leaf_snum, peer_serial)
-                        peer_attachment_entry = {
-                            "attach": False,
-                            "interfaces": [],
-                            "networkName": network_name,
-                            "switchId": peer_serial,
-                            "vlanId": vlan
-                        }
-                        attach_list.append(peer_attachment_entry)
-        return {"attachments": attach_list}
+            has_others = (network_has_other_ports and
+                          self._domain_has_interfaces_v2(
+                              remaining, snum, scope))
+            if has_others and not interfaces:
+                continue
+            attach_map[snum] = {
+                'attach': False,
+                'interfaces': interfaces if has_others else [],
+                'networkName': network_name, 'switchId': snum, 'vlanId': vlan}
+            peer = info.get('peer_serial')
+            if (peer and peer not in removals and
+                    not (network_has_other_ports and
+                         self._domain_has_interfaces_v2(
+                             remaining, peer, scope))):
+                attach_map[peer] = {
+                    'attach': False, 'interfaces': [],
+                    'networkName': network_name, 'switchId': peer,
+                    'vlanId': vlan}
+        return {'attachments': list(attach_map.values())}
 
     def _get_exist_attach_copy(self, exist_attach, new_attach):
         exist_attach_copy = {}
         leaf_scope = self._get_attachment_leaf_scope(new_attach)
+        for snum in list(leaf_scope):
+            leaf_scope.update(
+                exist_attach.get(snum, {}).get('tor_serials', []))
         for snum, info in exist_attach.items():
             if snum in leaf_scope:
                 exist_attach_copy[snum] = copy.deepcopy(info)
@@ -759,12 +788,29 @@ class Ndfc:
                 return existing_attachments, {}
             nd_attach = self.ndfc_obj.get_network_switch_interface_map(
                 self.fabric, network_name)
+            if self.ndfc_obj.nd_new_version and nd_attach is not None:
+                try:
+                    nd_attach = self._get_switch_attachments_v2(
+                        nd_attach, self._get_tor_serials_v2(leaf_attachments))
+                except ValueError:
+                    LOG.exception("Cannot resolve ToR attachment serials")
+                    return None, None
             return nd_attach, {}
 
         nd_attach = self.ndfc_obj.get_network_switch_interface_map(
             self.fabric, network_name)
         if nd_attach is None:
             return None, None
+
+        if self.ndfc_obj.nd_new_version:
+            try:
+                nd_attach = self._get_switch_attachments_v2(
+                    nd_attach, self._get_tor_serials_v2(
+                        leaf_attachments, existing_attachments,
+                        openstack_attachments))
+            except ValueError:
+                LOG.exception("Cannot resolve ToR attachment serials")
+                return None, None
 
         nd_direct_attach = self._get_nd_direct_attachments(
             nd_attach, leaf_attachments, openstack_attachments)
@@ -782,13 +828,21 @@ class Ndfc:
 
         for leaf_snum, leaf_info in new_attach.items():
             if leaf_snum not in exist_attach_copy:
-                exist_attach_copy[leaf_snum] = leaf_info
+                exist_attach_copy[leaf_snum] = copy.deepcopy(leaf_info)
                 continue
             exist_leaf_info = exist_attach_copy[leaf_snum]
 
             peer_serial = leaf_info.get('peer_serial')
             if peer_serial:
                 exist_leaf_info['peer_serial'] = peer_serial
+
+            for field in ('tor_serials', 'parent_serials'):
+                for snum in leaf_info.get(field, []):
+                    values = exist_leaf_info.setdefault(field, [])
+                    if snum not in values:
+                        values.append(snum)
+            if leaf_info.get('tor_name'):
+                exist_leaf_info['tor_name'] = leaf_info['tor_name']
 
             if 'interfaces' in leaf_info:
                 if exist_leaf_info.get('interfaces') is None:
@@ -917,6 +971,20 @@ class Ndfc:
         LOG.debug("attach network called for vrf %s network %s vlan %s with "
                   "new attachment %s", vrf_name, network_name, vlan,
                   leaf_attachments)
+        if self.ndfc_obj.nd_new_version:
+            try:
+                serials = self._get_tor_serials_v2(
+                    leaf_attachments, existing_attachments,
+                    openstack_attachments)
+                leaf_attachments = self._get_switch_attachments_v2(
+                    leaf_attachments, serials)
+                existing_attachments = self._get_switch_attachments_v2(
+                    existing_attachments, serials)
+                openstack_attachments = self._get_switch_attachments_v2(
+                    openstack_attachments, serials)
+            except ValueError:
+                LOG.exception("Cannot resolve ToR attachment serials")
+                return False
         exist_attach, _nd_direct_attach = self._get_attachment_base(
             network_name, leaf_attachments,
             existing_attachments=existing_attachments,
@@ -961,6 +1029,20 @@ class Ndfc:
         LOG.debug("detach network called for vrf %s network %s vlan %s with "
                   "new attachment %s", vrf_name, network_name, vlan,
                   leaf_attachments)
+        if self.ndfc_obj.nd_new_version:
+            try:
+                serials = self._get_tor_serials_v2(
+                    leaf_attachments, existing_attachments,
+                    openstack_attachments)
+                leaf_attachments = self._get_switch_attachments_v2(
+                    leaf_attachments, serials)
+                existing_attachments = self._get_switch_attachments_v2(
+                    existing_attachments, serials)
+                openstack_attachments = self._get_switch_attachments_v2(
+                    openstack_attachments, serials)
+            except ValueError:
+                LOG.exception("Cannot resolve ToR attachment serials")
+                return False
         exist_attach, nd_direct_attach = self._get_attachment_base(
             network_name, leaf_attachments,
             existing_attachments=existing_attachments,

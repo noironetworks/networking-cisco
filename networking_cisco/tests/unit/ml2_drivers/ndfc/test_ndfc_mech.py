@@ -74,9 +74,11 @@ TEST_LEAF_ATTACHMENTS = {
         {
             'FDO24230D5G': {
                 'tor_interfaces': ['Port-channel11'],
-                'tor_name': '65-N9336FX2'},
+                'tor_name': '65-N9336FX2',
+                'tor_serial_number': 'FDO24230D5G'},
             'FDO24230DAX': {'tor_interfaces':
-                ['Port-channel11'], 'tor_name': '66-N9332FX2'}
+                ['Port-channel11'], 'tor_name': '66-N9332FX2',
+                'tor_serial_number': 'FDO24230DAX'}
         }
     },
     'FDO24170TNU':
@@ -85,10 +87,12 @@ TEST_LEAF_ATTACHMENTS = {
         {
             'FDO24230D5G': {
                 'tor_interfaces': ['Port-channel11'],
-                'tor_name': '65-N9336FX2'},
+                'tor_name': '65-N9336FX2',
+                'tor_serial_number': 'FDO24230D5G'},
             'FDO24230DAX': {
                 'tor_interfaces': ['Port-channel11'],
-                'tor_name': '66-N9332FX2'}}
+                'tor_name': '66-N9332FX2',
+                'tor_serial_number': 'FDO24230DAX'}}
     }
 }
 
@@ -971,7 +975,8 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
                 'tor_sw_intf_map': {
                     'SN_tor-a-name': {
                         'tor_interfaces': ['Port-channel10'],
-                        'tor_name': 'tor-a-name'}}}}
+                        'tor_name': 'tor-a-name',
+                        'tor_serial_number': 'tor-a'}}}}
         mock_get_rows.return_value = [
             (mock.Mock(serial_number='leaf-a', switch_port='Ethernet1/2'),
              None),
@@ -998,10 +1003,12 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
                     'tor_sw_intf_map': {
                         'SN_tor-a-name': {
                             'tor_interfaces': ['Port-channel10'],
-                            'tor_name': 'tor-a-name'},
+                            'tor_name': 'tor-a-name',
+                            'tor_serial_number': 'tor-a'},
                         'SN_tor-b-name': {
                             'tor_interfaces': ['Port-channel11'],
-                            'tor_name': 'tor-b-name'}}},
+                            'tor_name': 'tor-b-name',
+                            'tor_serial_number': 'tor-b'}}},
                 'leaf-a-peer': {
                     'interfaces': ['Ethernet1/4'],
                     'peer_serial': 'leaf-a'}},
@@ -1046,7 +1053,8 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
                     'tor_sw_intf_map': {
                         'SN_tor-a-name': {
                             'tor_interfaces': ['Port-channel11'],
-                            'tor_name': 'tor-a-name'}}},
+                            'tor_name': 'tor-a-name',
+                            'tor_serial_number': 'tor-a'}}},
                 'leaf-a-peer': {
                     'interfaces': ['Ethernet1/4'],
                     'peer_serial': 'leaf-a'}},
@@ -1758,6 +1766,27 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
         self.assertEqual(topology, result)
         session_mock.query.assert_not_called()
 
+    def test_merge_topology_preserves_tor_serial_and_peer(self):
+        attachments = {}
+        self.ndfc_mech._merge_topology(attachments, {
+            'leaf1': {'tor_sw_intf_map': {
+                'tor1': {'tor_name': 'TOR1', 'peer_serial': 'tor2',
+                         'tor_interfaces': ['Port-channel31']}}}})
+        tor = attachments['leaf1']['tor_sw_intf_map']['SN_TOR1']
+        self.assertEqual('tor1', tor['tor_serial_number'])
+        self.assertEqual('tor2', tor['peer_serial'])
+
+    def test_merge_attachment_rows_preserves_tor_serial_and_peer(self):
+        self.ndfc_mech.vpc_peer_map = {'tor1': 'tor2', 'tor2': 'tor1'}
+        attachments = {}
+        self.ndfc_mech._merge_attachment_rows(attachments, [
+            (mock.Mock(switch_port='Port-channel31'),
+             mock.Mock(leaf_serial_number='leaf1',
+                       tor_serial_number='tor1', tor_name='TOR1'))])
+        tor = attachments['leaf1']['tor_sw_intf_map']['SN_TOR1']
+        self.assertEqual('tor1', tor['tor_serial_number'])
+        self.assertEqual('tor2', tor['peer_serial'])
+
     @mock.patch('neutron_lib.db.api.CONTEXT_READER.using')
     def test_filter_topology_by_physnet_tor_interfaces(self, mock_db_reader):
         session_mock = mock.Mock()
@@ -1807,7 +1836,8 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
                     'tor_sw_intf_map': {
                         'SN_tor1': {
                             'tor_interfaces': ['Port-channel11'],
-                            'tor_name': 'tor1'}}}
+                            'tor_name': 'tor1',
+                            'tor_serial_number': 'TOR1'}}}
             },
             result)
 
