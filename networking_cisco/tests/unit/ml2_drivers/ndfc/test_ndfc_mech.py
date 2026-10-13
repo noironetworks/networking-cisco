@@ -31,6 +31,7 @@ from neutron_lib import context as n_ctx
 from neutron_lib.db import api as db_api
 from neutron_lib.plugins import directory
 from oslo_utils import uuidutils
+import requests
 
 from networking_cisco.ml2_drivers.ndfc.cache import ProjectDetailsCache
 from networking_cisco.ml2_drivers.ndfc import config as ndfc_conf
@@ -162,6 +163,13 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
             '.FixedIntervalLoopingCall')
         self.mock_loopingcall = patcher.start()
         self.addCleanup(patcher.stop)
+        # Fail fast instead of waiting on network timeouts to the fake NDFC.
+        for method in ('get', 'post', 'put', 'delete'):
+            req_patcher = mock.patch.object(
+                requests, method,
+                side_effect=requests.exceptions.ConnectionError)
+            req_patcher.start()
+            self.addCleanup(req_patcher.stop)
         super(TestNDFCMechanismDriver, self).setUp()
         mm = directory.get_plugin().mechanism_manager
         self.ndfc_mech = mm.mech_drivers['ndfc'].obj
