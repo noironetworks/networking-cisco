@@ -55,8 +55,7 @@ def set_mysql_engine():
 
 
 def include_object(object, name, type_, reflected, compare_to):
-    if type_ == 'table' and name in (
-            set(external.TABLES) - set(external.REPO_CISCO_TABLES)):
+    if type_ == 'table' and name in set(external.TABLES):
         return False
     else:
         return True

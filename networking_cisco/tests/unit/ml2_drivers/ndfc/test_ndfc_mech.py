@@ -251,7 +251,7 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
 
     @mock.patch.object(mech_ndfc.NDFCMechanismDriver, 'plugin', create=True)
     def test_get_nd_vrf_for_as_returns_nd_vrf_name(self, mock_plugin):
-        plugin_context = n_ctx.Context(user_id='user', tenant_id='tenant')
+        plugin_context = n_ctx.Context(user_id='user', project_id='tenant')
         subnet = {
             'id': 'subnet-id',
             'subnetpool_id': 'sp-id',
@@ -280,7 +280,7 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
 
     @mock.patch.object(mech_ndfc.NDFCMechanismDriver, 'plugin', create=True)
     def test_get_nd_vrf_for_as_no_address_scope(self, mock_plugin):
-        plugin_context = n_ctx.Context(user_id='user', tenant_id='tenant')
+        plugin_context = n_ctx.Context(user_id='user', project_id='tenant')
         subnet = {
             'id': 'subnet-id',
             'subnetpool_id': 'sp-id',
