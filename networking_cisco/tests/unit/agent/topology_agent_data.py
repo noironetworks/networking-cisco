@@ -313,7 +313,7 @@ DESC2_P1 = 'Ubuntu 22.04.4 LTS Linux 5.15.0-106-generic '
 DESC2_P2 = '#116-Ubuntu SMP Wed Apr 17 09:17:56 UTC 2024 x86_64'
 DESC2 = DESC2_P1 + DESC2_P2
 
-DESC3_P1 = 'Cisco Nexus Operating System (NX-OS) Software '
+DESC3_P1 = 'Network switch operating system '
 DESC3_P2 = '10.4(3) TAC support: http://www.cisco.com/tac Copyright (c) '
 DESC3_P3 = '2002-2024, Cisco Systems, Inc. All rights reserved.'
 DESC3 = DESC3_P1 + DESC3_P2 + DESC3_P3

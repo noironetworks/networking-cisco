@@ -13,27 +13,13 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from neutron_lib.db import api as db_api
-from oslo_log import log as logging
-
 from networking_cisco.plugins.ml2.nd_manager import NdManager
-
-
-LOG = logging.getLogger(__name__)
 
 
 class NdExtensionManager(object):
 
     def __init__(self, nd_manager=None):
         self._nd_manager = nd_manager or NdManager()
-
-    @staticmethod
-    def _is_session_active(session):
-        try:
-            return db_api.is_session_active(session)
-        except Exception:  # pragma: no cover - defensive
-            LOG.exception("NdExtensionManager._is_session_active failed")
-            return False
 
     def extend_address_scope_dict(self, session, base_model, result):
         if not result:

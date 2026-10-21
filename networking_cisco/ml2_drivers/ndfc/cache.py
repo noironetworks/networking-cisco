@@ -17,8 +17,6 @@
 from keystoneauth1 import loading as ks_loading
 from keystoneauth1 import session
 from keystoneclient.v3 import client as ksc_client
-from neutronclient.neutron.v2_0 import purge
-from neutronclient.v2_0 import client as neutron_client
 from oslo_config import cfg
 from oslo_log import log as logging
 
@@ -34,7 +32,6 @@ class ProjectDetailsCache(object):
     def __init__(self):
         self.project_details = {}
         self.keystone = None
-        self.neutron = None
 
     def get_auth(self):
         auth = ks_loading.load_auth_from_conf_options(cfg.CONF, AUTH_GROUP)
@@ -48,9 +45,6 @@ class ProjectDetailsCache(object):
         LOG.debug("Got session: %s", sess)
         self.keystone = ksc_client.Client(session=sess)
         LOG.debug("Got keystone client: %s", self.keystone)
-        endpoint_type = 'publicURL'
-        self.neutron = neutron_client.Client(session=session,
-                endpoint_type=endpoint_type)
 
     def ensure_project(self, project_id):
         """Ensure cache contains mapping for project.
@@ -85,23 +79,3 @@ class ProjectDetailsCache(object):
         if self.project_details.get(project_id):
             return self.project_details[project_id]
         return ('', '')
-
-    def purge_prj(self, project_id):
-        class TempArg(object):
-            pass
-
-        self._get_keystone_client()
-        LOG.debug("Calling purge() API")
-        temp_arg = TempArg()
-        temp_arg.tenant = project_id
-        neutron_purge = PurgeAPI(None, None, self.neutron)
-        neutron_purge.take_action(temp_arg)
-
-
-class PurgeAPI(purge.Purge):
-    def __init__(self, app, app_args, neutron_client):
-        self.neutron_client = neutron_client
-        super(PurgeAPI, self).__init__(app, app_args)
-
-    def get_client(self):
-        return self.neutron_client
