@@ -21,68 +21,60 @@
         - openstack-tox-pep8:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2026.1
+                override-checkout: stable/2026.2
         - networking-cisco-ndfc-tests:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2026.1
+                override-checkout: stable/2026.2
         - networking-cisco-coverage:
             timeout: 6000
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2026.1
-        - openstack-tox-py310:
-            required-projects:
-              - name: openstack/requirements
-                override-checkout: stable/2026.1
+                override-checkout: stable/2026.2
         - openstack-tox-py311:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2026.1
+                override-checkout: stable/2026.2
         - openstack-tox-py312:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2026.1
+                override-checkout: stable/2026.2
         - openstack-tox-py313:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2026.1
+                override-checkout: stable/2026.2
         - openstack-tox-py314:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2026.1
+                override-checkout: stable/2026.2
     gate:
       jobs:
         - openstack-tox-pep8:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2026.1
+                override-checkout: stable/2026.2
         - networking-cisco-ndfc-tests:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2026.1
+                override-checkout: stable/2026.2
         - networking-cisco-coverage:
             timeout: 6000
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2026.1
-        - openstack-tox-py310:
-            required-projects:
-              - name: openstack/requirements
-                override-checkout: stable/2026.1
+                override-checkout: stable/2026.2
         - openstack-tox-py311:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2026.1
+                override-checkout: stable/2026.2
         - openstack-tox-py312:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2026.1
+                override-checkout: stable/2026.2
         - openstack-tox-py313:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2026.1
+                override-checkout: stable/2026.2
         - openstack-tox-py314:
             required-projects:
               - name: openstack/requirements
-                override-checkout: stable/2026.1
+                override-checkout: stable/2026.2

@@ -25,7 +25,7 @@ from networking_cisco.tests import test_compatibility as tc
 
 # EXTERNAL_TABLES should contain all names of tables that are not related to
 # current repo.
-EXTERNAL_TABLES = set(external.TABLES) - set(external.REPO_CISCO_TABLES)
+EXTERNAL_TABLES = set(external.TABLES)
 
 
 class _TestModelsMigrationsCisco(test_migrations.TestModelsMigrations):
