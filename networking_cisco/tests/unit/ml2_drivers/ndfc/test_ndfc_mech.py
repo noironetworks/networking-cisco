@@ -30,8 +30,10 @@ from neutron_lib import constants
 from neutron_lib import context as n_ctx
 from neutron_lib.db import api as db_api
 from neutron_lib.plugins import directory
+from neutron_lib.plugins.ml2 import api
 from oslo_utils import uuidutils
 import requests
+from stevedore import extension
 
 from networking_cisco.ml2_drivers.ndfc.cache import ProjectDetailsCache
 from networking_cisco.ml2_drivers.ndfc import config as ndfc_conf
@@ -520,6 +522,145 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
         mock_get_vlan.assert_called()
         mock_detach.assert_any_call(ctx, 'host-0', network, vlan_id=321)
         mock_attach.assert_any_call(ctx, 'host-1', network, vlan_id=321)
+
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver, 'detach_network')
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver, 'attach_network')
+    def test_vlan_live_migration_prepares_destination_before_activation(
+            self, mock_attach, mock_detach):
+        plugin = directory.get_plugin()
+        context = n_ctx.get_admin_context()
+        source, destination = 'source-host', 'destination-host'
+
+        ndfc_conf.cfg.CONF.set_override(
+            'vlan_hardware_l3', True, group='ndfc')
+
+        vlan_driver = mock.Mock(spec=api.MechanismDriver)
+        vlan_driver.connectivity = 'l2'
+
+        def bind_vlan(port_context):
+            for seg in port_context.segments_to_bind:
+                if seg[api.NETWORK_TYPE] == constants.TYPE_VLAN:
+                    port_context.set_binding(
+                        seg[api.ID], portbindings.VIF_TYPE_OVS, {})
+
+        vlan_driver.bind_port.side_effect = bind_vlan
+        vlan_ext = extension.Extension('fake-vlan', None, None, vlan_driver)
+        manager = plugin.mechanism_manager
+        self.patch(manager, 'ordered_mech_drivers',
+                   manager.ordered_mech_drivers + [vlan_ext])
+        self.patch(manager, 'mech_drivers',
+                   dict(manager.mech_drivers, **{'fake-vlan': vlan_ext}))
+        notifier = mock.Mock()
+        self.patch(plugin, 'notifier', notifier)
+        self.patch(self.ndfc_mech.ndfc, 'create_network',
+                   mock.Mock(return_value=True))
+        self.patch(self.ndfc_mech.ndfc, 'update_network',
+                   mock.Mock(return_value=True))
+
+        network = self._make_network(
+            self.fmt, 'migration-net', True, as_admin=True,
+            arg_list=('provider:network_type', 'provider:physical_network',
+                      'provider:segmentation_id'),
+            **{'provider:network_type': constants.TYPE_VLAN,
+               'provider:physical_network': 'physnet1',
+               'provider:segmentation_id': 42})['network']
+        self._make_subnet(
+            self.fmt, {'network': network}, '10.0.0.1', '10.0.0.0/24',
+            enable_dhcp=False, as_admin=True)
+        port = self._make_port(
+            self.fmt, network['id'], as_admin=True,
+            arg_list=(portbindings.HOST_ID,),
+            device_owner=constants.DEVICE_OWNER_COMPUTE_PREFIX + 'nova',
+            device_id=uuidutils.generate_uuid(),
+            **{portbindings.HOST_ID: source})['port']
+        port_id = port['id']
+        self.assertEqual(portbindings.VIF_TYPE_OVS,
+                         port[portbindings.VIF_TYPE])
+        mock_attach.assert_called_once_with(mock.ANY, source, mock.ANY)
+        attached_network = mock_attach.call_args.args[2]
+        self.assertEqual(constants.TYPE_VLAN,
+                         attached_network['provider:network_type'])
+        self.assertEqual(42, attached_network['provider:segmentation_id'])
+        source_levels = port_obj.PortBindingLevel.get_objects(
+            context, port_id=port_id, host=source)
+        self.assertEqual(['fake-vlan'],
+                         [level.driver for level in source_levels])
+        plugin.update_port_status(
+            context, port_id, constants.PORT_STATUS_ACTIVE, host=source)
+        mock_detach.assert_not_called()
+
+        mock_attach.reset_mock()
+        order = mock.Mock()
+        order.attach_mock(mock_attach, 'attach')
+        order.attach_mock(mock_detach, 'detach')
+
+        binding = plugin.create_port_binding(context, port_id, {
+            'binding': {'host': destination, 'profile': {}}})
+        self.assertEqual(constants.INACTIVE, binding['status'])
+        self.assertEqual(portbindings.VIF_TYPE_OVS, binding['vif_type'])
+        self.assertEqual(source, plugin.get_port(
+            context, port_id)[portbindings.HOST_ID])
+        mock_attach.assert_not_called()
+        mock_detach.assert_not_called()
+
+        plugin.update_port(context, port_id, {
+            'port': {portbindings.PROFILE: {'migrating_to': destination}}})
+        source_binding = plugin.get_port_binding(context, source, port_id)
+        self.assertEqual(constants.ACTIVE, source_binding['status'])
+        self.assertEqual({'migrating_to': destination},
+                         source_binding['profile'])
+        mock_detach.assert_not_called()
+
+        mock_attach.assert_called_once_with(
+            mock.ANY, destination, mock.ANY, prepare=True)
+        self.assertEqual(source, plugin.get_port(
+            context, port_id)[portbindings.HOST_ID])
+        notifier.reset_mock()
+
+        binding = plugin.activate(context, destination, port_id)
+        self.assertEqual(constants.ACTIVE, binding['status'])
+        self.assertEqual(portbindings.VIF_TYPE_OVS, binding['vif_type'])
+        source_binding = plugin.get_port_binding(context, source, port_id)
+        self.assertEqual(constants.INACTIVE, source_binding['status'])
+        self.assertEqual(portbindings.VIF_TYPE_UNBOUND,
+                         source_binding['vif_type'])
+        migrated_port = plugin.get_port(context, port_id)
+        self.assertEqual(destination, migrated_port[portbindings.HOST_ID])
+        self.assertEqual({}, migrated_port[portbindings.PROFILE])
+        self.assertEqual([], port_obj.PortBindingLevel.get_objects(
+            context, port_id=port_id, host=source))
+        destination_levels = port_obj.PortBindingLevel.get_objects(
+            context, port_id=port_id, host=destination)
+        self.assertEqual(['fake-vlan'],
+                         [level.driver for level in destination_levels])
+        self.assertEqual(source_levels[0].segment_id,
+                         destination_levels[0].segment_id)
+        mock_detach.assert_called_once_with(mock.ANY, source, mock.ANY)
+        self.assertEqual(2, mock_attach.call_count)
+        self.assertEqual([
+            mock.call.attach(mock.ANY, destination, mock.ANY, prepare=True),
+            mock.call.detach(mock.ANY, source, mock.ANY),
+            mock.call.attach(mock.ANY, destination, mock.ANY),
+        ], order.mock_calls)
+        for call in (mock_attach.call_args, mock_detach.call_args):
+            self.assertEqual(constants.TYPE_VLAN,
+                             call.args[2]['provider:network_type'])
+            self.assertEqual(42, call.args[2]['provider:segmentation_id'])
+        notifier.binding_deactivate.assert_called_once_with(
+            context, port_id, source, network['id'])
+        notifier.binding_activate.assert_called_once_with(
+            context, port_id, destination)
+
+        plugin.update_port_status(
+            context, port_id, constants.PORT_STATUS_ACTIVE, host=destination)
+        plugin.delete_port_binding(context, source, port_id)
+        bindings = plugin.get_port_bindings(context, port_id)
+        self.assertEqual([destination], [b['host'] for b in bindings])
+        self.assertEqual(constants.ACTIVE, bindings[0]['status'])
+        self.assertEqual(constants.PORT_STATUS_ACTIVE,
+                         plugin.get_port(context, port_id)['status'])
+        self.assertEqual(2, mock_attach.call_count)
+        self.assertEqual(1, mock_detach.call_count)
 
     @mock.patch.object(mech_ndfc.NDFCMechanismDriver,
                        '_count_bound_ports_on_network', return_value=1)
@@ -1304,7 +1445,7 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
         mock_get_topology_attachments.assert_called_once_with(
                 self.context, 'host1',
                 {'leaf-a': {'interfaces': ['Ethernet1/1']}},
-                physnet='physnet1')
+                physnet='physnet1', exclude_topology=None)
         mock_attach_network.assert_called_once_with(
                 'mock_vrf', network['name'], '10',
                 {'leaf-a': {'interfaces': ['Ethernet1/1']}},
@@ -1341,7 +1482,7 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
         mock_get_topology_attachments.assert_called_once_with(
                 self.context, 'host1',
                 {'leaf-a': {'interfaces': ['Ethernet1/1']}},
-                physnet='physnet1')
+                physnet='physnet1', exclude_topology=None)
         mock_detach_network.assert_called_once_with(
                 'mock_vrf', network['name'], '10',
                 {'leaf-a': {'interfaces': ['Ethernet1/1']}},
@@ -1629,6 +1770,378 @@ class TestNDFCMechanismDriver(TestNDFCMechanismDriverBase):
                     serial_number=serial, switch_ip='10.0.0.1',
                     switch_mac='aa:bb:cc:dd:ee:ff',
                     switch_port=switch_port))
+
+    def _migration_context(self, network_type=constants.TYPE_VLAN,
+                           source_vif=None):
+        physnet = 'physnet1'
+        ctx = n_ctx.get_admin_context()
+        network_id = self._create_bound_vlan_network(ctx, physnet, 'source')
+        port = port_obj.Port.get_objects(ctx, network_id=network_id)[0]
+        segment = network_obj.NetworkSegment.get_objects(
+            ctx, network_id=network_id)[0]
+        port_obj.PortBinding(
+            ctx, port_id=port.id, host='source',
+            vif_type=source_vif or portbindings.VIF_TYPE_OVS,
+            vnic_type=portbindings.VNIC_NORMAL,
+            profile={'migrating_to': 'target'},
+            status=constants.ACTIVE).create()
+        port_obj.PortBinding(
+            ctx, port_id=port.id, host='target',
+            vif_type=portbindings.VIF_TYPE_OVS,
+            vnic_type=portbindings.VNIC_NORMAL, profile={},
+            status=constants.INACTIVE).create()
+        port_obj.PortBindingLevel(
+            ctx, port_id=port.id, host='target', level=0, driver='ovn',
+            segment_id=segment.id).create()
+        network = {
+            'id': network_id, 'name': network_id, 'project_id': 'project-id',
+            'tenant_id': 'project-id',
+            'provider:network_type': network_type,
+            'provider:physical_network': physnet,
+            'provider:segmentation_id': 2001,
+        }
+        context = self._create_fake_port_context(network)
+        context._plugin_context = ctx
+        context.plugin_context = ctx
+        context.host = context.original_host = 'source'
+        for state in (context.original, context.current):
+            state.update(id=port.id, network_id=network_id,
+                         device_owner='compute:nova')
+        context.original[portbindings.VIF_TYPE] = portbindings.VIF_TYPE_OVS
+        context.original[portbindings.PROFILE] = {}
+        context.current[portbindings.PROFILE] = {'migrating_to': 'target'}
+        context.current[portbindings.VIF_TYPE] = (
+            source_vif or portbindings.VIF_TYPE_OVS)
+        interface = 'eth-' + physnet
+        self._add_host_labels_and_links(
+            ctx, [('source', physnet, interface),
+                  ('target', physnet, interface)],
+            [('source', interface, 'SOURCE', 'Port-channel1'),
+             ('target', interface, 'TARGET', 'Port-channel2')])
+        return context
+
+    def _add_migration_user(self, context, host):
+        ctx = context._plugin_context
+        port_id = uuidutils.generate_uuid()
+        port_obj.Port(
+            ctx, id=port_id, project_id='project-id',
+            network_id=context.current['network_id'],
+            mac_address=netaddr.EUI('fa:16:3e:11:22:33'),
+            admin_state_up=True, status='ACTIVE', device_id='other-vm',
+            device_owner='compute:nova').create()
+        segment = network_obj.NetworkSegment.get_objects(
+            ctx, network_id=context.current['network_id'])[0]
+        port_obj.PortBindingLevel(
+            ctx, port_id=port_id, host=host, level=0, driver='ovn',
+            segment_id=segment.id).create()
+        return port_id
+
+    def _clear_migration(self, context):
+        context.original[portbindings.PROFILE] = {'migrating_to': 'target'}
+        context.current[portbindings.PROFILE] = {}
+        binding = port_obj.PortBinding.get_object(
+            context._plugin_context, port_id=context.current['id'],
+            host='source')
+        binding.profile = {}
+        binding.update()
+
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver, '_get_nd_hpb_vlan',
+                       return_value=312)
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver, '_get_host_physnet',
+                       return_value='target-physnet')
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver, 'attach_network')
+    def test_live_migration_nd_uses_target_vlan(self, attach, physnet, vlan):
+        context = self._migration_context(network_type=ndfc_const.TYPE_ND)
+        self.ndfc_mech.update_port_postcommit(context)
+        physnet.assert_called_once_with(
+            context._plugin_context, 'target', 'physnet1')
+        vlan.assert_called_once_with(context, 'target-physnet')
+        attach.assert_called_once_with(
+            context, 'target', context.network.current,
+            vlan_id=312, prepare=True)
+
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver, 'attach_network')
+    def test_live_migration_requires_inactive_bound_target(self, attach):
+        context = self._migration_context()
+        binding = port_obj.PortBinding.get_object(
+            context._plugin_context, port_id=context.current['id'],
+            host='target')
+        binding.vif_type = portbindings.VIF_TYPE_BINDING_FAILED
+        binding.update()
+        self.ndfc_mech.update_port_postcommit(context)
+        attach.assert_not_called()
+        binding.vif_type = portbindings.VIF_TYPE_OVS
+        binding.status = constants.ACTIVE
+        binding.update()
+        self.ndfc_mech.update_port_postcommit(context)
+        attach.assert_not_called()
+        binding.status = constants.INACTIVE
+        binding.update()
+        source = port_obj.PortBinding.get_object(
+            context._plugin_context, port_id=context.current['id'],
+            host='source')
+        source.status = constants.INACTIVE
+        source.update()
+        self.ndfc_mech.update_port_postcommit(context)
+        attach.assert_not_called()
+        source.status = constants.ACTIVE
+        source.update()
+        binding.delete()
+        self.ndfc_mech.update_port_postcommit(context)
+        attach.assert_not_called()
+
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver, 'allocate_vrf_segment')
+    @mock.patch.object(ndfc.Ndfc, 'detach_network', return_value=True)
+    @mock.patch.object(ndfc.Ndfc, 'attach_network', return_value=True)
+    def test_live_migration_cancel_removes_only_target(
+            self, attach, detach, allocate):
+        context = self._migration_context()
+        self.ndfc_mech.update_port_postcommit(context)
+        self.assertEqual({'TARGET'}, set(attach.call_args.args[3]))
+        self._clear_migration(context)
+        self.ndfc_mech.update_port_postcommit(context)
+        self.assertEqual({'TARGET'}, set(detach.call_args.args[3]))
+        self.assertEqual(1, attach.call_count)
+        self.assertIsNotNone(port_obj.PortBinding.get_object(
+            context._plugin_context, port_id=context.current['id'],
+            host='target'))
+
+    @mock.patch.object(ndfc.Ndfc, 'detach_network')
+    def test_live_migration_cancel_preserves_other_target_user(self, detach):
+        context = self._migration_context()
+        other_id = self._add_migration_user(context, 'target')
+        port_obj.PortBinding(
+            context._plugin_context, port_id=other_id, host='target',
+            vif_type=portbindings.VIF_TYPE_OVS,
+            vnic_type=portbindings.VNIC_NORMAL, profile={},
+            status=constants.ACTIVE).create()
+        self._clear_migration(context)
+        self.ndfc_mech.update_port_postcommit(context)
+        detach.assert_not_called()
+
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver, 'detach_network')
+    def test_live_migration_stale_cancel_keeps_new_preparation(self, detach):
+        context = self._migration_context()
+        context.original[portbindings.PROFILE] = {'migrating_to': 'target'}
+        context.current[portbindings.PROFILE] = {}
+        self.ndfc_mech.update_port_postcommit(context)
+        detach.assert_not_called()
+
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver, 'allocate_vrf_segment')
+    @mock.patch.object(ndfc.Ndfc, 'attach_network', return_value=True)
+    def test_live_migration_preparation_ignores_inactive_binding_count(
+            self, attach, allocate):
+        context = self._migration_context()
+        self._add_migration_user(context, 'target')
+        self.ndfc_mech.update_port_postcommit(context)
+        attach.assert_called_once()
+
+    @mock.patch.object(ndfc.Ndfc, 'detach_network')
+    @mock.patch.object(ndfc.Ndfc, 'attach_network', return_value=False)
+    def test_live_migration_failed_preparation_keeps_source(
+            self, attach, detach):
+        context = self._migration_context()
+        self.ndfc_mech.update_port_postcommit(context)
+        attach.assert_called_once()
+        detach.assert_not_called()
+
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver, 'attach_network')
+    def test_live_migration_ignores_malformed_profile(self, attach):
+        context = self._migration_context()
+        for profile in (None, [], 'invalid', {'migrating_to': []},
+                        {'migrating_to': 'source'}):
+            context.current[portbindings.PROFILE] = profile
+            self.ndfc_mech.update_port_postcommit(context)
+        attach.assert_not_called()
+
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver, 'allocate_vrf_segment')
+    def _check_live_migration_source_retained(self, new_api, peer, allocate,
+                                             markerless_source=False):
+        context = self._migration_context(
+            source_vif=portbindings.VIF_TYPE_UNBOUND)
+        ctx = context._plugin_context
+        for level in port_obj.PortBindingLevel.get_objects(
+                ctx, port_id=context.current['id'], host='source'):
+            level.delete()
+        target_leaf = 'TARGET' if peer else 'SOURCE'
+        if peer:
+            self.ndfc_mech.vpc_peer_map = {
+                'SOURCE': 'TARGET', 'TARGET': 'SOURCE'}
+        else:
+            with db_api.CONTEXT_WRITER.using(ctx) as session:
+                session.query(nc_ml2_db.NxosHostLink).filter_by(
+                    host_name='target').update({'serial_number': 'SOURCE'})
+        api = self.ndfc_mech.ndfc.ndfc_obj
+        api.nd_new_version = new_api
+        source_map = {'SOURCE': {'interfaces': ['Port-channel1']}}
+        if markerless_source:
+            other_id = self._add_migration_user(context, 'other-source')
+            for level in port_obj.PortBindingLevel.get_objects(
+                    ctx, port_id=other_id):
+                level.delete()
+            port_obj.PortBinding(
+                ctx, port_id=other_id, host='other-source',
+                vif_type=portbindings.VIF_TYPE_UNBOUND,
+                vnic_type=portbindings.VNIC_NORMAL, profile={},
+                status=constants.ACTIVE).create()
+            self._add_host_labels_and_links(
+                ctx, [('other-source', 'physnet1', 'eth1')],
+                [('other-source', 'eth1', 'SOURCE', 'Port-channel3')])
+            source_map['SOURCE']['interfaces'].append('Port-channel3')
+        with mock.patch.object(api, 'get_network_switch_interface_map',
+                               return_value=source_map) as get_map, \
+                mock.patch.object(api, 'attach_deploy_network',
+                                  return_value=True) as deploy:
+            self.ndfc_mech.update_port_postcommit(context)
+            payload = deploy.call_args.args[1]
+            if new_api:
+                entries = {item['switchId']: item
+                           for item in payload['attachments']}
+                source_intfs = {item['interfaceRange']
+                                for item in entries['SOURCE']['interfaces']}
+            else:
+                entries = {item['serialNumber']: item
+                           for item in payload[0]['lanAttachList']}
+                source_intfs = set(entries['SOURCE']['switchPorts'].split(','))
+            self.assertIn('Port-channel1', source_intfs)
+            if markerless_source:
+                self.assertIn('Port-channel3', source_intfs)
+            self.assertIn(target_leaf, entries)
+            attached = {'SOURCE': {'interfaces': ['Port-channel1']}}
+            if markerless_source:
+                attached['SOURCE']['interfaces'].append('Port-channel3')
+            attached.setdefault(target_leaf, {'interfaces': []})[
+                'interfaces'].append('Port-channel2')
+            get_map.return_value = attached
+            self._clear_migration(context)
+            self.ndfc_mech.update_port_postcommit(context)
+            payload = deploy.call_args.args[1]
+            if new_api:
+                entries = payload['attachments']
+                self.assertEqual(1, len(entries))
+                self.assertEqual(target_leaf, entries[0]['switchId'])
+                self.assertEqual([{'interfaceRange': 'Port-channel2',
+                                   'mode': 'trunk'}], entries[0]['interfaces'])
+            else:
+                entries = payload[0]['lanAttachList']
+                source = next(item for item in entries
+                              if item['serialNumber'] == 'SOURCE')
+                self.assertIn('Port-channel1', source['switchPorts'])
+                if markerless_source:
+                    self.assertIn('Port-channel3', source['switchPorts'])
+                self.assertIsNot(False, source['deployment'])
+
+    def test_live_migration_peer_leaf_retains_source_legacy(self):
+        self._check_live_migration_source_retained(False, True)
+
+    def test_live_migration_peer_leaf_retains_source_v2(self):
+        self._check_live_migration_source_retained(True, True)
+
+    def test_live_migration_overlapping_cancel_retains_source_legacy(self):
+        self._check_live_migration_source_retained(
+            False, False, markerless_source=True)
+
+    def test_live_migration_overlapping_cancel_retains_source_v2(self):
+        self._check_live_migration_source_retained(
+            True, False, markerless_source=True)
+
+    @mock.patch.object(ndfc.Ndfc, 'detach_network', return_value=True)
+    def test_live_migration_delete_cleans_prepared_target(self, detach):
+        context = self._migration_context()
+        self.ndfc_mech.delete_port_precommit(context)
+        port_obj.Port.get_object(
+            context._plugin_context, id=context.current['id']).delete()
+        self.ndfc_mech.delete_port_postcommit(context)
+        self.assertEqual(2, detach.call_count)
+        self.assertEqual([{'SOURCE'}, {'TARGET'}],
+                         [set(call.args[3]) for call in detach.call_args_list])
+
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver,
+                       '_release_nd_dynamic_segments')
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver, '_get_nd_hpb_vlan')
+    @mock.patch.object(ndfc.Ndfc, 'detach_network', return_value=True)
+    def test_live_migration_delete_nd_cleans_target_before_release(
+            self, detach, get_vlan, release):
+        context = self._migration_context(network_type=ndfc_const.TYPE_ND)
+        self.ndfc_mech.delete_port_precommit(context)
+        port_obj.Port.get_object(
+            context._plugin_context, id=context.current['id']).delete()
+
+        for source_vlan in (311, None):
+            with self.subTest(source_vlan=source_vlan):
+                detach.reset_mock()
+                get_vlan.reset_mock()
+                release.reset_mock()
+                get_vlan.side_effect = (source_vlan, 312)
+                order = mock.Mock()
+                order.attach_mock(detach, 'detach')
+                order.attach_mock(release, 'release')
+
+                self.ndfc_mech.delete_port_postcommit(context)
+
+                expected = [(312, {'TARGET'})]
+                if source_vlan is not None:
+                    expected.insert(0, (source_vlan, {'SOURCE'}))
+                self.assertEqual(
+                    expected,
+                    [(call.args[2], set(call.args[3]))
+                     for call in detach.call_args_list])
+                self.assertEqual(
+                    ['detach'] * len(expected) + ['release'],
+                    [call[0] for call in order.mock_calls])
+                release.assert_called_once_with(
+                    context, context.current['network_id'])
+
+    @mock.patch.object(ndfc.Ndfc, 'detach_network')
+    def test_live_migration_cancel_sees_new_preparing_user(self, detach):
+        context = self._migration_context()
+        ctx = context._plugin_context
+        other_id = self._add_migration_user(context, 'target')
+        active = port_obj.PortBinding(
+            ctx, port_id=other_id, host='other-source',
+            vif_type=portbindings.VIF_TYPE_OVS,
+            vnic_type=portbindings.VNIC_NORMAL, profile={},
+            status=constants.ACTIVE)
+        active.create()
+        port_obj.PortBinding(
+            ctx, port_id=other_id, host='target',
+            vif_type=portbindings.VIF_TYPE_OVS,
+            vnic_type=portbindings.VNIC_NORMAL, profile={},
+            status=constants.INACTIVE).create()
+        self._clear_migration(context)
+        original = self.ndfc_mech.detach_network
+
+        def start_other_preparation(*args, **kwargs):
+            active.profile = {'migrating_to': 'target'}
+            active.update()
+            return original(*args, **kwargs)
+
+        with mock.patch.object(self.ndfc_mech, 'detach_network',
+                               side_effect=start_other_preparation):
+            self.ndfc_mech.update_port_postcommit(context)
+        detach.assert_not_called()
+
+    @mock.patch.object(mech_ndfc.NDFCMechanismDriver, 'allocate_vrf_segment')
+    @mock.patch.object(ndfc.Ndfc, 'attach_network', return_value=True)
+    def test_live_migration_does_not_attach_unbound_build(self, attach,
+                                                         allocate):
+        context = self._migration_context()
+        ctx = context._plugin_context
+        other_id = self._add_migration_user(context, 'building-host')
+        for level in port_obj.PortBindingLevel.get_objects(
+                ctx, port_id=other_id):
+            level.delete()
+        port_obj.PortBinding(
+            ctx, port_id=other_id, host='building-host',
+            vif_type=portbindings.VIF_TYPE_UNBOUND,
+            vnic_type=portbindings.VNIC_NORMAL, profile={},
+            status=constants.ACTIVE).create()
+        self._add_host_labels_and_links(
+            ctx, [('building-host', 'physnet1', 'eth1')],
+            [('building-host', 'eth1', 'TARGET', 'Port-channel3')])
+        self.ndfc_mech.update_port_postcommit(context)
+        self.assertNotIn('Port-channel3', attach.call_args.kwargs[
+            'existing_attachments']['TARGET']['interfaces'])
 
     def test_network_attachment_rows_filters_host_links_by_physnet(self):
         ctx = n_ctx.get_admin_context()
