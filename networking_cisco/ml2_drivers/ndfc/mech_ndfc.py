@@ -769,7 +769,8 @@ class NDFCMechanismDriver(api.MechanismDriver,
                     if intf not in attach_tor_interfaces:
                         attach_tor_interfaces.append(intf)
 
-    def _get_network_attachment_rows(self, session, network_id, leaf_filter):
+    def _get_network_attachment_rows(self, session, network_id, leaf_filter,
+                                     cleanup_migration=False):
         leaf_filter = sorted(leaf_filter)
         if not leaf_filter:
             return []
@@ -786,6 +787,12 @@ class NDFCMechanismDriver(api.MechanismDriver,
             nc_ml2_db.NxosTors.tor_serial_number ==
             nc_ml2_db.NxosHostLink.serial_number)
         query = query.filter(seg_db.NetworkSegment.network_id == network_id)
+        if cleanup_migration:
+            exclude_bindings = self._cancelled_migration_bindings(
+                session, network_id)
+            query = query.filter(sa.tuple_(
+                models.PortBindingLevel.port_id,
+                models.PortBindingLevel.host).notin_(exclude_bindings))
         physnet_filter = self._get_host_link_physnet_filter(
             seg_db.NetworkSegment.physical_network)
         query = query.filter(physnet_filter)
@@ -850,11 +857,7 @@ class NDFCMechanismDriver(api.MechanismDriver,
     def _get_network_attachments_from_neutron_db(
             self, context, network_id, host, host_topology):
         attachments = {}
-        leaf_filter = set(host_topology)
-        for leaf_info in host_topology.values():
-            peer_serial = leaf_info.get('peer_serial')
-            if peer_serial:
-                leaf_filter.add(peer_serial)
+        leaf_filter = self.ndfc._get_attachment_leaf_scope(host_topology)
         self._merge_topology(attachments, host_topology)
 
         with db_api.CONTEXT_READER.using(
@@ -870,14 +873,53 @@ class NDFCMechanismDriver(api.MechanismDriver,
              'attachments': attachments})
         return attachments
 
-    def _get_topology_attachments_from_neutron_db(
-            self, context, host, host_topology, physnet=None):
+    def _get_migration_attachments(self, context, network, topology,
+                                   prepare=False):
         attachments = {}
-        leaf_filter = set(host_topology)
-        for leaf_info in host_topology.values():
-            peer_serial = leaf_info.get('peer_serial')
-            if peer_serial:
-                leaf_filter.add(peer_serial)
+        unbound_topology = {}
+        scope = self.ndfc._get_attachment_leaf_scope(topology)
+        with db_api.CONTEXT_READER.using(
+                context._plugin_context) as session:
+            rows = self._get_network_attachment_rows(
+                session, network['id'], scope,
+                cleanup_migration=not prepare)
+            self._merge_attachment_rows(attachments, rows)
+            unbound = session.query(
+                models.PortBinding.host, models.PortBinding.port_id,
+                models.PortBinding.profile)
+            unbound = unbound.join(
+                models_v2.Port,
+                models_v2.Port.id == models.PortBinding.port_id).filter(
+                    models_v2.Port.network_id == network['id'],
+                    models.PortBinding.status == constants.ACTIVE,
+                    models.PortBinding.vif_type ==
+                    portbindings.VIF_TYPE_UNBOUND).distinct().all()
+            unbound_hosts = {}
+            for host, port_id, profile in unbound:
+                known_source = (port_id == context.current['id'] or
+                                bool(self._migration_target(profile)))
+                unbound_hosts[host] = (unbound_hosts.get(host, False) or
+                                       known_source)
+            for host, known_source in unbound_hosts.items():
+                if not host:
+                    continue
+                current = self._get_topology(session, host)
+                current = self._filter_topology_by_physnet(
+                    session, host, current,
+                    network.get('provider:physical_network'))
+                self._merge_topology(
+                    attachments if known_source else unbound_topology, {
+                        leaf: info for leaf, info in current.items()
+                        if leaf in scope})
+        if prepare:
+            self._merge_topology(attachments, topology)
+        return attachments, unbound_topology
+
+    def _get_topology_attachments_from_neutron_db(
+            self, context, host, host_topology, physnet=None,
+            exclude_topology=None):
+        attachments = {}
+        leaf_filter = self.ndfc._get_attachment_leaf_scope(host_topology)
 
         with db_api.CONTEXT_READER.using(
                 context._plugin_context) as session:
@@ -889,9 +931,13 @@ class NDFCMechanismDriver(api.MechanismDriver,
             "Built topology attachments from Neutron DB for host "
             "%(host)s physnet %(physnet)s: %(attachments)s",
             {'host': host, 'physnet': physnet, 'attachments': attachments})
+        if exclude_topology is not None:
+            return self.ndfc._remove_topology_attachments(
+                attachments, exclude_topology)
         return attachments
 
-    def get_topology(self, context, network, host, detach=False):
+    def get_topology(self, context, network, host, detach=False,
+                     prepare=False, cleanup_migration=False):
         LOG.debug("Get topology for network %s, host %s", network, host)
         physnet = network.get('provider:physical_network')
 
@@ -900,6 +946,8 @@ class NDFCMechanismDriver(api.MechanismDriver,
             current_topology = self._get_topology(session, host)
             filtered_topology = self._filter_topology_by_physnet(
                 session, host, current_topology, physnet)
+            if prepare:
+                return filtered_topology
 
             query = BAKERY(lambda s: s.query(
                 func.count(sa.distinct(models.PortBindingLevel.port_id))))
@@ -910,9 +958,16 @@ class NDFCMechanismDriver(api.MechanismDriver,
                 models_v2.Port.network_id == sa.bindparam('network_id'))
             query += lambda q: q.filter(
                 models.PortBindingLevel.host == sa.bindparam('host'))
-            count = query(session).params(
-                network_id=network['id'],
-                host=host).scalar() or 0
+            params = {'network_id': network['id'], 'host': host}
+            if cleanup_migration:
+                exclude_bindings = self._cancelled_migration_bindings(
+                    session, network['id'])
+                query += lambda q: q.filter(sa.tuple_(
+                    models.PortBindingLevel.port_id,
+                    models.PortBindingLevel.host).notin_(sa.bindparam(
+                        'excluded_bindings', expanding=True)))
+                params['excluded_bindings'] = exclude_bindings
+            count = query(session).params(**params).scalar() or 0
 
             if not detach and count > 1:
                 network_attachments = (
@@ -1035,8 +1090,10 @@ class NDFCMechanismDriver(api.MechanismDriver,
         else:
             LOG.debug("VRF name for tenant %s not found", tenant_id)
 
-    def attach_network(self, context, host, network, vlan_id=None):
-        topology_result = self.get_topology(context, network, host)
+    def attach_network(self, context, host, network, vlan_id=None,
+                       prepare=False):
+        topology_result = self.get_topology(
+            context, network, host, prepare=prepare)
         if topology_result:
             self.project_details_cache.ensure_project(network['tenant_id'])
             prj_details = self.project_details_cache.get_project_details(
@@ -1044,13 +1101,20 @@ class NDFCMechanismDriver(api.MechanismDriver,
             vrf_name = prj_details[0]
             if vlan_id is None:
                 vlan_id = network.get('provider:segmentation_id')
-            existing_attachments = (
-                self._get_network_attachments_from_neutron_db(
-                    context, network['id'], host, topology_result))
+            unbound_topology = None
+            if prepare:
+                existing_attachments, unbound_topology = (
+                    self._get_migration_attachments(
+                        context, network, topology_result, prepare=True))
+            else:
+                existing_attachments = (
+                    self._get_network_attachments_from_neutron_db(
+                        context, network['id'], host, topology_result))
             openstack_attachments = (
                 self._get_topology_attachments_from_neutron_db(
                     context, host, topology_result,
-                    physnet=network.get('provider:physical_network')))
+                    physnet=network.get('provider:physical_network'),
+                    exclude_topology=unbound_topology))
             res = self.ndfc.attach_network(
                 vrf_name, network['name'], vlan_id, topology_result,
                 existing_attachments=existing_attachments,
@@ -1063,30 +1127,51 @@ class NDFCMechanismDriver(api.MechanismDriver,
                 LOG.error("NDFC Network %s failed to attach",
                     network['name'])
 
-    def detach_network(self, context, host, network, vlan_id=None):
+    def detach_network(self, context, host, network, vlan_id=None,
+                       cleanup_migration=False):
         topology_result = self.get_topology(context, network,
-                host, detach=True)
+                host, detach=True, cleanup_migration=cleanup_migration)
         if topology_result:
+            unbound_topology = None
+            if cleanup_migration:
+                owners, unbound_topology = self._get_migration_attachments(
+                    context, network, topology_result)
+                has_migration_owners = bool(owners)
+                topology_result = self.ndfc._remove_topology_attachments(
+                    topology_result, owners)
+                if not topology_result:
+                    return
             self.project_details_cache.ensure_project(network['tenant_id'])
             prj_details = self.project_details_cache.get_project_details(
                 network['tenant_id'])
             vrf_name = prj_details[0]
             if vlan_id is None:
                 vlan_id = network.get('provider:segmentation_id')
-            existing_attachments = (
-                self._get_network_attachments_from_neutron_db(
-                    context, network['id'], host, topology_result))
+            if cleanup_migration:
+                existing_attachments = owners
+                self._merge_topology(existing_attachments, topology_result)
+            else:
+                existing_attachments = (
+                    self._get_network_attachments_from_neutron_db(
+                        context, network['id'], host, topology_result))
             openstack_attachments = (
                 self._get_topology_attachments_from_neutron_db(
                     context, host, topology_result,
-                    physnet=network.get('provider:physical_network')))
+                    physnet=network.get('provider:physical_network'),
+                    exclude_topology=unbound_topology))
             remaining_ports = self._count_bound_ports_on_network(
                 context._plugin_context, network['id'])
+            if cleanup_migration and not self.get_topology(
+                    context, network, host, detach=True,
+                    cleanup_migration=True):
+                return
             res = self.ndfc.detach_network(
                 vrf_name, network['name'], vlan_id, topology_result,
                 existing_attachments=existing_attachments,
                 openstack_attachments=openstack_attachments,
-                network_has_other_ports=(remaining_ports > 0))
+                network_has_other_ports=(remaining_ports > 0 or
+                                         (cleanup_migration and
+                                          has_migration_owners)))
             if res:
                 LOG.info("NDFC Network %s detached successfully",
                     network['name'])
@@ -1268,12 +1353,101 @@ class NDFCMechanismDriver(api.MechanismDriver,
             self.update_network(tenant_id, network_name,
                                 None, gateway, physical_network)
 
+    @staticmethod
+    def _migration_target(profile):
+        if isinstance(profile, str):
+            try:
+                profile = jsonutils.loads(profile)
+            except ValueError:
+                return None
+        if isinstance(profile, dict):
+            target = profile.get('migrating_to')
+            if isinstance(target, str) and target:
+                return target
+
+    def _has_migration_binding(self, context, target, expected_target):
+        port_id = context.current['id']
+        with db_api.CONTEXT_READER.using(
+                context._plugin_context) as session:
+            rows = (session.query(models.PortBinding)
+                    .filter_by(port_id=port_id)
+                    .filter(models.PortBinding.host.in_(
+                        (context.host, target))).all())
+            bindings = {(row.host, row.status): row for row in rows}
+            active = bindings.get((context.host, constants.ACTIVE))
+            inactive = bindings.get((target, constants.INACTIVE))
+            if not active or not inactive or not self._is_port_bound(
+                    {portbindings.VIF_TYPE: inactive.vif_type}):
+                return False
+            return self._migration_target(active.profile) == expected_target
+
+    def _cancelled_migration_bindings(self, session, network_id):
+        bindings = (session.query(models.PortBinding)
+                    .join(models_v2.Port,
+                          models_v2.Port.id == models.PortBinding.port_id)
+                    .filter(models_v2.Port.network_id == network_id).all())
+        targets = {
+            binding.port_id: self._migration_target(binding.profile)
+            for binding in bindings if binding.status == constants.ACTIVE}
+        return tuple((binding.port_id, binding.host)
+                     for binding in bindings
+                     if binding.status == constants.INACTIVE and
+                     targets.get(binding.port_id) != binding.host)
+
+    def _change_migration_attachment(self, context, network, host, prepare):
+        kwargs = {}
+        if network['provider:network_type'] == const.TYPE_ND:
+            physnet = self._get_host_physnet(
+                context._plugin_context, host,
+                network['provider:physical_network'])
+            vlan_id = self._get_nd_hpb_vlan(context, physnet)
+            if vlan_id is None:
+                return
+            kwargs['vlan_id'] = vlan_id
+        if prepare:
+            self.attach_network(context, host, network, prepare=True, **kwargs)
+        else:
+            self.detach_network(context, host, network,
+                                cleanup_migration=True, **kwargs)
+
+    def _update_migration_attachment(self, context, network):
+        if not context.host or context.original_host != context.host:
+            return False
+        target = self._migration_target(
+            context.current.get(portbindings.PROFILE))
+        old_target = self._migration_target(
+            context.original.get(portbindings.PROFILE))
+        if not target and not old_target:
+            return False
+        host = target or old_target
+        if host == context.host:
+            return False
+        if not self._has_migration_binding(context, host, target):
+            return False
+        if target == old_target:
+            return True
+
+        self._change_migration_attachment(
+            context, network, host, prepare=bool(target))
+        if (target and old_target and old_target != context.host and
+                self._has_migration_binding(context, old_target, target)):
+            self._change_migration_attachment(
+                context, network, old_target, prepare=False)
+        return True
+
     def update_port_postcommit(self, context):
         old_port = context.original
         port = context.current
         network = context.network.current
         physical_network = network['provider:physical_network']
         network_type = network['provider:network_type']
+
+        if (physical_network and
+                (network_type == const.TYPE_ND or
+                 (network_type == constants.TYPE_VLAN and
+                  cfg.CONF.ndfc.vlan_hardware_l3)) and
+                self._update_migration_attachment(context, network)):
+            return
 
         if (physical_network and
                 network_type == constants.TYPE_VLAN and
@@ -1308,31 +1482,54 @@ class NDFCMechanismDriver(api.MechanismDriver,
                     self.attach_network(context, context.host, network,
                                         vlan_id=vlan_id)
 
+    def delete_port_precommit(self, context):
+        network = context.network.current
+        network_type = network['provider:network_type']
+        target = self._migration_target(
+            context.current.get(portbindings.PROFILE))
+        if (target and target != context.host and
+                network.get('provider:physical_network') and
+                (network_type == const.TYPE_ND or
+                 (network_type == constants.TYPE_VLAN and
+                  cfg.CONF.ndfc.vlan_hardware_l3)) and
+                self._has_migration_binding(context, target, target)):
+            context._ndfc_migration_target = target
+
     def delete_port_postcommit(self, context):
         port = context.current
+        target = getattr(context, '_ndfc_migration_target', None)
+        if not isinstance(target, str):
+            target = None
 
-        if self._is_port_bound(port):
-            network = context.network.current
-            physical_network = network['provider:physical_network']
-            network_type = network['provider:network_type']
+        if not (self._is_port_bound(port) or target):
+            return
+        network = context.network.current
+        physical_network = network['provider:physical_network']
+        network_type = network['provider:network_type']
+        if not physical_network:
+            return
 
-            if (physical_network and
-                    network_type == constants.TYPE_VLAN and
-                    cfg.CONF.ndfc.vlan_hardware_l3):
-                self.detach_network(context, context.host, network)
+        if (network_type == constants.TYPE_VLAN and
+                cfg.CONF.ndfc.vlan_hardware_l3):
+            self.detach_network(context, context.host, network)
+        elif network_type == const.TYPE_ND:
+            host_physnet = self._get_host_physnet_from_context(
+                context, physical_network)
+            vlan_id = self._get_nd_hpb_vlan(context, host_physnet)
+            if vlan_id is not None:
+                self.detach_network(context, context.host, network,
+                                    vlan_id=vlan_id)
+        else:
+            return
 
-            if physical_network and network_type == const.TYPE_ND:
-                host_physnet = self._get_host_physnet_from_context(
-                    context, physical_network)
-                vlan_id = self._get_nd_hpb_vlan(context, host_physnet)
-                if vlan_id is not None:
-                    self.detach_network(context, context.host, network,
-                                        vlan_id=vlan_id)
-                remaining = self._count_bound_ports_on_network(
-                    context._plugin_context, network['id'])
-                if remaining == 0:
-                    self._release_nd_dynamic_segments(
-                        context, network['id'])
+        if target:
+            self._change_migration_attachment(
+                context, network, target, prepare=False)
+        if network_type == const.TYPE_ND:
+            remaining = self._count_bound_ports_on_network(
+                context._plugin_context, network['id'])
+            if remaining == 0:
+                self._release_nd_dynamic_segments(context, network['id'])
 
     def bind_port(self, context):
         LOG.debug("Attempting to bind port %(port)s on network %(network)s",
